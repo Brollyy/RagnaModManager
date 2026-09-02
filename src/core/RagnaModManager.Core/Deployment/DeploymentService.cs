@@ -300,12 +300,20 @@ public sealed class DeploymentService
 
     private void WriteUe4ssEnabledState(string gameRoot, DeploymentPlan plan, IReadOnlyList<DeployedFileRecord> deployed)
     {
-        var activeUe4ssMods = plan.Items
+        var activeFoldersByPackage = plan.Items
             .Where(i => i.FileType.Equals("ue4ss-lua", StringComparison.OrdinalIgnoreCase) ||
                         i.FileType.Equals("ue4ss-dll", StringComparison.OrdinalIgnoreCase))
-            .Select(i => Path.GetFileName(Path.GetDirectoryName(Path.GetDirectoryName(i.TargetPath)) ?? ""))
-            .Where(v => !string.IsNullOrWhiteSpace(v))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .GroupBy(i => i.ModId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Select(i => TryGetUe4ssModFolder(gameRoot, i.TargetPath, out var folder) ? folder : null)
+                    .Where(folder => !string.IsNullOrWhiteSpace(folder))
+                    .Cast<string>()
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Order(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                StringComparer.OrdinalIgnoreCase);
+        var activeUe4ssMods = activeFoldersByPackage.Values.SelectMany(value => value)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var allKnownUe4ssMods = deployed
             .Select(file => TryGetUe4ssModFolder(gameRoot, file.TargetPath, out var modFolder) ? modFolder : null)
@@ -321,14 +329,20 @@ public sealed class DeploymentService
 
         var modsFile = _rules.GetUe4ssModsFile(gameRoot);
         Directory.CreateDirectory(Path.GetDirectoryName(modsFile)!);
-        File.WriteAllLines(modsFile, allKnownUe4ssMods.Select(mod => $"{mod} : {(activeUe4ssMods.Contains(mod!) ? 1 : 0)}"));
+        var orderedActive = plan.Ue4ssLoadOrder
+            .Where(activeFoldersByPackage.ContainsKey)
+            .SelectMany(package => activeFoldersByPackage[package])
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        var disabled = allKnownUe4ssMods.Where(mod => !activeUe4ssMods.Contains(mod!));
+        File.WriteAllLines(modsFile, orderedActive.Select(mod => $"{mod} : 1").Concat(disabled.Select(mod => $"{mod} : 0")));
         _logger.Deployment($"Wrote UE4SS enabled state to {modsFile}");
     }
 
-    private static bool TryGetUe4ssModFolder(string gameRoot, string targetPath, out string? modFolder)
+    private bool TryGetUe4ssModFolder(string gameRoot, string targetPath, out string? modFolder)
     {
         modFolder = null;
-        var modsRoot = Path.Combine(gameRoot, "Ragnarock", "Binaries", "Win64", "ue4ss", "Mods");
+        var modsRoot = Path.GetDirectoryName(_rules.GetUe4ssModsFile(gameRoot))!;
         var fullModsRoot = Path.GetFullPath(modsRoot);
         var fullTarget = Path.GetFullPath(targetPath);
         var rootWithSeparator = fullModsRoot.EndsWith(Path.DirectorySeparatorChar)

@@ -20,7 +20,8 @@ public sealed record DeploymentPlan(
     string ProfileId,
     IReadOnlyList<DeploymentItem> Items,
     IReadOnlyList<DeploymentConflict> Conflicts,
-    IReadOnlyList<string> Warnings)
+    IReadOnlyList<string> Warnings,
+    IReadOnlyList<string> Ue4ssLoadOrder)
 {
     public bool CanDeploy => Conflicts.All(c => !c.BlocksDeployment);
 }

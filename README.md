@@ -72,6 +72,7 @@ Zip the matching `artifacts/RagnaModManager-*` folder for a GitHub release. User
 - Read-only `.rmod` inspection that validates and previews manifest contents before install
 - Manifest validation for `ue4ss-lua`, `ue4ss-dll`, `pak`, `config`, and `loose-file`
 - Manifest `requires.manager` and `requires.ue4ss` version checks
+- Manifest `dependencies` version checks with blocking diagnostics for missing, disabled, incompatible, or cyclic mod dependencies
 - Local mod library installation
 - Default profile with enable/disable and priority
 - Multiple profile records with create/switch support
@@ -85,6 +86,7 @@ Zip the matching `artifacts/RagnaModManager-*` folder for a GitHub release. User
 - Switching profiles followed by deploy removes previous manager-owned profile files before copying the active profile
 - Modified deployed files block redeploy instead of being silently overwritten
 - UE4SS detection, GitHub release download/update checks, cached version rollback, user-supplied zip installation, Lua/DLL deployment, and `Mods/mods.txt` writing
+- Active UE4SS root/subfolder layout detection and dependency-aware `mods.txt` load ordering
 - Disabling UE4SS mods retains deployed files and writes `Mods/mods.txt` entries as disabled; reset deployment removes retained files
 - Pak deployment to `Ragnarock/Content/Paks/~mods` with deterministic load-order names
 - Publishable desktop UI with screens for setup, installed mods, import, deployment, settings, logs, and launch

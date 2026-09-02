@@ -12,6 +12,7 @@ public sealed class ModManifest
     public string Game { get; set; } = "";
     public string? Description { get; set; }
     public Dictionary<string, string>? Requires { get; set; }
+    public Dictionary<string, string> Dependencies { get; set; } = [];
     public List<string> Conflicts { get; set; } = [];
     public List<ManifestFile> Files { get; set; } = [];
     public List<string> Affects { get; set; } = [];

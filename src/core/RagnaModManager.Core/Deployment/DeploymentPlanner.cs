@@ -91,8 +91,22 @@ public sealed class DeploymentPlanner
             requirementConflicts.AddRange(_rules.GetRequirementConflicts(gameRoot, manifest, manifestItems));
         }
 
-        var conflicts = DetectConflicts(items, affects, hooks, enabledManifests).Concat(requirementConflicts).ToList();
-        return Result<DeploymentPlan>.Ok(new DeploymentPlan(profile.Id, items, conflicts, warnings));
+        var dependencyConflicts = DetectDependencyConflicts(profileMods, mods, enabledManifests);
+        var (loadOrder, cycle) = BuildDependencyOrder(profileMods, enabledManifests);
+        if (cycle is not null)
+        {
+            dependencyConflicts.Add(new DeploymentConflict(
+                "dependency-cycle",
+                $"Enabled mods contain a dependency cycle: {cycle}.",
+                items.Where(i => enabledManifests.ContainsKey(i.ModId)).ToList(),
+                BlocksDeployment: true));
+        }
+
+        var conflicts = DetectConflicts(items, affects, hooks, enabledManifests)
+            .Concat(requirementConflicts)
+            .Concat(dependencyConflicts)
+            .ToList();
+        return Result<DeploymentPlan>.Ok(new DeploymentPlan(profile.Id, items, conflicts, warnings, loadOrder));
     }
 
     private IEnumerable<string> ExpandSource(string source, ManifestFile file)
@@ -163,6 +177,91 @@ public sealed class DeploymentPlanner
         }
 
         return conflicts;
+    }
+
+    private static List<DeploymentConflict> DetectDependencyConflicts(
+        IReadOnlyList<ProfileModRecord> profileMods,
+        IReadOnlyDictionary<string, ModRecord> installedMods,
+        IReadOnlyDictionary<string, ModManifest> enabledManifests)
+    {
+        var conflicts = new List<DeploymentConflict>();
+        var enabled = profileMods.Select(m => m.ModId).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var manifest in enabledManifests.Values)
+        {
+            foreach (var dependency in manifest.Dependencies)
+            {
+                if (!installedMods.TryGetValue(dependency.Key, out var installed))
+                {
+                    conflicts.Add(new DeploymentConflict(
+                        "missing-dependency",
+                        $"{manifest.Id} requires {dependency.Key} {dependency.Value}, but it is not installed.",
+                        [],
+                        BlocksDeployment: true));
+                }
+                else if (!enabled.Contains(dependency.Key))
+                {
+                    conflicts.Add(new DeploymentConflict(
+                        "disabled-dependency",
+                        $"{manifest.Id} requires {dependency.Key} {dependency.Value}, but it is disabled in this profile.",
+                        [],
+                        BlocksDeployment: true));
+                }
+                else if (!VersionRequirement.IsSatisfied(dependency.Value, installed.Version))
+                {
+                    conflicts.Add(new DeploymentConflict(
+                        "dependency-version",
+                        $"{manifest.Id} requires {dependency.Key} {dependency.Value}, installed version is {installed.Version}.",
+                        [],
+                        BlocksDeployment: true));
+                }
+            }
+        }
+
+        return conflicts;
+    }
+
+    private static (IReadOnlyList<string> Order, string? Cycle) BuildDependencyOrder(
+        IReadOnlyList<ProfileModRecord> profileMods,
+        IReadOnlyDictionary<string, ModManifest> manifests)
+    {
+        var ordered = new List<string>();
+        var visiting = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var stack = new List<string>();
+        string? cycle = null;
+
+        bool Visit(string id)
+        {
+            if (visited.Contains(id)) return true;
+            if (!visiting.Add(id))
+            {
+                var start = stack.FindIndex(value => value.Equals(id, StringComparison.OrdinalIgnoreCase));
+                cycle = string.Join(" -> ", stack.Skip(Math.Max(0, start)).Append(id));
+                return false;
+            }
+
+            stack.Add(id);
+            if (manifests.TryGetValue(id, out var manifest))
+            {
+                foreach (var dependency in manifest.Dependencies.Keys.Order(StringComparer.OrdinalIgnoreCase))
+                {
+                    if (manifests.ContainsKey(dependency) && !Visit(dependency)) return false;
+                }
+            }
+
+            stack.RemoveAt(stack.Count - 1);
+            visiting.Remove(id);
+            visited.Add(id);
+            ordered.Add(id);
+            return true;
+        }
+
+        foreach (var mod in profileMods.OrderBy(m => m.Priority).ThenBy(m => m.ModId, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!Visit(mod.ModId)) break;
+        }
+
+        return (ordered, cycle);
     }
 
     private static void AddMulti(Dictionary<string, List<string>> map, string key, string value)

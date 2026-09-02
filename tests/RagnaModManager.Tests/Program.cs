@@ -29,6 +29,9 @@ var tests = new (string Name, Action Body)[]
     ("declared mod conflicts block deployment", DeclaredModConflictsBlockDeployment),
     ("manager version requirements block unsupported mods", ManagerVersionRequirementBlocksUnsupportedMods),
     ("ue4ss version requirements block unsupported runtime", Ue4ssVersionRequirementBlocksUnsupportedRuntime),
+    ("mod dependencies block invalid profiles and order ue4ss mods", ModDependenciesBlockAndOrder),
+    ("dependency cycles block deployment", DependencyCyclesBlockDeployment),
+    ("active root ue4ss layout is preferred", ActiveRootUe4ssLayoutIsPreferred),
     ("steam libraryfolders vdf parser finds library paths", SteamLibraryVdfParserFindsLibraryPaths),
     ("folder opener builds platform command", FolderOpenerBuildsPlatformCommand),
     ("compatibility checker reports usable test install", CompatibilityCheckerReportsUsableInstall),
@@ -376,6 +379,88 @@ static void Ue4ssVersionRequirementBlocksUnsupportedRuntime()
     var preview = env.DeploymentService().Preview(game);
     Assert(preview.Success, preview.Error ?? "preview failed");
     Assert(preview.Value!.Conflicts.Any(c => c.Kind == "ue4ss-version" && c.BlocksDeployment), "UE4SS version requirement should block deployment");
+}
+
+static void ModDependenciesBlockAndOrder()
+{
+    using var env = TestEnv.Create();
+    var game = env.CreateGame();
+    env.InstallFakeUe4ss(game);
+    env.Database.UpsertGame(new GameRecord("ragnarock", "Ragnarock", game, null, null, "test"));
+
+    var apiPackage = env.CreatePackage("ragnacustoms-api", manifest =>
+    {
+        manifest.Version = "0.2.0";
+        manifest.Files = [new ManifestFile { Type = "ue4ss-lua", Source = "Scripts/main.lua", ModFolder = "RagnaCustomsApi" }];
+    }, files => files["Scripts/main.lua"] = "print('api')");
+    var votePackage = env.CreatePackage("ragnacustoms-vote", manifest =>
+    {
+        manifest.Dependencies = new Dictionary<string, string> { ["ragnacustoms-api"] = ">=0.2.0" };
+        manifest.Files = [new ManifestFile { Type = "ue4ss-lua", Source = "Scripts/main.lua", ModFolder = "RagnaCustomsVote" }];
+    }, files => files["Scripts/main.lua"] = "print('vote')");
+
+    Assert(env.Importer.Import(apiPackage).Success, "api import should succeed");
+    Assert(env.Importer.Import(votePackage).Success, "vote import should succeed");
+    env.Database.SetProfileMod("default", "ragnacustoms-vote", true, 0);
+    var disabledPreview = env.DeploymentService().Preview(game);
+    Assert(disabledPreview.Success, disabledPreview.Error ?? "preview failed");
+    Assert(disabledPreview.Value!.Conflicts.Any(c => c.Kind == "disabled-dependency"), "disabled dependency should block deployment");
+
+    env.Database.SetProfileMod("default", "ragnacustoms-api", true, 999);
+    var service = env.DeploymentService();
+    var deploy = service.Deploy(game);
+    Assert(deploy.Success, deploy.Error ?? "dependency-aware deployment should succeed");
+    var lines = File.ReadAllLines(Path.Combine(game, "Ragnarock", "Binaries", "Win64", "ue4ss", "Mods", "mods.txt"));
+    Assert(lines.SequenceEqual(["RagnaCustomsApi : 1", "RagnaCustomsVote : 1"]), "dependency should load before consumer regardless of priority");
+}
+
+static void DependencyCyclesBlockDeployment()
+{
+    using var env = TestEnv.Create();
+    var game = env.CreateGame();
+    env.InstallFakeUe4ss(game);
+    env.Database.UpsertGame(new GameRecord("ragnarock", "Ragnarock", game, null, null, "test"));
+
+    foreach (var (id, dependency) in new[] { ("cycle-a", "cycle-b"), ("cycle-b", "cycle-a") })
+    {
+        var package = env.CreatePackage(id, manifest =>
+        {
+            manifest.Dependencies = new Dictionary<string, string> { [dependency] = ">=1.0.0" };
+            manifest.Files = [new ManifestFile { Type = "ue4ss-lua", Source = "Scripts/main.lua", ModFolder = id }];
+        }, files => files["Scripts/main.lua"] = id);
+        Assert(env.Importer.Import(package).Success, $"{id} import should succeed");
+        env.Database.SetProfileMod("default", id, true, 0);
+    }
+
+    var preview = env.DeploymentService().Preview(game);
+    Assert(preview.Success, preview.Error ?? "preview failed");
+    Assert(preview.Value!.Conflicts.Any(c => c.Kind == "dependency-cycle" && c.BlocksDeployment), "dependency cycle should block deployment");
+}
+
+static void ActiveRootUe4ssLayoutIsPreferred()
+{
+    using var env = TestEnv.Create();
+    var game = env.CreateGame();
+    env.InstallFakeUe4ss(game);
+    var exe = Path.Combine(game, "Ragnarock", "Binaries", "Win64");
+    File.WriteAllText(Path.Combine(exe, "UE4SS.dll"), "active-root-dll");
+    File.WriteAllText(Path.Combine(exe, "UE4SS-version.txt"), "3.0.1");
+    Directory.CreateDirectory(Path.Combine(exe, "ActiveMods"));
+    File.WriteAllText(Path.Combine(exe, "UE4SS-settings.ini"), "[Overrides]\nModsFolderPath = ActiveMods\n");
+    env.Database.UpsertGame(new GameRecord("ragnarock", "Ragnarock", game, null, null, "test"));
+
+    var package = env.CreatePackage("root-layout", manifest =>
+    {
+        manifest.Files = [new ManifestFile { Type = "ue4ss-lua", Source = "Scripts/main.lua", ModFolder = "RootLayout" }];
+    }, files => files["Scripts/main.lua"] = "print('root')");
+    Assert(env.Importer.Import(package).Success, "root package import should succeed");
+    env.Database.SetProfileMod("default", "root-layout", true, 0);
+
+    var status = new Ue4ssService().Detect(game);
+    Assert(status.Layout == "legacy-exe-folder", "root layout should be selected when both layouts exist");
+    Assert(status.ModsPath == Path.Combine(exe, "ActiveMods"), "configured root ModsFolderPath should be used");
+    Assert(env.DeploymentService().Deploy(game).Success, "root layout deploy should succeed");
+    Assert(File.Exists(Path.Combine(exe, "ActiveMods", "RootLayout", "scripts", "main.lua")), "mod should deploy to active root Mods path");
 }
 
 static void Ue4ssInstallMapsLayout()

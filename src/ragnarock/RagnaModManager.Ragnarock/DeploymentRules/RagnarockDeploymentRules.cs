@@ -14,14 +14,17 @@ public sealed class RagnarockDeploymentRules : IGameDeploymentRules
     public string GetTargetPath(string gameRoot, ModManifest manifest, ManifestFile file, string sourcePath)
     {
         var exeFolder = GetExecutableFolder(gameRoot);
+        var ue4ss = _ue4ss.Detect(gameRoot);
+        var ue4ssRoot = ue4ss.RootPath;
+        var modsRoot = ue4ss.ModsPath;
         var relativeName = GetRelativeSourceName(manifest, file, sourcePath);
 
         return file.Type.ToLowerInvariant() switch
         {
-            "ue4ss-lua" => Path.Combine(exeFolder, "ue4ss", "Mods", file.EffectiveModFolder, "scripts", relativeName),
-            "ue4ss-dll" => Path.Combine(exeFolder, "ue4ss", "Mods", file.EffectiveModFolder, "dlls", Path.GetFileName(sourcePath)),
+            "ue4ss-lua" => Path.Combine(modsRoot, file.EffectiveModFolder, "scripts", relativeName),
+            "ue4ss-dll" => Path.Combine(modsRoot, file.EffectiveModFolder, "dlls", Path.GetFileName(sourcePath)),
             "pak" => Path.Combine(GetPakModFolder(gameRoot), BuildPakName(manifest, file, sourcePath)),
-            "config" => Path.Combine(exeFolder, "ue4ss", NormalizeTarget(file.Target ?? Path.Combine("Mods", manifest.Id, Path.GetFileName(sourcePath)))),
+            "config" => Path.Combine(ue4ssRoot, NormalizeTarget(file.Target ?? Path.Combine("Mods", manifest.Id, Path.GetFileName(sourcePath)))),
             "loose-file" => Path.Combine(gameRoot, NormalizeTarget(file.Target ?? Path.GetFileName(sourcePath))),
             _ => throw new InvalidOperationException($"Unsupported file type: {file.Type}")
         };
@@ -54,7 +57,7 @@ public sealed class RagnarockDeploymentRules : IGameDeploymentRules
     }
 
     public string GetUe4ssModsFile(string gameRoot) =>
-        Path.Combine(GetExecutableFolder(gameRoot), "ue4ss", "Mods", "mods.txt");
+        Path.Combine(_ue4ss.Detect(gameRoot).ModsPath, "mods.txt");
 
     public IEnumerable<DeploymentConflict> GetRequirementConflicts(string gameRoot, ModManifest manifest, IReadOnlyList<DeploymentItem> manifestItems)
     {

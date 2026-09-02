@@ -3,7 +3,13 @@ using RagnaModManager.Core.Common;
 
 namespace RagnaModManager.Ragnarock.Ue4ss;
 
-public sealed record Ue4ssStatus(bool Installed, string Layout, string? Version, IReadOnlyList<string> Diagnostics);
+public sealed record Ue4ssStatus(
+    bool Installed,
+    string Layout,
+    string? Version,
+    IReadOnlyList<string> Diagnostics,
+    string RootPath,
+    string ModsPath);
 
 public sealed class Ue4ssService
 {
@@ -13,23 +19,31 @@ public sealed class Ue4ssService
         var diagnostics = new List<string>();
         var modernRoot = Path.Combine(exeFolder, "ue4ss");
         var modernDll = Path.Combine(modernRoot, "UE4SS.dll");
+        var legacyDll = Path.Combine(exeFolder, "UE4SS.dll");
         var proxyDll = Directory.Exists(exeFolder)
             ? Directory.EnumerateFiles(exeFolder, "*.dll").FirstOrDefault(p => !Path.GetFileName(p).Equals("UE4SS.dll", StringComparison.OrdinalIgnoreCase))
             : null;
 
-        if (File.Exists(modernDll))
+        if (File.Exists(legacyDll))
         {
-            if (!Directory.Exists(Path.Combine(modernRoot, "Mods")))
+            if (File.Exists(modernDll))
             {
-                diagnostics.Add("UE4SS is present but ue4ss/Mods is missing.");
+                diagnostics.Add("Both root and ue4ss-subfolder UE4SS layouts are present; using the proxy-loaded root layout.");
             }
-
-            return new Ue4ssStatus(true, "modern-ue4ss-subfolder", DetectVersion(modernRoot), diagnostics);
+            var modsPath = ResolveModsPath(exeFolder);
+            if (!Directory.Exists(modsPath)) diagnostics.Add($"UE4SS Mods folder is missing: {modsPath}");
+            return new Ue4ssStatus(true, "legacy-exe-folder", DetectVersion(exeFolder), diagnostics, exeFolder, modsPath);
         }
 
-        if (File.Exists(Path.Combine(exeFolder, "UE4SS.dll")))
+        if (File.Exists(modernDll))
         {
-            return new Ue4ssStatus(true, "legacy-exe-folder", DetectVersion(exeFolder), ["Legacy UE4SS layout detected. The manager deploys to the modern ue4ss/ subfolder layout."]);
+            var modsPath = ResolveModsPath(modernRoot);
+            if (!Directory.Exists(modsPath))
+            {
+                diagnostics.Add($"UE4SS Mods folder is missing: {modsPath}");
+            }
+
+            return new Ue4ssStatus(true, "modern-ue4ss-subfolder", DetectVersion(modernRoot), diagnostics, modernRoot, modsPath);
         }
 
         diagnostics.Add("UE4SS.dll was not found under Ragnarock/Binaries/Win64/ue4ss.");
@@ -38,7 +52,7 @@ public sealed class Ue4ssService
             diagnostics.Add("No proxy DLL was found next to the game executable.");
         }
 
-        return new Ue4ssStatus(false, "missing", null, diagnostics);
+        return new Ue4ssStatus(false, "missing", null, diagnostics, modernRoot, Path.Combine(modernRoot, "Mods"));
     }
 
     public Result InstallFromZip(string gameRoot, string zipPath, string? installedVersion = null)
@@ -114,5 +128,25 @@ public sealed class Ue4ssService
     {
         var versionFile = Path.Combine(ue4ssRoot, "UE4SS-version.txt");
         return File.Exists(versionFile) ? File.ReadAllText(versionFile).Trim() : null;
+    }
+
+    private static string ResolveModsPath(string ue4ssRoot)
+    {
+        var settings = Path.Combine(ue4ssRoot, "UE4SS-settings.ini");
+        if (File.Exists(settings))
+        {
+            foreach (var line in File.ReadLines(settings))
+            {
+                var trimmed = line.Trim();
+                if (!trimmed.StartsWith("ModsFolderPath", StringComparison.OrdinalIgnoreCase)) continue;
+                var separator = trimmed.IndexOf('=');
+                if (separator < 0) continue;
+                var configured = trimmed[(separator + 1)..].Trim().Trim('"');
+                if (configured.Length == 0) break;
+                return Path.GetFullPath(Path.IsPathRooted(configured) ? configured : Path.Combine(ue4ssRoot, configured));
+            }
+        }
+
+        return Path.Combine(ue4ssRoot, "Mods");
     }
 }

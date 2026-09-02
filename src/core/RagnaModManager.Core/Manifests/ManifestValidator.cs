@@ -122,6 +122,25 @@ public static class ManifestValidator
             }
         }
 
+        foreach (var dependency in manifest.Dependencies)
+        {
+            if (!IsSlug(dependency.Key))
+            {
+                return Result.Fail($"Dependency id must be a valid mod id: '{dependency.Key}'.");
+            }
+
+            var syntax = VersionRequirement.ValidateSyntax(dependency.Value);
+            if (!syntax.Success)
+            {
+                return Result.Fail($"Invalid dependency requirement for '{dependency.Key}': {syntax.Error}");
+            }
+
+            if (dependency.Key.Equals(manifest.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                return Result.Fail("A mod cannot depend on itself.");
+            }
+        }
+
         return Result.Ok();
     }
 
