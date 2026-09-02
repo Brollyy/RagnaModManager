@@ -91,6 +91,18 @@ public sealed class DeploymentPlanner
             requirementConflicts.AddRange(_rules.GetRequirementConflicts(gameRoot, manifest, manifestItems));
         }
 
+        var expandedItemCount = items.Count;
+        items = items
+            .GroupBy(
+                item => string.Join('\0', item.ModId, Path.GetFullPath(item.SourcePath), Path.GetFullPath(item.TargetPath), item.Method),
+                StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+        if (items.Count < expandedItemCount)
+        {
+            warnings.Add($"Coalesced {expandedItemCount - items.Count} identical legacy deployment entries.");
+        }
+
         var dependencyConflicts = DetectDependencyConflicts(profileMods, mods, enabledManifests);
         var (loadOrder, cycle) = BuildDependencyOrder(profileMods, enabledManifests);
         if (cycle is not null)

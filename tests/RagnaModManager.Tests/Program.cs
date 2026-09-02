@@ -26,6 +26,7 @@ var tests = new (string Name, Action Body)[]
     ("modified deployed files block overwrite", ModifiedDeployedFilesBlockOverwrite),
     ("switching profiles redeploys from scratch", SwitchingProfilesRedeploysFromScratch),
     ("same target conflicts block deployment", SameTargetConflictBlocksDeployment),
+    ("identical legacy entries are coalesced", IdenticalLegacyEntriesAreCoalesced),
     ("declared mod conflicts block deployment", DeclaredModConflictsBlockDeployment),
     ("manager version requirements block unsupported mods", ManagerVersionRequirementBlocksUnsupportedMods),
     ("ue4ss version requirements block unsupported runtime", Ue4ssVersionRequirementBlocksUnsupportedRuntime),
@@ -314,6 +315,36 @@ static void SameTargetConflictBlocksDeployment()
     var preview = env.DeploymentService().Preview(game);
     Assert(preview.Success, preview.Error ?? "preview failed");
     Assert(!preview.Value!.CanDeploy, "same target conflict should block deployment");
+}
+
+static void IdenticalLegacyEntriesAreCoalesced()
+{
+    using var env = TestEnv.Create();
+    var game = env.CreateGame();
+    var exe = Path.Combine(game, "Ragnarock", "Binaries", "Win64");
+    Directory.CreateDirectory(Path.Combine(exe, "Mods"));
+    File.WriteAllText(Path.Combine(exe, "UE4SS.dll"), "root-dll");
+    File.WriteAllText(Path.Combine(exe, "UE4SS-settings.ini"), "[Overrides]\nModsFolderPath =\n");
+    env.Database.UpsertGame(new GameRecord("ragnarock", "Ragnarock", game, null, null, "test"));
+
+    var package = env.CreatePackage("legacy-package", manifest =>
+    {
+        manifest.Files =
+        [
+            new ManifestFile { Type = "config", Source = "Scripts/main.lua", Target = "Mods/LegacyPackage/Scripts/main.lua" },
+            new ManifestFile { Type = "loose-file", Source = "Scripts/main.lua", Target = "Ragnarock/Binaries/Win64/Mods/LegacyPackage/Scripts/main.lua" },
+        ];
+    }, files => files["Scripts/main.lua"] = "print('legacy')");
+    Assert(env.Importer.Import(package).Success, "legacy package import should succeed");
+    env.Database.SetProfileMod("default", "legacy-package", true, 0);
+
+    var preview = env.DeploymentService().Preview(game);
+    Assert(preview.Success, preview.Error ?? "preview failed");
+    Assert(preview.Value!.CanDeploy, "identical same-mod source/target entries should not conflict");
+    Assert(preview.Value.Items.Count == 1, "identical deployment entries should be coalesced");
+    Assert(preview.Value.Warnings.Any(w => w.Contains("Coalesced 1", StringComparison.Ordinal)), "coalescing should be reported");
+    Assert(env.DeploymentService().Deploy(game).Success, "coalesced legacy package should deploy");
+    Assert(File.ReadAllText(Path.Combine(exe, "Mods", "LegacyPackage", "Scripts", "main.lua")) == "print('legacy')", "deployed content should match source");
 }
 
 static void DeclaredModConflictsBlockDeployment()
