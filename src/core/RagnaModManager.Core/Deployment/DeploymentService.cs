@@ -250,17 +250,7 @@ public sealed class DeploymentService
     private void BackupPreviousDeployment(string profileId)
     {
         var previous = _database.GetDeployedFiles(profileId);
-        var backupRoot = Path.Combine(_paths.Backups, DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff"));
-        var filesRoot = Path.Combine(backupRoot, "files");
-        Directory.CreateDirectory(filesRoot);
-
-        if (File.Exists(_paths.CurrentDeploymentPath))
-        {
-            File.Copy(_paths.CurrentDeploymentPath, Path.Combine(backupRoot, "current.json"), overwrite: true);
-        }
-
-        var backedUp = new List<DeploymentBackupFile>();
-        var index = 0;
+        var backupCandidates = new List<DeployedFileRecord>();
         foreach (var file in previous)
         {
             if (!File.Exists(file.TargetPath))
@@ -276,6 +266,28 @@ public sealed class DeploymentService
                 continue;
             }
 
+            backupCandidates.Add(file);
+        }
+
+        if (backupCandidates.Count == 0)
+        {
+            _logger.Deployment($"Skipped deployment backup for {profileId} because there are no restorable files.");
+            return;
+        }
+
+        var backupRoot = Path.Combine(_paths.Backups, DateTimeOffset.UtcNow.ToString("yyyyMMddHHmmssfff"));
+        var filesRoot = Path.Combine(backupRoot, "files");
+        Directory.CreateDirectory(filesRoot);
+
+        if (File.Exists(_paths.CurrentDeploymentPath))
+        {
+            File.Copy(_paths.CurrentDeploymentPath, Path.Combine(backupRoot, "current.json"), overwrite: true);
+        }
+
+        var backedUp = new List<DeploymentBackupFile>();
+        var index = 0;
+        foreach (var file in backupCandidates)
+        {
             var backupPath = Path.Combine(filesRoot, $"{index++:000000}_{Path.GetFileName(file.TargetPath)}");
             File.Copy(file.TargetPath, backupPath, overwrite: false);
             backedUp.Add(new DeploymentBackupFile(file.ModId, file.SourcePath, file.TargetPath, file.DeploymentMethod, file.Checksum, backupPath));
