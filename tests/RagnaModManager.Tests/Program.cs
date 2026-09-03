@@ -31,6 +31,7 @@ var tests = new (string Name, Action Body)[]
     ("manager version requirements block unsupported mods", ManagerVersionRequirementBlocksUnsupportedMods),
     ("ue4ss version requirements block unsupported runtime", Ue4ssVersionRequirementBlocksUnsupportedRuntime),
     ("mod dependencies block invalid profiles and order ue4ss mods", ModDependenciesBlockAndOrder),
+    ("deployment preserves unmanaged ue4ss mods.txt entries", DeploymentPreservesUnmanagedUe4ssEntries),
     ("dependency cycles block deployment", DependencyCyclesBlockDeployment),
     ("active root ue4ss layout is preferred", ActiveRootUe4ssLayoutIsPreferred),
     ("steam libraryfolders vdf parser finds library paths", SteamLibraryVdfParserFindsLibraryPaths),
@@ -466,6 +467,34 @@ static void DependencyCyclesBlockDeployment()
     var preview = env.DeploymentService().Preview(game);
     Assert(preview.Success, preview.Error ?? "preview failed");
     Assert(preview.Value!.Conflicts.Any(c => c.Kind == "dependency-cycle" && c.BlocksDeployment), "dependency cycle should block deployment");
+}
+
+static void DeploymentPreservesUnmanagedUe4ssEntries()
+{
+    using var env = TestEnv.Create();
+    var game = env.CreateGame();
+    env.InstallFakeUe4ss(game);
+    env.Database.UpsertGame(new GameRecord("ragnarock", "Ragnarock", game, null, null, "test"));
+    var modsFile = Path.Combine(game, "Ragnarock", "Binaries", "Win64", "ue4ss", "Mods", "mods.txt");
+    File.WriteAllLines(modsFile, ["RagnaLoader : 1", "ManualDisabled : 0", "# user-managed comment"]);
+
+    var package = env.CreatePackage("managed-mod", manifest =>
+    {
+        manifest.Files = [new ManifestFile { Type = "ue4ss-lua", Source = "Scripts/main.lua", ModFolder = "ManagedMod" }];
+    }, files => files["Scripts/main.lua"] = "print('managed')");
+    Assert(env.Importer.Import(package).Success, "managed package import should succeed");
+    env.Database.SetProfileMod("default", "managed-mod", true, 0);
+
+    var service = env.DeploymentService();
+    Assert(service.Deploy(game).Success, "first deployment should succeed");
+    Assert(service.Deploy(game).Success, "repeated deployment should succeed");
+    var lines = File.ReadAllLines(modsFile);
+    Assert(lines.SequenceEqual([
+        "ManagedMod : 1",
+        "RagnaLoader : 1",
+        "ManualDisabled : 0",
+        "# user-managed comment",
+    ]), "unmanaged mods.txt entries should survive repeated deployment without duplication");
 }
 
 static void ActiveRootUe4ssLayoutIsPreferred()

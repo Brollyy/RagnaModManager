@@ -335,8 +335,32 @@ public sealed class DeploymentService
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         var disabled = allKnownUe4ssMods.Where(mod => !activeUe4ssMods.Contains(mod!));
-        File.WriteAllLines(modsFile, orderedActive.Select(mod => $"{mod} : 1").Concat(disabled.Select(mod => $"{mod} : 0")));
+        var managedLines = orderedActive.Select(mod => $"{mod} : 1").Concat(disabled.Select(mod => $"{mod} : 0"));
+        var unmanagedLines = File.Exists(modsFile)
+            ? File.ReadAllLines(modsFile).Where(line =>
+                !TryGetUe4ssModsFileFolder(line, out var folder) || !allKnownUe4ssMods.Contains(folder!))
+            : [];
+        File.WriteAllLines(modsFile, managedLines.Concat(unmanagedLines));
         _logger.Deployment($"Wrote UE4SS enabled state to {modsFile}");
+    }
+
+    private static bool TryGetUe4ssModsFileFolder(string line, out string? modFolder)
+    {
+        modFolder = null;
+        var separator = line.IndexOf(':');
+        if (separator <= 0)
+        {
+            return false;
+        }
+
+        var candidate = line[..separator].Trim();
+        if (candidate.Length == 0)
+        {
+            return false;
+        }
+
+        modFolder = candidate;
+        return true;
     }
 
     private bool TryGetUe4ssModFolder(string gameRoot, string targetPath, out string? modFolder)
