@@ -32,7 +32,9 @@ public sealed class MainWindow : Window
     private readonly FolderOpener _folderOpener = new();
 
     private readonly ContentControl _body = new();
+    private readonly TabControl _tabs = new();
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap };
+    private int _selectedTab;
 
     public MainWindow()
     {
@@ -91,6 +93,8 @@ public sealed class MainWindow : Window
         launch.Click += (_, _) => LaunchGame();
         header.Children.Add(Cell(launch, 1));
 
+        _tabs.SelectionChanged += (_, _) => _selectedTab = Math.Max(0, _tabs.SelectedIndex);
+
         DockPanel.SetDock(header, Dock.Top);
         root.Children.Add(header);
 
@@ -98,7 +102,7 @@ public sealed class MainWindow : Window
         DockPanel.SetDock(_status, Dock.Bottom);
         root.Children.Add(_status);
 
-        root.Children.Add(new ScrollViewer { Content = _body });
+        root.Children.Add(_body);
         Content = root;
     }
 
@@ -109,14 +113,79 @@ public sealed class MainWindow : Window
         var mods = _database.GetMods();
         var planResult = game is null ? null : CreateDeploymentService().Preview(game.InstallPath);
 
-        _body.Content = Page("My Mods",
-            BuildQuickActions(game, mods, planResult),
-            BuildOfficialCatalog(mods),
-            BuildGameSetup(game),
-            BuildModList(active, mods),
-            BuildPlaysets(active),
-            BuildHealthSummary(game, planResult));
+        _tabs.Items.Clear();
+        _tabs.Items.Add(Tab("Dashboard", BuildDashboardPage(game, active, mods, planResult)));
+        _tabs.Items.Add(Tab("Library", new ScrollViewer { Content = Page("Library", BuildOfficialCatalog(mods)) }));
+        _tabs.Items.Add(Tab("Mods", BuildModsPage(active, mods)));
+        _tabs.Items.Add(Tab("Playsets", new ScrollViewer { Content = Page("Playsets", BuildPlaysets(active)) }));
+        _tabs.Items.Add(Tab("Settings", BuildSettingsPage(game, planResult)));
+        _tabs.SelectedIndex = Math.Min(_selectedTab, _tabs.Items.Count - 1);
+        _body.Content = _tabs;
     }
+
+    private Control BuildDashboardPage(GameRecord? game, ProfileRecord active, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
+    {
+        return new ScrollViewer
+        {
+            Content = Page("Dashboard",
+                BuildQuickActions(game, mods, planResult),
+                BuildDashboardSummary(game, active, mods, planResult))
+        };
+    }
+
+    private Control BuildModsPage(ProfileRecord active, IReadOnlyList<ModRecord> mods)
+    {
+        var import = PrimaryButton("Import Mod Package");
+        import.Click += async (_, _) => await ImportModPackage();
+        return new ScrollViewer
+        {
+            Content = Page("Mods", Text("Manage the mods installed on this computer and choose which ones are active in the current playset."), import, BuildModList(active, mods))
+        };
+    }
+
+    private Control BuildSettingsPage(GameRecord? game, Core.Common.Result<DeploymentPlan>? planResult)
+    {
+        var openLogs = Button("Open Debug Logs");
+        openLogs.Click += (_, _) => OpenFolder(_paths.Logs);
+        return new ScrollViewer
+        {
+            Content = Page("Settings",
+                Text("Configure the game installation, RE-UE4SS support, and troubleshooting locations."),
+                BuildGameSetup(game),
+                BuildHealthSummary(game, planResult),
+                Section("Troubleshooting", Text($"Manager and mod logs are stored in {_paths.Logs}."), openLogs))
+        };
+    }
+
+    private Control BuildDashboardSummary(GameRecord? game, ProfileRecord active, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
+    {
+        var enabled = GetEnabledMods().Count;
+        var lines = new List<string>
+        {
+            $"Current playset: {active.Name}",
+            $"Installed mods: {mods.Count}",
+            $"Enabled in this playset: {enabled}"
+        };
+
+        if (game is null)
+        {
+            lines.Add("Game configuration: not configured");
+        }
+        else
+        {
+            var report = new RagnarockCompatibilityChecker().Check(game.InstallPath);
+            lines.Add($"Game configuration: {(report.CanManage ? "ready" : "needs attention")}");
+            var ue4ss = _ue4ss.Detect(game.InstallPath);
+            lines.Add($"RE-UE4SS: {(ue4ss.Installed ? "installed" : "not installed")}");
+            lines.Add(planResult is { Success: true, Value: not null }
+                ? $"Pending deployment: {planResult.Value.Items.Count} file(s)"
+                : "Pending deployment: blocked or unavailable");
+        }
+
+        return Section("At a glance", Text(string.Join(Environment.NewLine, lines)));
+    }
+
+    private static TabItem Tab(string header, Control content) => new() { Header = header, Content = content };
 
     private Control BuildOfficialCatalog(IReadOnlyList<ModRecord> installed)
     {
