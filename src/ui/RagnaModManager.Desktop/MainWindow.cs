@@ -76,7 +76,7 @@ public sealed class MainWindow : Window
         var header = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-            Margin = new Thickness(0, 0, 0, 14)
+            Margin = new Thickness(0)
         };
         header.Children.Add(Cell(new StackPanel
         {
@@ -100,11 +100,24 @@ public sealed class MainWindow : Window
         _tabs.SelectionChanged += (_, _) =>
         {
             if (!_rebuildingTabs)
+            {
                 _selectedTab = Math.Max(0, _tabs.SelectedIndex);
+                _status.Text = "";
+            }
         };
 
-        DockPanel.SetDock(header, Dock.Top);
-        root.Children.Add(header);
+        var headerCard = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#EEF6FF")),
+            BorderBrush = new SolidColorBrush(Color.Parse("#C8DFF5")),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(16),
+            Margin = new Thickness(0, 0, 0, 14),
+            Child = header
+        };
+        DockPanel.SetDock(headerCard, Dock.Top);
+        root.Children.Add(headerCard);
 
         _pendingChangesBar.IsVisible = false;
         _pendingChangesBar.Margin = new Thickness(0, 12, 0, 0);
@@ -189,7 +202,7 @@ public sealed class MainWindow : Window
                 Text("Tell the manager where Ragnarock is installed, set up script support, or open logs if something goes wrong."),
                 BuildGameSetup(game),
                 BuildHealthSummary(game, planResult),
-                Section("Troubleshooting", Text($"Manager and mod logs are stored in {_paths.Logs}."), openLogs)
+                Section("Troubleshooting", Text("If something goes wrong, open the logs folder and share the relevant files."), openLogs)
             }}
         };
     }
@@ -338,7 +351,7 @@ public sealed class MainWindow : Window
 
     private Control BuildQuickActions(GameRecord? game)
     {
-        var import = Button("Add Mod");
+        var import = Button("Import Mod");
         import.Click += async (_, _) => await ImportModPackage();
 
         var openGame = Button("Open Game Folder");
@@ -624,27 +637,26 @@ public sealed class MainWindow : Window
 
         if (game is null)
         {
-            lines.Add("Game folder: needed");
+            lines.Add("Ragnarock: Not configured");
         }
         else
         {
             var report = new RagnarockCompatibilityChecker().Check(game.InstallPath);
-            lines.Add(report.CanManage ? "Game folder: ready" : "Game folder: needs attention");
-            lines.AddRange(report.Errors.Select(e => "Problem: " + e));
-            lines.AddRange(report.Warnings.Select(w => "Note: " + w));
+            lines.Add(report.CanManage ? "Ragnarock: Ready" : "Ragnarock: Needs attention");
+            if (!report.CanManage)
+                lines.Add("Check the folder selected above and save it again.");
 
             var ue4ss = _ue4ss.Detect(game.InstallPath);
-            lines.Add(ue4ss.Installed ? "Script mod support: RE-UE4SS installed" : "Script mod support: RE-UE4SS not installed");
+            lines.Add(ue4ss.Installed ? "Script support: Ready" : "Script support: Not installed");
 
             if (planResult is { Success: true, Value: not null })
             {
-                lines.Add($"{planResult.Value.Items.Count} files will be applied.");
-                lines.AddRange(planResult.Value.Warnings.Select(w => "Note: " + w));
-                lines.AddRange(planResult.Value.Conflicts.Select(c => (c.BlocksDeployment ? "Problem: " : "Note: ") + c.Message));
+                lines.Add(planResult.Value.Items.Count == 0 ? "Selected mods: Nothing to apply" : "Selected mods: Ready to apply");
+                lines.AddRange(planResult.Value.Conflicts.Where(c => c.BlocksDeployment).Select(c => "Problem: " + c.Message));
             }
             else if (planResult is { Success: false })
             {
-                lines.Add("Problem: " + planResult.Error);
+                lines.Add("Selected mods: Cannot be applied");
             }
         }
 
@@ -676,7 +688,7 @@ public sealed class MainWindow : Window
                 MinWidth = 280
             };
 
-            var installCached = Button("Install Selected Cached Version");
+            var installCached = Button("Use Saved Version");
             installCached.IsEnabled = game is not null;
             installCached.Click += (_, _) =>
             {
@@ -1063,7 +1075,7 @@ public sealed class MainWindow : Window
         BorderBrush = Brushes.LightGray,
         BorderThickness = new Thickness(1),
         CornerRadius = new CornerRadius(6),
-        Background = Brushes.WhiteSmoke,
+        Background = new SolidColorBrush(Color.Parse("#F7F9FC")),
         Padding = new Thickness(12),
         Child = content
     };
