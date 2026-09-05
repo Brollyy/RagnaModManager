@@ -157,7 +157,7 @@ public sealed class MainWindow : Window
         {
             Content = new StackPanel { Spacing = 14, Children =
             {
-                BuildQuickActions(game, mods, planResult),
+                BuildQuickActions(game),
                 BuildDashboardSummary(game, active, mods, planResult)
             }}
         };
@@ -291,7 +291,7 @@ public sealed class MainWindow : Window
             install.IsEnabled = false;
             SetStatus($"Downloading {catalogMod.Name} {releases[picker.SelectedIndex].Version}…");
             var result = await _officialCatalog.DownloadAndImportAsync(catalogMod, releases[picker.SelectedIndex]);
-            SetStatus(result.Success ? $"Installed {result.Value!.Name} {result.Value.Version}. Enable it and apply changes when ready." : result.Error ?? "Official mod download failed.", !result.Success);
+            SetStatus(result.Success ? $"Installed {result.Value!.Name} {result.Value.Version}. Open Mods to turn it on." : result.Error ?? "Official mod download failed.", !result.Success);
             ShowDashboard();
         };
 
@@ -336,7 +336,7 @@ public sealed class MainWindow : Window
         }
     }
 
-    private Control BuildQuickActions(GameRecord? game, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
+    private Control BuildQuickActions(GameRecord? game)
     {
         var import = Button("Add Mod");
         import.Click += async (_, _) => await ImportModPackage();
@@ -358,11 +358,6 @@ public sealed class MainWindow : Window
         };
         openMods.Click += (_, _) => OpenFolder(_paths.ModLibrary);
 
-        var enabledCount = GetEnabledMods().Count;
-        var summary = game is null
-            ? "Choose your Ragnarock folder to start managing mods."
-            : $"{mods.Count} installed, {enabledCount} enabled.";
-
         return Card(new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,Auto"),
@@ -373,7 +368,7 @@ public sealed class MainWindow : Window
                     Spacing = 6,
                     Children =
                     {
-                        new TextBlock { Text = summary, FontSize = 20, FontWeight = FontWeight.SemiBold },
+                        new TextBlock { Text = game is null ? "Let’s get started" : "Manage your Ragnarock setup", FontSize = 20, FontWeight = FontWeight.SemiBold },
                         new TextBlock
                         {
                             Text = "Use Library to find mods, Mods to configure the current playset, and Apply Changes when the action bar appears.",
@@ -395,9 +390,6 @@ public sealed class MainWindow : Window
         apply.IsEnabled = _database.GetGame() is not null;
         apply.Click += (_, _) => DeployActiveProfile();
         content.Children.Add(apply);
-        var discard = Button("Dismiss");
-        discard.Click += (_, _) => { _changesPending = false; UpdatePendingChangesBar(); };
-        content.Children.Add(discard);
         _pendingChangesBar.Child = content;
         _pendingChangesBar.IsVisible = _changesPending;
         _pendingChangesBar.Background = Brushes.LightYellow;
@@ -505,7 +497,7 @@ public sealed class MainWindow : Window
             var isEnabled = enabled.IsChecked == true;
             _database.SetProfileMod(active.Id, mod.Id, isEnabled, profileMod?.Priority ?? 0);
             _changesPending = true;
-            SetStatus($"{mod.Name} is now {(isEnabled ? "enabled" : "disabled")}. Apply changes when ready.");
+            SetStatus($"{mod.Name} is now {(isEnabled ? "on" : "off")} in {active.Name}.");
             ShowDashboard();
         };
 
@@ -534,7 +526,7 @@ public sealed class MainWindow : Window
                         },
                         new TextBlock
                         {
-                            Text = profileMod?.Enabled == true ? "Will be installed on next apply." : "Kept in your library, not installed in the game.",
+                            Text = profileMod?.Enabled == true ? "On in this playset" : "Off in this playset",
                             Foreground = profileMod?.Enabled == true ? Brushes.DarkGreen : Brushes.DimGray,
                             TextWrapping = TextWrapping.Wrap
                         }
