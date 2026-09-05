@@ -1,8 +1,9 @@
 # RagnaModManager
 
-Cross-platform, Ragnarock-specific mod manager prototype implemented in .NET 9.
+Cross-platform Ragnarock mod manager built with .NET 9 and Avalonia.
 
-The current implementation is a graphical desktop app built with Avalonia. GitHub releases can ship a self-contained `RagnaModManager` executable for Linux or `RagnaModManager.exe` for Windows that users can open directly.
+The desktop app helps you locate Ragnarock, install `.rmod` packages, manage
+playsets, deploy mods safely, configure RE-UE4SS, and launch the game.
 
 ## Build
 
@@ -17,13 +18,14 @@ DOTNET_CLI_HOME="$PWD/.dotnet_home" DOTNET_CLI_USE_MSBUILD_SERVER=0 MSBUILDDISAB
 DOTNET_CLI_HOME="$PWD/.dotnet_home" dotnet tests/RagnaModManager.Tests/bin/Debug/net9.0/RagnaModManager.Tests.dll
 ```
 
-## Run Desktop App
+## Run the desktop app
 
 ```sh
 DOTNET_CLI_HOME="$PWD/.dotnet_home" DOTNET_CLI_USE_MSBUILD_SERVER=0 MSBUILDDISABLENODEREUSE=1 dotnet run --project src/ui/RagnaModManager.Desktop
 ```
 
-Set `RMM_DATA_DIR` to override the platform app-data directory during development.
+Set `RMM_DATA_DIR` to override the platform app-data directory during
+development.
 
 ## Developer CLI
 
@@ -43,29 +45,31 @@ dotnet run --project src/ui/RagnaModManager.Cli -- deploy
 dotnet run --project src/ui/RagnaModManager.Cli -- rollback
 dotnet run --project src/ui/RagnaModManager.Cli -- reset-deployment
 dotnet run --project src/ui/RagnaModManager.Cli -- compat
-dotnet run --project src/ui/RagnaModManager.Cli -- launch-plan
-dotnet run --project src/ui/RagnaModManager.Cli -- diagnostics-json
-dotnet run --project src/ui/RagnaModManager.Cli -- open-data-folder
-dotnet run --project src/ui/RagnaModManager.Cli -- open-game-folder
 dotnet run --project src/ui/RagnaModManager.Cli -- launch
 ```
 
-## Publish A User Build
+## Publish a user build
 
 ```sh
 dotnet publish src/ui/RagnaModManager.Desktop/RagnaModManager.Desktop.csproj -c Release -r linux-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/RagnaModManager-linux-x64
 dotnet publish src/ui/RagnaModManager.Desktop/RagnaModManager.Desktop.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/RagnaModManager-win-x64
 ```
 
-Zip the matching `artifacts/RagnaModManager-*` folder for a GitHub release. Users run `RagnaModManager` on Linux or `RagnaModManager.exe` on Windows and get the desktop UI immediately.
+Zip the matching `artifacts/RagnaModManager-*` folder for distribution. Users
+can run `RagnaModManager` on Linux or `RagnaModManager.exe` on Windows.
 
-## Official Mod Registry
+## Official mod registry
 
-The desktop app includes an Official Mod Library. It loads the catalog from
-`https://raw.githubusercontent.com/Brollyy/RagnaModManager-ModRegistry/main/index.json`
-and can download, checksum-verify, cache, import, and update `.rmod` releases.
-Set `RMM_OFFICIAL_REGISTRY_URL` during development or testing to use another
-HTTPS catalog. The catalog must use schema version `1` and have this shape:
+The desktop app includes an Official Mod Library backed by the separate
+[`Brollyy/RagnaModManager-ModRegistry`](https://github.com/Brollyy/RagnaModManager-ModRegistry)
+repository. It can browse releases, download packages over HTTPS, verify their
+SHA-256 checksums, cache them, and install updates.
+
+For development or testing, set `RMM_OFFICIAL_REGISTRY_URL` to another HTTPS
+catalog. Manual imports remain available for packages outside the official
+registry and should be treated as untrusted.
+
+The catalog uses schema version `1`:
 
 ```json
 {
@@ -81,7 +85,7 @@ HTTPS catalog. The catalog must use schema version `1` and have this shape:
         {
           "version": "1.0.0",
           "packageUrl": "https://example.com/better-hit-feedback-1.0.0.rmod",
-          "sha256": "64 lowercase or uppercase hexadecimal characters"
+          "sha256": "64 hexadecimal characters"
         }
       ]
     }
@@ -89,52 +93,6 @@ HTTPS catalog. The catalog must use schema version `1` and have this shape:
 }
 ```
 
-The manager only downloads official packages over HTTPS, enforces a 250 MB
-limit, verifies the SHA-256 declared by the catalog, and checks that the
-package manifest ID and version match the selected catalog release. Manual
-imports remain available for packages outside the official registry.
-
-The official registry is intended to live in the separate
-`Brollyy/RagnaModManager-ModRegistry` repository. Mod-addition requests should
-be handled through that repository's GitHub Issues. An issue is only a request;
-the mod becomes trusted when a maintainer reviews it and merges its entry into
-the reviewed catalog with a verified package checksum.
-
-## Implemented V1 Scope
-
-- Platform app-data directory creation
-- SQLite-backed local database through native `libsqlite3`
-- Ragnarock Steam path discovery, `libraryfolders.vdf` parsing, and manual game path validation
-- Proton-aware launch planning that can use `steam://rungameid/1345820` for Linux Steam installs
-- Compatibility diagnostics for game structure, Steam detection, pak folder, and UE4SS status
-- Diagnostics JSON export for support/debugging
-- Cross-platform open data folder and open game folder actions
-- Strict `.rmod` zip import with zip-slip/path traversal rejection
-- Read-only `.rmod` inspection that validates and previews manifest contents before install
-- Manifest validation for `ue4ss-lua`, `ue4ss-dll`, `pak`, `config`, and `loose-file`
-- Manifest `requires.manager` and `requires.ue4ss` version checks
-- Manifest `dependencies` version checks with blocking diagnostics for missing, disabled, incompatible, or cyclic mod dependencies
-- Local mod library installation
-- Default profile with enable/disable and priority
-- Multiple profile records with create/switch support
-- `profiles/default.json` written alongside SQLite state
-- Deployment preview with same-target blocking conflicts and advisory asset/hook conflicts
-- Blocking deployment conflicts for manifest-declared incompatible mods
-- Copy deployment with checksums, `deployment/current.json`, and SQLite deployed file records
-- Cleanup of previous manager-owned files only when checksums still match
-- Deployment backups under `deployment/backups/` and latest-backup rollback
-- Deployment reset that removes current manager-owned files and clears deployed state
-- Switching profiles followed by deploy removes previous manager-owned profile files before copying the active profile
-- Modified deployed files block redeploy instead of being silently overwritten
-- UE4SS detection, GitHub release download/update checks, cached version rollback, user-supplied zip installation, Lua/DLL deployment, and `Mods/mods.txt` writing
-- Active UE4SS root/subfolder layout detection and dependency-aware `mods.txt` load ordering
-- Disabling UE4SS mods retains deployed files and writes `Mods/mods.txt` entries as disabled; reset deployment removes retained files
-- Pak deployment to `Ragnarock/Content/Paks/~mods` with deterministic load-order names
-- Publishable desktop UI with screens for setup, installed mods, import, deployment, settings, logs, and launch
-- Developer CLI for scripting and diagnostics
-
-## Not Yet Implemented
-
-- Native package installers such as `.deb`, `.rpm`, `.msi`, or MSIX
-- Online mod marketplace or updater
-- Pak merging, virtual filesystem deployment, or multi-game support
+See the [registry README](https://github.com/Brollyy/RagnaModManager-ModRegistry#readme)
+for package structure, submission rules, maintainer review, and Ragnarock mod
+development resources.
