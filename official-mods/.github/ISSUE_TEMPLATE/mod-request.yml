@@ -1,0 +1,40 @@
+name: Mod request
+description: Request that a Ragnarock mod be reviewed for the official registry
+title: "Add mod: "
+labels: [mod-request]
+body:
+  - type: input
+    id: name
+    attributes:
+      label: Mod name and ID
+      description: Include the proposed lowercase manifest ID.
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Source repository
+      description: Link to the public source or project repository.
+    validations:
+      required: true
+  - type: input
+    id: release
+    attributes:
+      label: Exact .rmod release asset
+      description: Link to a versioned GitHub Release asset, not a mutable branch file.
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Details
+      description: Explain purpose, tested game/UE4SS versions, dependencies, conflicts, permissions, and license.
+    validations:
+      required: true
+  - type: checkboxes
+    id: rules
+    attributes:
+      label: Confirmation
+      options:
+        - label: I have read the registry rules and have permission to distribute this mod.
+          required: true

@@ -28,6 +28,7 @@ public sealed class MainWindow : Window
     private readonly RagnarockDeploymentRules _rules = new();
     private readonly Ue4ssService _ue4ss = new();
     private readonly Ue4ssReleaseService _ue4ssReleases;
+    private readonly OfficialCatalogService _officialCatalog;
     private readonly FolderOpener _folderOpener = new();
 
     private readonly ContentControl _body = new();
@@ -46,6 +47,7 @@ public sealed class MainWindow : Window
         _logger = new AppLogger(_paths.Logs);
         _database = new ManagerDatabase(_paths);
         _ue4ssReleases = new Ue4ssReleaseService(_paths, ue4ss: _ue4ss);
+        _officialCatalog = new OfficialCatalogService(_paths, _database, _logger);
 
         try
         {
@@ -53,6 +55,7 @@ public sealed class MainWindow : Window
             _logger.Info("RagnaModManager desktop UI started.");
             BuildShell();
             ShowDashboard();
+            _ = RefreshOfficialCatalog();
         }
         catch (Exception ex)
         {
@@ -108,10 +111,101 @@ public sealed class MainWindow : Window
 
         _body.Content = Page("My Mods",
             BuildQuickActions(game, mods, planResult),
+            BuildOfficialCatalog(mods),
             BuildGameSetup(game),
             BuildModList(active, mods),
             BuildPlaysets(active),
             BuildHealthSummary(game, planResult));
+    }
+
+    private Control BuildOfficialCatalog(IReadOnlyList<ModRecord> installed)
+    {
+        var refresh = PrimaryButton("Refresh Official Mods");
+        refresh.Click += async (_, _) => await RefreshOfficialCatalog();
+        var content = new StackPanel { Spacing = 10 };
+        content.Children.Add(Text("Browse releases from the official registry. Packages are downloaded over HTTPS and verified against the registry checksum before import."));
+        content.Children.Add(refresh);
+
+        if (_catalogLoading)
+        {
+            content.Children.Add(MutedText("Loading official mods…"));
+        }
+        else if (_officialCatalogResult is null)
+        {
+            content.Children.Add(MutedText("Official registry has not been loaded yet."));
+        }
+        else if (_officialCatalogResult is { Success: false })
+        {
+            content.Children.Add(Text(_officialCatalogResult.Error ?? "Could not load the official registry."));
+        }
+        else if (_officialCatalogResult?.Value is { Mods.Count: 0 })
+        {
+            content.Children.Add(MutedText("No official mods are published yet."));
+        }
+        else if (_officialCatalogResult?.Value is { } catalog)
+        {
+            foreach (var mod in catalog.Mods)
+                content.Children.Add(OfficialModRow(mod, installed));
+        }
+
+        return Section("Official Mod Library", content);
+    }
+
+    private Core.Common.Result<OfficialCatalog>? _officialCatalogResult;
+    private bool _catalogLoading;
+
+    private Control OfficialModRow(CatalogMod catalogMod, IReadOnlyList<ModRecord> installed)
+    {
+        var current = installed.FirstOrDefault(m => string.Equals(m.Id, catalogMod.Id, StringComparison.OrdinalIgnoreCase));
+        var releases = catalogMod.Releases
+            .OrderByDescending(r => Version.TryParse(r.Version.TrimStart('v', 'V'), out var version) ? version : new Version(0, 0))
+            .ToList();
+        var picker = new ComboBox
+        {
+            ItemsSource = releases.Select(r => r.Version).ToList(),
+            SelectedIndex = 0,
+            MinWidth = 130
+        };
+        var install = Button(current is null ? "Install" : "Update");
+        install.Click += async (_, _) =>
+        {
+            if (picker.SelectedIndex < 0 || picker.SelectedIndex >= releases.Count) return;
+            install.IsEnabled = false;
+            SetStatus($"Downloading {catalogMod.Name} {releases[picker.SelectedIndex].Version}…");
+            var result = await _officialCatalog.DownloadAndImportAsync(catalogMod, releases[picker.SelectedIndex]);
+            SetStatus(result.Success ? $"Installed {result.Value!.Name} {result.Value.Version}. Enable it and apply changes when ready." : result.Error ?? "Official mod download failed.", !result.Success);
+            ShowDashboard();
+        };
+
+        var description = string.IsNullOrWhiteSpace(catalogMod.Description) ? "" : $" — {catalogMod.Description}";
+        return Card(new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+            Children =
+            {
+                Cell(new StackPanel
+                {
+                    Spacing = 3,
+                    Children =
+                    {
+                        new TextBlock { Text = catalogMod.Name, FontWeight = FontWeight.SemiBold, FontSize = 16 },
+                        MutedText($"{(string.IsNullOrWhiteSpace(catalogMod.Author) ? "Official release" : $"by {catalogMod.Author}")}{description}"),
+                        MutedText(current is null ? "Not installed" : $"Installed version: {current.Version}")
+                    }
+                }, 0),
+                Cell(Row(picker, install), 1)
+            }
+        });
+    }
+
+    private async Task RefreshOfficialCatalog()
+    {
+        _catalogLoading = true;
+        ShowDashboard();
+        _officialCatalogResult = await _officialCatalog.LoadAsync();
+        _catalogLoading = false;
+        SetStatus(_officialCatalogResult.Success ? $"Official registry loaded: {_officialCatalogResult.Value!.Mods.Count} mod(s)." : _officialCatalogResult.Error ?? "Official registry unavailable.", !_officialCatalogResult.Success);
+        ShowDashboard();
     }
 
     private Control BuildQuickActions(GameRecord? game, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)

@@ -38,7 +38,9 @@ var tests = new (string Name, Action Body)[]
     ("folder opener builds platform command", FolderOpenerBuildsPlatformCommand),
     ("compatibility checker reports usable test install", CompatibilityCheckerReportsUsableInstall),
     ("ue4ss zip install validates and maps layout", Ue4ssInstallMapsLayout),
-    ("ue4ss release service caches installs and rolls back versions", Ue4ssReleaseServiceCachesInstallsAndRollsBackVersions)
+    ("ue4ss release service caches installs and rolls back versions", Ue4ssReleaseServiceCachesInstallsAndRollsBackVersions),
+    ("official catalog loads and orders releases", OfficialCatalogLoadsAndOrdersReleases),
+    ("official catalog verifies and imports package", OfficialCatalogVerifiesAndImportsPackage)
 };
 
 var failed = 0;
@@ -106,6 +108,34 @@ static void PackageInspectorRejectsZipSlip()
 
     var result = new PackageInspector().Inspect(zip);
     Assert(!result.Success, "inspector should reject zip-slip package");
+}
+
+static void OfficialCatalogLoadsAndOrdersReleases()
+{
+    const string json = """
+    {"schemaVersion":"1","repository":"official","mods":[{"id":"demo-mod","name":"Demo","releases":[{"version":"1.0.0","packageUrl":"https://example.test/old.rmod","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"version":"1.2.0","packageUrl":"https://example.test/new.rmod","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}]}
+    """;
+    using var http = new HttpClient(new FakeHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) }));
+    using var env = TestEnv.Create();
+    var service = new OfficialCatalogService(env.Paths, env.Database, env.Logger, http);
+    var result = service.LoadAsync().GetAwaiter().GetResult();
+    Assert(result.Success, result.Error ?? "catalog load failed");
+    Assert(result.Value!.Mods[0].Latest!.Version == "1.2.0", "catalog should select the highest release version");
+}
+
+static void OfficialCatalogVerifiesAndImportsPackage()
+{
+    using var env = TestEnv.Create();
+    var source = env.CreatePackage("official-demo", _ => { }, files => files["Scripts/main.lua"] = "print('official')");
+    var bytes = File.ReadAllBytes(source);
+    var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+    using var http = new HttpClient(new FakeHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) }));
+    var service = new OfficialCatalogService(env.Paths, env.Database, env.Logger, http);
+    var mod = new CatalogMod("official-demo", "Official Demo", "Tester", null, []);
+    var release = new CatalogRelease("1.0.0", "https://example.test/demo.rmod", hash);
+    var result = service.DownloadAndImportAsync(mod, release).GetAwaiter().GetResult();
+    Assert(result.Success, result.Error ?? "official package import failed");
+    Assert(env.Database.GetMod("official-demo") is not null, "verified official package should be installed");
 }
 
 static void ImportDeployDisableCleanupCycle()

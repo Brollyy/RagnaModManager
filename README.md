@@ -59,6 +59,47 @@ dotnet publish src/ui/RagnaModManager.Desktop/RagnaModManager.Desktop.csproj -c 
 
 Zip the matching `artifacts/RagnaModManager-*` folder for a GitHub release. Users run `RagnaModManager` on Linux or `RagnaModManager.exe` on Windows and get the desktop UI immediately.
 
+## Official Mod Registry
+
+The desktop app includes an Official Mod Library. It loads the catalog from
+`https://raw.githubusercontent.com/Brollyy/RagnaModManager-ModRegistry/main/index.json`
+and can download, checksum-verify, cache, import, and update `.rmod` releases.
+Set `RMM_OFFICIAL_REGISTRY_URL` during development or testing to use another
+HTTPS catalog. The catalog must use schema version `1` and have this shape:
+
+```json
+{
+  "schemaVersion": "1",
+  "repository": "official",
+  "mods": [
+    {
+      "id": "better-hit-feedback",
+      "name": "Better Hit Feedback",
+      "author": "Author",
+      "description": "Improves hit feedback.",
+      "releases": [
+        {
+          "version": "1.0.0",
+          "packageUrl": "https://example.com/better-hit-feedback-1.0.0.rmod",
+          "sha256": "64 lowercase or uppercase hexadecimal characters"
+        }
+      ]
+    }
+  ]
+}
+```
+
+The manager only downloads official packages over HTTPS, enforces a 250 MB
+limit, verifies the SHA-256 declared by the catalog, and checks that the
+package manifest ID and version match the selected catalog release. Manual
+imports remain available for packages outside the official registry.
+
+The official registry is intended to live in the separate
+`Brollyy/RagnaModManager-ModRegistry` repository. Mod-addition requests should
+be handled through that repository's GitHub Issues. An issue is only a request;
+the mod becomes trusted when a maintainer reviews it and merges its entry into
+the reviewed catalog with a verified package checksum.
+
 ## Implemented V1 Scope
 
 - Platform app-data directory creation
