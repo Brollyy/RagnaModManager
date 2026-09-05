@@ -1,6 +1,12 @@
 using System.IO.Compression;
 using System.Net;
 using System.Text.Json;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Headless;
+using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using RagnaModManager.Core.Database;
 using RagnaModManager.Core.Deployment;
 using RagnaModManager.Core.Logging;
@@ -13,6 +19,7 @@ using RagnaModManager.Ragnarock.Compatibility;
 using RagnaModManager.Ragnarock.DeploymentRules;
 using RagnaModManager.Ragnarock.Detection;
 using RagnaModManager.Ragnarock.Ue4ss;
+using RagnaModManager.Desktop;
 
 var tests = new (string Name, Action Body)[]
 {
@@ -40,7 +47,9 @@ var tests = new (string Name, Action Body)[]
     ("ue4ss zip install validates and maps layout", Ue4ssInstallMapsLayout),
     ("ue4ss release service caches installs and rolls back versions", Ue4ssReleaseServiceCachesInstallsAndRollsBackVersions),
     ("official catalog loads and orders releases", OfficialCatalogLoadsAndOrdersReleases),
-    ("official catalog verifies and imports package", OfficialCatalogVerifiesAndImportsPackage)
+    ("official catalog verifies and imports package", OfficialCatalogVerifiesAndImportsPackage),
+    ("desktop onboarding opens setup without resetting tabs", DesktopOnboardingOpensSetup),
+    ("desktop mod input keeps the Mods tab selected", DesktopModInputKeepsModsTab)
 };
 
 var failed = 0;
@@ -59,6 +68,72 @@ foreach (var test in tests)
 }
 
 return failed == 0 ? 0 : 1;
+
+static void DesktopOnboardingOpensSetup()
+{
+    UiTestHelpers.EnsureHeadlessAvalonia();
+
+    var root = Path.Combine(Path.GetTempPath(), "rmm-ui-test-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var previous = Environment.GetEnvironmentVariable("RMM_DATA_DIR");
+    Environment.SetEnvironmentVariable("RMM_DATA_DIR", root);
+    try
+    {
+        var window = new MainWindow();
+        var tabs = window.GetLogicalDescendants().OfType<TabControl>().Single();
+        var dashboard = ((TabItem)tabs.Items[0]!).Content as Control;
+        var labels = dashboard!.GetLogicalDescendants().OfType<TextBlock>().Select(x => x.Text).Where(x => !string.IsNullOrWhiteSpace(x)).ToList();
+        var setup = window.GetLogicalDescendants().OfType<Button>().Single(x => string.Equals(x.Content?.ToString(), "Set Up Automatically", StringComparison.Ordinal));
+
+        Assert(tabs.SelectedIndex == 0, "onboarding should start on Dashboard");
+        Assert(labels.Contains("Welcome! Let’s get Ragnarock ready for mods."), "onboarding welcome copy should be visible");
+        Assert(!labels.Any(x => x!.Contains("RE-UE4SS", StringComparison.Ordinal)), "technical runtime name should not appear on Dashboard");
+
+        setup.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        var savedGame = new ManagerDatabase(AppPaths.Create(root)).GetGame();
+        Assert(savedGame is not null ? tabs.SelectedIndex == 0 : tabs.SelectedIndex == 4,
+            "setup action should finish automatically or fall back to Settings");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("RMM_DATA_DIR", previous);
+        Directory.Delete(root, recursive: true);
+    }
+}
+
+static void DesktopModInputKeepsModsTab()
+{
+    UiTestHelpers.EnsureHeadlessAvalonia();
+
+    var root = Path.Combine(Path.GetTempPath(), "rmm-ui-test-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(root);
+    var previous = Environment.GetEnvironmentVariable("RMM_DATA_DIR");
+    Environment.SetEnvironmentVariable("RMM_DATA_DIR", root);
+    try
+    {
+        var paths = AppPaths.Create(root);
+        var database = new ManagerDatabase(paths);
+        database.Initialize();
+        var manifest = TestHelpers.ValidManifest("onboarding-mod");
+        database.UpsertMod(manifest, Path.Combine(root, "mod-library", manifest.Id), Path.Combine(root, "mod-library", manifest.Id, "manifest.json"), "test.rmod");
+        database.SetProfileMod("default", manifest.Id, enabled: true, priority: 0);
+
+        var window = new MainWindow();
+        var tabs = window.GetLogicalDescendants().OfType<TabControl>().Single();
+        tabs.SelectedIndex = 2;
+        var mods = ((TabItem)tabs.Items[2]!).Content as Control;
+        var toggle = mods!.GetLogicalDescendants().OfType<CheckBox>().Single();
+
+        toggle.IsChecked = false;
+        toggle.RaiseEvent(new RoutedEventArgs(ToggleButton.ClickEvent));
+        Assert(tabs.SelectedIndex == 2, "mod changes should keep the Mods tab selected");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("RMM_DATA_DIR", previous);
+        Directory.Delete(root, recursive: true);
+    }
+}
 
 static void ManifestRejectsUnsafePaths()
 {
@@ -802,6 +877,23 @@ internal static class TestHelpers
         }
 
         return stream.ToArray();
+    }
+}
+
+internal static class UiTestHelpers
+{
+    private static bool _headlessAvaloniaReady;
+
+    public static void EnsureHeadlessAvalonia()
+    {
+        if (_headlessAvaloniaReady)
+            return;
+
+        AppBuilder.Configure<App>()
+            .UseHeadless(new AvaloniaHeadlessPlatformOptions())
+            .WithInterFont()
+            .SetupWithoutStarting();
+        _headlessAvaloniaReady = true;
     }
 }
 

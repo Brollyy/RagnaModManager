@@ -6,6 +6,7 @@ using Avalonia.Platform.Storage;
 using RagnaModManager.Core.Database;
 using RagnaModManager.Core.Deployment;
 using RagnaModManager.Core.Logging;
+using RagnaModManager.Core.Manifests;
 using RagnaModManager.Core.Packages;
 using RagnaModManager.Core.Platform;
 using RagnaModManager.Platform.Folders;
@@ -19,7 +20,7 @@ namespace RagnaModManager.Desktop;
 
 public sealed class MainWindow : Window
 {
-    private const string Ue4ssZipHelp = "Some script mods need RE-UE4SS. Choose its release ZIP and the manager will install it for you.";
+    private const string Ue4ssZipHelp = "If a mod asks for script support, choose its support ZIP here and the manager will install it for you.";
 
     private readonly AppPaths _paths;
     private readonly ManagerDatabase _database;
@@ -199,7 +200,7 @@ public sealed class MainWindow : Window
         {
             Content = new StackPanel { Spacing = 14, Children =
             {
-                Text("Tell the manager where Ragnarock is installed, set up script support, or open logs if something goes wrong."),
+                Text("Manage your Ragnarock folder and optional script support here."),
                 BuildGameSetup(game),
                 BuildHealthSummary(game, planResult),
                 Section("Troubleshooting", Text("If something goes wrong, open the logs folder and share the relevant files."), openLogs)
@@ -224,7 +225,7 @@ public sealed class MainWindow : Window
             Foreground = game is null || !ready ? Brushes.DarkGoldenrod : Brushes.DarkGreen,
             TextWrapping = TextWrapping.Wrap
         };
-        var ue4ssState = game is null ? "Not checked" : _ue4ss.Detect(game.InstallPath).Installed ? "Ready" : "Needs setup";
+        var ue4ssState = game is null ? "Not checked" : _ue4ss.Detect(game.InstallPath).Installed ? "Available" : "Optional";
         var metrics = new Grid
         {
             ColumnDefinitions = new ColumnDefinitions("*,*,*"),
@@ -233,14 +234,14 @@ public sealed class MainWindow : Window
             {
                 Cell(MetricCard("PLAYSET", active.Name, "Currently selected"), 0),
                 Cell(MetricCard("MODS", $"{enabled} active / {mods.Count}", "Enabled / installed"), 1),
-                Cell(MetricCard("GAME", game is null ? "Not configured" : ready ? "Ready" : "Needs attention", $"RE-UE4SS: {ue4ssState}"), 2)
+                Cell(MetricCard("GAME", game is null ? "Not configured" : ready ? "Ready" : "Needs attention", game is null ? "Choose a folder to begin" : $"Script support: {ue4ssState}"), 2)
             }
         };
         var nextSteps = game is null
-            ? "1. Open Settings and choose your Ragnarock folder.\n2. Browse the Library or import a mod.\n3. Turn it on in Mods."
+            ? "1. Set up your Ragnarock folder.\n2. Browse the Library or import a mod.\n3. Turn it on in Mods."
             : ready
                 ? "1. Browse the Library or import a mod.\n2. Turn it on in Mods.\n3. Click Apply Changes when the banner appears."
-                : "Open Settings and finish choosing a valid Ragnarock folder.";
+                : "Review setup and choose a valid Ragnarock folder.";
         return Section("Setup overview", state, metrics,
             Section("Next steps", Text(nextSteps)));
     }
@@ -304,8 +305,19 @@ public sealed class MainWindow : Window
             install.IsEnabled = false;
             SetStatus($"Downloading {catalogMod.Name} {releases[picker.SelectedIndex].Version}…");
             var result = await _officialCatalog.DownloadAndImportAsync(catalogMod, releases[picker.SelectedIndex]);
-            SetStatus(result.Success ? $"Installed {result.Value!.Name} {result.Value.Version}. Open Mods to turn it on." : result.Error ?? "Official mod download failed.", !result.Success);
+            if (!result.Success)
+            {
+                SetStatus(result.Error ?? "Official mod download failed.", error: true);
+                return;
+            }
+
+            SetStatus($"Installed {result.Value!.Name} {result.Value.Version}. Open Mods to turn it on.");
             ShowDashboard();
+            var game = _database.GetGame();
+            if (game is not null && RequiresScriptSupport(result.Value) && !_ue4ss.Detect(game.InstallPath).Installed)
+            {
+                await OfferScriptSupport(result.Value.Name);
+            }
         };
 
         var description = string.IsNullOrWhiteSpace(catalogMod.Description) ? "" : $" — {catalogMod.Description}";
@@ -351,11 +363,24 @@ public sealed class MainWindow : Window
 
     private Control BuildQuickActions(GameRecord? game)
     {
+        var setup = PrimaryButton(game is null ? "Set Up Automatically" : "Review Setup");
+        setup.Click += (_, _) =>
+        {
+            if (game is null)
+            {
+                SetupAutomatically();
+            }
+            else
+            {
+                _tabs.SelectedIndex = 4;
+            }
+        };
+
         var import = Button("Import Mod");
         import.Click += async (_, _) => await ImportModPackage();
 
         var openGame = Button("Open Game Folder");
-        var openMods = Button("Open Mod Folder");
+        var openMods = Button("Open Mod Library");
         openGame.IsEnabled = game is not null;
         openMods.IsEnabled = true;
         openGame.Click += (_, _) =>
@@ -382,15 +407,9 @@ public sealed class MainWindow : Window
                     Children =
                     {
                         new TextBlock { Text = game is null ? "Let’s get started" : "Manage your Ragnarock setup", FontSize = 20, FontWeight = FontWeight.SemiBold },
-                        new TextBlock
-                        {
-                            Text = "Use Library to find mods, Mods to configure the current playset, and Apply Changes when the action bar appears.",
-                            Foreground = Brushes.DimGray,
-                            TextWrapping = TextWrapping.Wrap
-                        }
                     }
                 }, 0),
-                Cell(Row(import, openGame, openMods), 1)
+                Cell(Row(setup, import, openGame, openMods), 1)
             }
         });
     }
@@ -412,6 +431,22 @@ public sealed class MainWindow : Window
         _pendingChangesBar.Padding = new Thickness(12, 8);
     }
 
+    private void SetupAutomatically()
+    {
+        SetStatus("Looking for your Ragnarock installation…");
+        var install = _detector.DetectFirstValid();
+        if (install is not { IsValid: true })
+        {
+            SetStatus("Ragnarock was not found automatically. Choose its folder in Settings.", error: true);
+            _tabs.SelectedIndex = 4;
+            return;
+        }
+
+        SaveGame(install);
+        ShowDashboard(0);
+        SetStatus("Ragnarock is ready. Browse the Library or import a mod.");
+    }
+
     private Control BuildGameSetup(GameRecord? game)
     {
         var pathBox = new TextBox
@@ -422,8 +457,10 @@ public sealed class MainWindow : Window
         };
 
         var status = Text(game is null
-            ? "Ragnarock is not configured yet."
-            : FriendlyInstallStatus(_detector.Validate(game.InstallPath)));
+            ? "Choose your Ragnarock folder to get started."
+            : _detector.Validate(game.InstallPath).IsValid
+                ? "Ragnarock is ready."
+                : "This folder needs attention. Choose the correct Ragnarock folder.");
 
         var detect = Button("Find Automatically");
         detect.Click += (_, _) =>
@@ -637,21 +674,18 @@ public sealed class MainWindow : Window
 
         if (game is null)
         {
-            lines.Add("Ragnarock: Not configured");
+            lines.Add("Set up Ragnarock above to check compatibility.");
         }
         else
         {
-            var report = new RagnarockCompatibilityChecker().Check(game.InstallPath);
-            lines.Add(report.CanManage ? "Ragnarock: Ready" : "Ragnarock: Needs attention");
-            if (!report.CanManage)
-                lines.Add("Check the folder selected above and save it again.");
-
             var ue4ss = _ue4ss.Detect(game.InstallPath);
-            lines.Add(ue4ss.Installed ? "Script support: Ready" : "Script support: Not installed");
+            lines.Add(ue4ss.Installed ? "Script support: Detected" : "Script support: Not installed");
 
             if (planResult is { Success: true, Value: not null })
             {
-                lines.Add(planResult.Value.Items.Count == 0 ? "Selected mods: Nothing to apply" : "Selected mods: Ready to apply");
+                lines.Add(planResult.Value.Items.Count == 0
+                    ? "Selected mods: Nothing to apply"
+                    : _changesPending ? "Changes waiting to be applied" : "Selected mods: Ready");
                 lines.AddRange(planResult.Value.Conflicts.Where(c => c.BlocksDeployment).Select(c => "Problem: " + c.Message));
             }
             else if (planResult is { Success: false })
@@ -674,7 +708,7 @@ public sealed class MainWindow : Window
         var controls = new List<Control>
         {
             Text(string.Join(Environment.NewLine, lines)),
-            MutedText("Script support is only needed by mods that use Lua or other scripts. Older downloaded versions can be kept here if you need to go back."),
+            MutedText("Most mods do not need this. Install it only when a mod asks for script support. Older downloaded versions can be kept here if you need to go back."),
             Row(checkUe4ss, installUe4ss, openData)
         };
 
@@ -825,6 +859,10 @@ public sealed class MainWindow : Window
         {
             SetStatus($"Imported {result.Value!.Name}. Turn it on, then apply changes.");
             ShowDashboard();
+            if (_database.GetGame() is not null && RequiresScriptSupport(result.Value) && !_ue4ss.Detect(_database.GetGame()!.InstallPath).Installed)
+            {
+                await OfferScriptSupport(result.Value.Name);
+            }
         }
         else
         {
@@ -861,7 +899,7 @@ public sealed class MainWindow : Window
         ShowDashboard();
     }
 
-    private void DeployActiveProfile()
+    private async void DeployActiveProfile()
     {
         var game = _database.GetGame();
         if (game is null)
@@ -870,11 +908,63 @@ public sealed class MainWindow : Window
             return;
         }
 
+        var preview = CreateDeploymentService().Preview(game.InstallPath);
+        if (preview.Success && preview.Value is not null &&
+            preview.Value.Conflicts.Any(c => c.Kind == "ue4ss-requirement") &&
+            !_ue4ss.Detect(game.InstallPath).Installed)
+        {
+            var enabledScriptMods = preview.Value.Conflicts
+                .Where(c => c.Kind == "ue4ss-requirement")
+                .SelectMany(c => c.Items)
+                .Select(i => i.ModId)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(id => _database.GetMod(id)?.Name ?? id)
+                .ToList();
+            var description = enabledScriptMods.Count == 1
+                ? $"{enabledScriptMods[0]} uses script support, but it is not installed. Install it now before applying your changes?"
+                : "The selected mods use script support, but it is not installed. Install it now before applying your changes?";
+            if (await Confirm("Script support needed", description, "Install Script Support"))
+            {
+                await CheckUe4ssUpdates();
+                if (_ue4ss.Detect(game.InstallPath).Installed)
+                {
+                    DeployActiveProfile();
+                }
+                else
+                {
+                    SetStatus("Changes were not applied. Install script support before using these mods.", error: true);
+                }
+            }
+            else
+            {
+                SetStatus("Changes were not applied. Install script support before using these mods.", error: true);
+            }
+
+            return;
+        }
+
         var result = CreateDeploymentService().Deploy(game.InstallPath);
         if (result.Success) _changesPending = false;
         SetStatus(result.Success ? "Changes applied to Ragnarock." : result.Error ?? "Apply failed.", !result.Success);
         ShowDashboard();
     }
+
+    private async Task OfferScriptSupport(string modName)
+    {
+        var confirmed = await Confirm(
+            "Script support needed",
+            $"{modName} uses script support, but it is not installed. Install it now?",
+            "Install Script Support");
+        if (confirmed)
+        {
+            await CheckUe4ssUpdates();
+        }
+    }
+
+    private static bool RequiresScriptSupport(ModManifest manifest) =>
+        manifest.Files.Any(file => file.Type.Equals("ue4ss-lua", StringComparison.OrdinalIgnoreCase) ||
+                                   file.Type.Equals("ue4ss-dll", StringComparison.OrdinalIgnoreCase)) ||
+        manifest.Requires?.ContainsKey("ue4ss") == true;
 
     private void LaunchGame()
     {
