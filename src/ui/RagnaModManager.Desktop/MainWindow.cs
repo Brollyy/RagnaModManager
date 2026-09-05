@@ -34,7 +34,10 @@ public sealed class MainWindow : Window
     private readonly ContentControl _body = new();
     private readonly TabControl _tabs = new();
     private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap };
+    private readonly Border _pendingChangesBar = new();
+    private TextBlock? _libraryStatus;
     private int _selectedTab;
+    private bool _changesPending;
 
     public MainWindow()
     {
@@ -98,7 +101,12 @@ public sealed class MainWindow : Window
         DockPanel.SetDock(header, Dock.Top);
         root.Children.Add(header);
 
-        _status.Margin = new Thickness(0, 12, 0, 0);
+        _pendingChangesBar.IsVisible = false;
+        _pendingChangesBar.Margin = new Thickness(0, 12, 0, 0);
+        DockPanel.SetDock(_pendingChangesBar, Dock.Bottom);
+        root.Children.Add(_pendingChangesBar);
+
+        _status.Margin = new Thickness(0, 8, 0, 0);
         DockPanel.SetDock(_status, Dock.Bottom);
         root.Children.Add(_status);
 
@@ -108,6 +116,12 @@ public sealed class MainWindow : Window
 
     private void ShowDashboard()
     {
+        ShowDashboard(_selectedTab);
+    }
+
+    private void ShowDashboard(int selectedTab)
+    {
+        _selectedTab = Math.Max(0, selectedTab);
         var game = _database.GetGame();
         var active = _database.GetActiveProfile();
         var mods = _database.GetMods();
@@ -121,15 +135,18 @@ public sealed class MainWindow : Window
         _tabs.Items.Add(Tab("Settings", BuildSettingsPage(game, planResult)));
         _tabs.SelectedIndex = Math.Min(_selectedTab, _tabs.Items.Count - 1);
         _body.Content = _tabs;
+        UpdatePendingChangesBar();
     }
 
     private Control BuildDashboardPage(GameRecord? game, ProfileRecord active, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
     {
         return new ScrollViewer
         {
-            Content = Page("Dashboard",
+            Content = new StackPanel { Spacing = 14, Children =
+            {
                 BuildQuickActions(game, mods, planResult),
-                BuildDashboardSummary(game, active, mods, planResult))
+                BuildDashboardSummary(game, active, mods, planResult)
+            }}
         };
     }
 
@@ -139,7 +156,12 @@ public sealed class MainWindow : Window
         import.Click += async (_, _) => await ImportModPackage();
         return new ScrollViewer
         {
-            Content = Page("Mods", Text("Manage the mods installed on this computer and choose which ones are active in the current playset."), import, BuildModList(active, mods))
+            Content = new StackPanel { Spacing = 14, Children =
+            {
+                Text("Manage the mods installed on this computer and choose which ones are active in the current playset."),
+                import,
+                BuildModList(active, mods)
+            }}
         };
     }
 
@@ -149,11 +171,13 @@ public sealed class MainWindow : Window
         openLogs.Click += (_, _) => OpenFolder(_paths.Logs);
         return new ScrollViewer
         {
-            Content = Page("Settings",
+            Content = new StackPanel { Spacing = 14, Children =
+            {
                 Text("Configure the game installation, RE-UE4SS support, and troubleshooting locations."),
                 BuildGameSetup(game),
                 BuildHealthSummary(game, planResult),
-                Section("Troubleshooting", Text($"Manager and mod logs are stored in {_paths.Logs}."), openLogs))
+                Section("Troubleshooting", Text($"Manager and mod logs are stored in {_paths.Logs}."), openLogs)
+            }}
         };
     }
 
@@ -182,7 +206,35 @@ public sealed class MainWindow : Window
                 : "Pending deployment: blocked or unavailable");
         }
 
-        return Section("At a glance", Text(string.Join(Environment.NewLine, lines)));
+        var ready = game is not null && new RagnarockCompatibilityChecker().Check(game.InstallPath).CanManage;
+        var headline = game is null
+            ? "Get started by choosing your Ragnarock installation in Settings."
+            : ready
+                ? "Everything needed to manage Ragnarock is set up."
+                : "Finish the setup steps in Settings before applying mods.";
+        var state = new TextBlock
+        {
+            Text = headline,
+            FontSize = 18,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = game is null || !ready ? Brushes.DarkGoldenrod : Brushes.DarkGreen,
+            TextWrapping = TextWrapping.Wrap
+        };
+        var ue4ssState = game is null ? "Not checked" : _ue4ss.Detect(game.InstallPath).Installed ? "Ready" : "Needs setup";
+        var metrics = new Grid
+        {
+            ColumnDefinitions = new ColumnDefinitions("*,*,*"),
+            ColumnSpacing = 10,
+            Children =
+            {
+                Cell(MetricCard("PLAYSET", active.Name, "Currently selected"), 0),
+                Cell(MetricCard("MODS", $"{enabled} active / {mods.Count}", "Enabled / installed"), 1),
+                Cell(MetricCard("GAME", game is null ? "Not configured" : ready ? "Ready" : "Needs attention", $"RE-UE4SS: {ue4ssState}"), 2)
+            }
+        };
+        return Section("Setup overview", state, metrics,
+            MutedText("Next steps: configure the game, install or import mods, enable them in Mods, then apply changes from the bottom bar."),
+            Text(string.Join(Environment.NewLine, lines)));
     }
 
     private static TabItem Tab(string header, Control content) => new() { Header = header, Content = content };
@@ -194,6 +246,8 @@ public sealed class MainWindow : Window
         var content = new StackPanel { Spacing = 10 };
         content.Children.Add(Text("Browse releases from the official registry. Packages are downloaded over HTTPS and verified against the registry checksum before import."));
         content.Children.Add(refresh);
+        _libraryStatus = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        content.Children.Add(_libraryStatus);
 
         if (_catalogLoading)
         {
@@ -273,8 +327,17 @@ public sealed class MainWindow : Window
         ShowDashboard();
         _officialCatalogResult = await _officialCatalog.LoadAsync();
         _catalogLoading = false;
-        SetStatus(_officialCatalogResult.Success ? $"Official registry loaded: {_officialCatalogResult.Value!.Mods.Count} mod(s)." : _officialCatalogResult.Error ?? "Official registry unavailable.", !_officialCatalogResult.Success);
-        ShowDashboard();
+        ShowDashboard(1);
+        SetLibraryStatus(_officialCatalogResult.Success ? $"Official registry loaded: {_officialCatalogResult.Value!.Mods.Count} mod(s)." : _officialCatalogResult.Error ?? "Official registry unavailable.", !_officialCatalogResult.Success);
+    }
+
+    private void SetLibraryStatus(string message, bool error = false)
+    {
+        if (_libraryStatus is not null)
+        {
+            _libraryStatus.Text = message;
+            _libraryStatus.Foreground = error ? Brushes.Firebrick : Brushes.DarkGreen;
+        }
     }
 
     private Control BuildQuickActions(GameRecord? game, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
@@ -282,12 +345,11 @@ public sealed class MainWindow : Window
         var import = Button("Add Mod");
         import.Click += async (_, _) => await ImportModPackage();
 
-        var apply = PrimaryButton("Apply Changes");
-        apply.IsEnabled = game is not null && (planResult?.Success != false);
-        apply.Click += (_, _) => DeployActiveProfile();
-
+        var showMods = new CheckBox { Content = "Show mod folder", VerticalAlignment = VerticalAlignment.Center };
         var openGame = Button("Open Game Folder");
         openGame.IsEnabled = game is not null;
+        showMods.IsEnabled = game is not null;
+        showMods.Click += (_, _) => openGame.Content = showMods.IsChecked == true ? "Open Mod Folder" : "Open Game Folder";
         openGame.Click += (_, _) =>
         {
             var currentGame = _database.GetGame();
@@ -297,7 +359,7 @@ public sealed class MainWindow : Window
                 return;
             }
 
-            OpenFolder(currentGame.InstallPath);
+            OpenFolder(showMods.IsChecked == true ? _paths.ModLibrary : currentGame.InstallPath);
         };
 
         var enabledCount = GetEnabledMods().Count;
@@ -318,15 +380,35 @@ public sealed class MainWindow : Window
                         new TextBlock { Text = summary, FontSize = 20, FontWeight = FontWeight.SemiBold },
                         new TextBlock
                         {
-                            Text = "Add a package, turn mods on or off, then apply changes before launching the game.",
+                            Text = "Use Library to find mods, Mods to configure the current playset, and Apply Changes when the action bar appears.",
                             Foreground = Brushes.DimGray,
                             TextWrapping = TextWrapping.Wrap
                         }
                     }
                 }, 0),
-                Cell(Row(import, apply, openGame), 1)
+                Cell(Row(import, showMods, openGame), 1)
             }
         });
+    }
+
+    private void UpdatePendingChangesBar()
+    {
+        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, VerticalAlignment = VerticalAlignment.Center };
+        content.Children.Add(new TextBlock { Text = "You have unapplied mod changes.", FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center });
+        var apply = PrimaryButton("Apply Changes");
+        apply.IsEnabled = _database.GetGame() is not null;
+        apply.Click += (_, _) => DeployActiveProfile();
+        content.Children.Add(apply);
+        var discard = Button("Dismiss");
+        discard.Click += (_, _) => { _changesPending = false; UpdatePendingChangesBar(); };
+        content.Children.Add(discard);
+        _pendingChangesBar.Child = content;
+        _pendingChangesBar.IsVisible = _changesPending;
+        _pendingChangesBar.Background = Brushes.LightYellow;
+        _pendingChangesBar.BorderBrush = Brushes.Goldenrod;
+        _pendingChangesBar.BorderThickness = new Thickness(1);
+        _pendingChangesBar.CornerRadius = new CornerRadius(6);
+        _pendingChangesBar.Padding = new Thickness(12, 8);
     }
 
     private Control BuildGameSetup(GameRecord? game)
@@ -426,6 +508,7 @@ public sealed class MainWindow : Window
         {
             var isEnabled = enabled.IsChecked == true;
             _database.SetProfileMod(active.Id, mod.Id, isEnabled, profileMod?.Priority ?? 0);
+            _changesPending = true;
             SetStatus($"{mod.Name} is now {(isEnabled ? "enabled" : "disabled")}. Apply changes when ready.");
             ShowDashboard();
         };
@@ -468,65 +551,83 @@ public sealed class MainWindow : Window
 
     private Control BuildPlaysets(ProfileRecord active)
     {
-        var profiles = _database.GetProfiles();
-        var selectedProfile = profiles.ToList().FindIndex(p => p.Id == active.Id);
-        var picker = new ComboBox
+        var list = new StackPanel { Spacing = 10 };
+        foreach (var profile in _database.GetProfiles())
         {
-            ItemsSource = profiles.Select(p => p.Name).ToList(),
-            SelectedIndex = Math.Max(0, selectedProfile),
-            MinWidth = 220
-        };
+            var profileMods = _database.GetProfileMods(profile.Id);
+            var enabled = profileMods.Count(m => m.Enabled);
+            var names = profileMods
+                .Select(m => _database.GetMod(m.ModId)?.Name ?? m.ModId)
+                .Take(5)
+                .ToList();
+            var summary = profileMods.Count == 0
+                ? "No mods selected"
+                : $"{profileMods.Count} mods, {enabled} enabled" + (names.Count == 0 ? "" : $"{Environment.NewLine}{string.Join(", ", names)}");
 
-        var switchProfile = Button("Use Playset");
-        switchProfile.Click += (_, _) =>
+            var use = Button(profile.Id == active.Id ? "Current" : "Use Playset");
+            use.IsEnabled = profile.Id != active.Id;
+            use.Click += (_, _) =>
+            {
+                _database.SetActiveProfile(profile.Id);
+                TryRedeployAfterProfileChange(profile);
+                ShowDashboard(3);
+            };
+            var clone = Button("Clone");
+            clone.Click += (_, _) => CreatePlayset(profile.Name + " Copy", profile);
+            list.Children.Add(Card(new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitions("*,Auto"),
+                Children =
+                {
+                    Cell(new StackPanel
+                    {
+                        Spacing = 3,
+                        Children =
+                        {
+                            new TextBlock { Text = profile.Name + (profile.Id == active.Id ? "  (current)" : ""), FontSize = 16, FontWeight = FontWeight.SemiBold },
+                            MutedText(summary)
+                        }
+                    }, 0),
+                    Cell(Row(use, clone), 1)
+                }
+            }));
+        }
+
+        var name = new TextBox { Watermark = "New playset name", MinWidth = 240 };
+        var create = PrimaryButton("Create New Playset");
+        create.Click += (_, _) => CreatePlayset(name.Text?.Trim() ?? "", null);
+        list.Children.Add(Section("Create a playset", Text("Start empty, or clone an existing playset and then customize its mods."), Wrap(name, create)));
+        return new StackPanel { Spacing = 14, Children = { Text("Switch between different mod combinations for different sessions."), list } };
+    }
+
+    private void CreatePlayset(string cleanName, ProfileRecord? source)
+    {
+        if (string.IsNullOrWhiteSpace(cleanName))
         {
-            if (picker.SelectedIndex < 0 || picker.SelectedIndex >= profiles.Count)
-            {
-                SetStatus("Choose a playset first.", error: true);
-                return;
-            }
+            SetStatus("Enter a playset name first.", error: true);
+            return;
+        }
 
-            var profile = profiles[picker.SelectedIndex];
-            _database.SetActiveProfile(profile.Id);
-            TryRedeployAfterProfileChange(profile);
-            ShowDashboard();
-        };
-
-        var name = new TextBox { Watermark = "New playset name", MinWidth = 220 };
-        var create = Button("Create Playset");
-        create.Click += (_, _) =>
+        var id = MakeProfileId(cleanName);
+        var suffix = 2;
+        var candidate = id;
+        while (_database.GetProfile(candidate) is not null) candidate = $"{id}-{suffix++}";
+        try
         {
-            var cleanName = string.IsNullOrWhiteSpace(name.Text) ? "" : name.Text.Trim();
-            if (string.IsNullOrWhiteSpace(cleanName))
+            _database.CreateProfile(candidate, cleanName);
+            if (source is not null)
             {
-                SetStatus("Enter a playset name first.", error: true);
-                return;
+                foreach (var mod in _database.GetProfileMods(source.Id))
+                    _database.SetProfileMod(candidate, mod.ModId, mod.Enabled, mod.Priority);
             }
-
-            var id = MakeProfileId(cleanName);
-            var suffix = 2;
-            var candidate = id;
-            while (_database.GetProfile(candidate) is not null)
-            {
-                candidate = $"{id}-{suffix++}";
-            }
-
-            try
-            {
-                _database.CreateProfile(candidate, cleanName);
-                _database.SetActiveProfile(candidate);
-                SetStatus($"Created playset {cleanName}.");
-                ShowDashboard();
-            }
-            catch (Exception ex) when (ex is InvalidOperationException)
-            {
-                SetStatus(ex.Message, error: true);
-            }
-        };
-
-        return Section("Playsets",
-            Text("Use playsets when you want separate mod combinations for different sessions."),
-            Wrap(picker, switchProfile, name, create));
+            _database.SetActiveProfile(candidate);
+            SetStatus($"Created playset {cleanName}. Customize its mods below.");
+            ShowDashboard(2);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException)
+        {
+            SetStatus(ex.Message, error: true);
+        }
     }
 
     private Control BuildHealthSummary(GameRecord? game, Core.Common.Result<DeploymentPlan>? planResult)
@@ -770,6 +871,7 @@ public sealed class MainWindow : Window
         }
 
         var result = CreateDeploymentService().Deploy(game.InstallPath);
+        if (result.Success) _changesPending = false;
         SetStatus(result.Success ? "Changes applied to Ragnarock." : result.Error ?? "Apply failed.", !result.Success);
         ShowDashboard();
     }
@@ -791,6 +893,7 @@ public sealed class MainWindow : Window
     {
         var newPriority = currentPriority + delta;
         _database.SetProfileMod(profileId, mod.Id, true, newPriority);
+        _changesPending = true;
         SetStatus($"{mod.Name} load order updated. Apply changes when ready.");
         ShowDashboard();
     }
@@ -972,8 +1075,28 @@ public sealed class MainWindow : Window
         BorderBrush = Brushes.LightGray,
         BorderThickness = new Thickness(1),
         CornerRadius = new CornerRadius(6),
+        Background = Brushes.WhiteSmoke,
         Padding = new Thickness(12),
         Child = content
+    };
+
+    private static Border MetricCard(string label, string value, string detail) => new()
+    {
+        Background = Brushes.White,
+        BorderBrush = Brushes.LightGray,
+        BorderThickness = new Thickness(1),
+        CornerRadius = new CornerRadius(6),
+        Padding = new Thickness(12),
+        Child = new StackPanel
+        {
+            Spacing = 4,
+            Children =
+            {
+                MutedText(label),
+                new TextBlock { Text = value, FontSize = 18, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap },
+                MutedText(detail)
+            }
+        }
     };
 
     private static Control Cell(Control control, int column)
