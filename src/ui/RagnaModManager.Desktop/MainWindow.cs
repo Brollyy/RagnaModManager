@@ -19,7 +19,7 @@ namespace RagnaModManager.Desktop;
 
 public sealed class MainWindow : Window
 {
-    private const string Ue4ssZipHelp = "Script mods need RE-UE4SS. Choose the RE-UE4SS release zip for Unreal 4 games; it must contain UE4SS.dll, UE4SS-settings.ini, and a proxy DLL such as xinput1_3.dll. The manager will place those files in Ragnarock's UE4SS layout.";
+    private const string Ue4ssZipHelp = "Some script mods need RE-UE4SS. Choose its release ZIP and the manager will install it for you.";
 
     private readonly AppPaths _paths;
     private readonly ManagerDatabase _database;
@@ -37,6 +37,7 @@ public sealed class MainWindow : Window
     private readonly Border _pendingChangesBar = new();
     private TextBlock? _libraryStatus;
     private int _selectedTab;
+    private bool _rebuildingTabs;
     private bool _changesPending;
 
     public MainWindow()
@@ -96,7 +97,11 @@ public sealed class MainWindow : Window
         launch.Click += (_, _) => LaunchGame();
         header.Children.Add(Cell(launch, 1));
 
-        _tabs.SelectionChanged += (_, _) => _selectedTab = Math.Max(0, _tabs.SelectedIndex);
+        _tabs.SelectionChanged += (_, _) =>
+        {
+            if (!_rebuildingTabs)
+                _selectedTab = Math.Max(0, _tabs.SelectedIndex);
+        };
 
         DockPanel.SetDock(header, Dock.Top);
         root.Children.Add(header);
@@ -127,14 +132,22 @@ public sealed class MainWindow : Window
         var mods = _database.GetMods();
         var planResult = game is null ? null : CreateDeploymentService().Preview(game.InstallPath);
 
-        _tabs.Items.Clear();
-        _tabs.Items.Add(Tab("Dashboard", BuildDashboardPage(game, active, mods, planResult)));
-        _tabs.Items.Add(Tab("Library", new ScrollViewer { Content = Page("Library", BuildOfficialCatalog(mods)) }));
-        _tabs.Items.Add(Tab("Mods", BuildModsPage(active, mods)));
-        _tabs.Items.Add(Tab("Playsets", new ScrollViewer { Content = Page("Playsets", BuildPlaysets(active)) }));
-        _tabs.Items.Add(Tab("Settings", BuildSettingsPage(game, planResult)));
-        _tabs.SelectedIndex = Math.Min(_selectedTab, _tabs.Items.Count - 1);
-        _body.Content = _tabs;
+        _rebuildingTabs = true;
+        try
+        {
+            _tabs.Items.Clear();
+            _tabs.Items.Add(Tab("Dashboard", BuildDashboardPage(game, active, mods, planResult)));
+            _tabs.Items.Add(Tab("Library", new ScrollViewer { Content = BuildOfficialCatalog(mods) }));
+            _tabs.Items.Add(Tab("Mods", BuildModsPage(active, mods)));
+            _tabs.Items.Add(Tab("Playsets", new ScrollViewer { Content = BuildPlaysets(active) }));
+            _tabs.Items.Add(Tab("Settings", BuildSettingsPage(game, planResult)));
+            _tabs.SelectedIndex = Math.Min(_selectedTab, _tabs.Items.Count - 1);
+            _body.Content = _tabs;
+        }
+        finally
+        {
+            _rebuildingTabs = false;
+        }
         UpdatePendingChangesBar();
     }
 
@@ -158,7 +171,7 @@ public sealed class MainWindow : Window
         {
             Content = new StackPanel { Spacing = 14, Children =
             {
-                Text("Manage the mods installed on this computer and choose which ones are active in the current playset."),
+                Text("These are the mods on your computer. Turn a mod on here to use it in the current playset."),
                 import,
                 BuildModList(active, mods)
             }}
@@ -173,7 +186,7 @@ public sealed class MainWindow : Window
         {
             Content = new StackPanel { Spacing = 14, Children =
             {
-                Text("Configure the game installation, RE-UE4SS support, and troubleshooting locations."),
+                Text("Tell the manager where Ragnarock is installed, set up script support, or open logs if something goes wrong."),
                 BuildGameSetup(game),
                 BuildHealthSummary(game, planResult),
                 Section("Troubleshooting", Text($"Manager and mod logs are stored in {_paths.Logs}."), openLogs)
@@ -184,34 +197,12 @@ public sealed class MainWindow : Window
     private Control BuildDashboardSummary(GameRecord? game, ProfileRecord active, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
     {
         var enabled = GetEnabledMods().Count;
-        var lines = new List<string>
-        {
-            $"Current playset: {active.Name}",
-            $"Installed mods: {mods.Count}",
-            $"Enabled in this playset: {enabled}"
-        };
-
-        if (game is null)
-        {
-            lines.Add("Game configuration: not configured");
-        }
-        else
-        {
-            var report = new RagnarockCompatibilityChecker().Check(game.InstallPath);
-            lines.Add($"Game configuration: {(report.CanManage ? "ready" : "needs attention")}");
-            var ue4ss = _ue4ss.Detect(game.InstallPath);
-            lines.Add($"RE-UE4SS: {(ue4ss.Installed ? "installed" : "not installed")}");
-            lines.Add(planResult is { Success: true, Value: not null }
-                ? $"Pending deployment: {planResult.Value.Items.Count} file(s)"
-                : "Pending deployment: blocked or unavailable");
-        }
-
         var ready = game is not null && new RagnarockCompatibilityChecker().Check(game.InstallPath).CanManage;
         var headline = game is null
-            ? "Get started by choosing your Ragnarock installation in Settings."
+            ? "Welcome! Let’s get Ragnarock ready for mods."
             : ready
-                ? "Everything needed to manage Ragnarock is set up."
-                : "Finish the setup steps in Settings before applying mods.";
+                ? "Ragnarock is ready. Choose a mod to get started."
+                : "One quick setup step remains before you can use mods.";
         var state = new TextBlock
         {
             Text = headline,
@@ -232,9 +223,13 @@ public sealed class MainWindow : Window
                 Cell(MetricCard("GAME", game is null ? "Not configured" : ready ? "Ready" : "Needs attention", $"RE-UE4SS: {ue4ssState}"), 2)
             }
         };
+        var nextSteps = game is null
+            ? "1. Open Settings and choose your Ragnarock folder.\n2. Browse the Library or import a mod.\n3. Turn it on in Mods."
+            : ready
+                ? "1. Browse the Library or import a mod.\n2. Turn it on in Mods.\n3. Click Apply Changes when the banner appears."
+                : "Open Settings and finish choosing a valid Ragnarock folder.";
         return Section("Setup overview", state, metrics,
-            MutedText("Next steps: configure the game, install or import mods, enable them in Mods, then apply changes from the bottom bar."),
-            Text(string.Join(Environment.NewLine, lines)));
+            Section("Next steps", Text(nextSteps)));
     }
 
     private static TabItem Tab(string header, Control content) => new() { Header = header, Content = content };
@@ -244,7 +239,7 @@ public sealed class MainWindow : Window
         var refresh = PrimaryButton("Refresh Official Mods");
         refresh.Click += async (_, _) => await RefreshOfficialCatalog();
         var content = new StackPanel { Spacing = 10 };
-        content.Children.Add(Text("Browse releases from the official registry. Packages are downloaded over HTTPS and verified against the registry checksum before import."));
+        content.Children.Add(Text("Find trusted Ragnarock mods, choose a version, and install it with one click."));
         content.Children.Add(refresh);
         _libraryStatus = new TextBlock { TextWrapping = TextWrapping.Wrap };
         content.Children.Add(_libraryStatus);
@@ -323,11 +318,12 @@ public sealed class MainWindow : Window
 
     private async Task RefreshOfficialCatalog()
     {
+        var returnTab = _selectedTab;
         _catalogLoading = true;
-        ShowDashboard();
+        ShowDashboard(returnTab);
         _officialCatalogResult = await _officialCatalog.LoadAsync();
         _catalogLoading = false;
-        ShowDashboard(1);
+        ShowDashboard(returnTab);
         SetLibraryStatus(_officialCatalogResult.Success ? $"Official registry loaded: {_officialCatalogResult.Value!.Mods.Count} mod(s)." : _officialCatalogResult.Error ?? "Official registry unavailable.", !_officialCatalogResult.Success);
     }
 
@@ -345,11 +341,10 @@ public sealed class MainWindow : Window
         var import = Button("Add Mod");
         import.Click += async (_, _) => await ImportModPackage();
 
-        var showMods = new CheckBox { Content = "Show mod folder", VerticalAlignment = VerticalAlignment.Center };
         var openGame = Button("Open Game Folder");
+        var openMods = Button("Open Mod Folder");
         openGame.IsEnabled = game is not null;
-        showMods.IsEnabled = game is not null;
-        showMods.Click += (_, _) => openGame.Content = showMods.IsChecked == true ? "Open Mod Folder" : "Open Game Folder";
+        openMods.IsEnabled = true;
         openGame.Click += (_, _) =>
         {
             var currentGame = _database.GetGame();
@@ -359,8 +354,9 @@ public sealed class MainWindow : Window
                 return;
             }
 
-            OpenFolder(showMods.IsChecked == true ? _paths.ModLibrary : currentGame.InstallPath);
+            OpenFolder(currentGame.InstallPath);
         };
+        openMods.Click += (_, _) => OpenFolder(_paths.ModLibrary);
 
         var enabledCount = GetEnabledMods().Count;
         var summary = game is null
@@ -386,7 +382,7 @@ public sealed class MainWindow : Window
                         }
                     }
                 }, 0),
-                Cell(Row(import, showMods, openGame), 1)
+                Cell(Row(import, openGame, openMods), 1)
             }
         });
     }
@@ -660,11 +656,11 @@ public sealed class MainWindow : Window
             }
         }
 
-        var checkUe4ss = PrimaryButton("Check for RE-UE4SS Updates");
+        var checkUe4ss = PrimaryButton("Check for Script Support Updates");
         checkUe4ss.IsEnabled = game is not null;
         checkUe4ss.Click += async (_, _) => await CheckUe4ssUpdates();
 
-        var installUe4ss = Button("Install RE-UE4SS from Local ZIP");
+        var installUe4ss = Button("Install Script Support from ZIP");
         installUe4ss.IsEnabled = game is not null;
         installUe4ss.Click += async (_, _) => await InstallUe4ssSupport();
 
@@ -674,7 +670,7 @@ public sealed class MainWindow : Window
         var controls = new List<Control>
         {
             Text(string.Join(Environment.NewLine, lines)),
-            MutedText("The manager can download RE-UE4SS from GitHub releases, cache downloaded versions locally, and reinstall an older cached version if a newer one breaks your setup."),
+            MutedText("Script support is only needed by mods that use Lua or other scripts. Older downloaded versions can be kept here if you need to go back."),
             Row(checkUe4ss, installUe4ss, openData)
         };
 
