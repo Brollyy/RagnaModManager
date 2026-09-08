@@ -16,8 +16,7 @@ public static class VersionRequirement
             return false;
         }
 
-        var current = ParseVersion(currentVersion);
-        var comparison = current.CompareTo(required);
+        var comparison = SemanticVersion.Compare(currentVersion, required);
         return op switch
         {
             ">=" => comparison >= 0,
@@ -29,10 +28,10 @@ public static class VersionRequirement
         };
     }
 
-    private static bool TryParse(string input, out string op, out Version required)
+    private static bool TryParse(string input, out string op, out string required)
     {
         op = "";
-        required = new Version(0, 0, 0);
+        required = "";
         if (string.IsNullOrWhiteSpace(input))
         {
             return false;
@@ -47,27 +46,19 @@ public static class VersionRequirement
             }
 
             op = candidate;
-            return Version.TryParse(NormalizeVersion(trimmed[candidate.Length..].Trim()), out required!);
+            required = trimmed[candidate.Length..].Trim();
+            return IsVersion(required);
         }
 
         op = "=";
-        return Version.TryParse(NormalizeVersion(trimmed), out required!);
+        required = trimmed;
+        return IsVersion(required);
     }
 
-    private static Version ParseVersion(string version)
+    private static bool IsVersion(string version)
     {
-        return Version.TryParse(NormalizeVersion(version), out var parsed) ? parsed : new Version(0, 0, 0);
-    }
-
-    private static string NormalizeVersion(string version)
-    {
-        var core = version.Split('-', '+')[0];
-        var parts = core.Split('.', StringSplitOptions.RemoveEmptyEntries).ToList();
-        while (parts.Count < 3)
-        {
-            parts.Add("0");
-        }
-
-        return string.Join('.', parts.Take(3));
+        var core = version.TrimStart('v', 'V').Split('-', '+')[0];
+        var parts = core.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length is >= 1 and <= 3 && parts.All(p => int.TryParse(p, out var n) && n >= 0);
     }
 }

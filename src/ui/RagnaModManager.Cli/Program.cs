@@ -312,7 +312,10 @@ internal sealed class AppBootstrap
         }
 
         var profile = _database.GetActiveProfile();
-        _database.SetProfileMod(profile.Id, modId, enabled, priority);
+        if (enabled)
+            _database.SetProfileMod(profile.Id, modId, true, priority);
+        else
+            _database.RemoveProfileMod(profile.Id, modId);
         Console.WriteLine($"{(enabled ? "Enabled" : "Disabled")} {modId} in profile {profile.Id} with priority {priority}");
         return 0;
     }

@@ -8,6 +8,7 @@ using Avalonia.Headless;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
 using RagnaModManager.Core.Database;
+using RagnaModManager.Core.Compatibility;
 using RagnaModManager.Core.Deployment;
 using RagnaModManager.Core.Logging;
 using RagnaModManager.Core.Manifests;
@@ -31,6 +32,9 @@ var tests = new (string Name, Action Body)[]
     ("deployment rollback restores latest backup", DeploymentRollbackRestoresLatestBackup),
     ("deployment rollback ignores other profile backups", DeploymentRollbackIgnoresOtherProfileBackups),
     ("modified deployed files block overwrite", ModifiedDeployedFilesBlockOverwrite),
+    ("existing managed mod files can be repaired", ExistingManagedModFilesCanBeRepaired),
+    ("unmanaged target files require reconciliation", UnmanagedTargetFilesRequireReconciliation),
+    ("removing a mod clears its installation and profile entries", RemovingModClearsInstallation),
     ("switching profiles redeploys from scratch", SwitchingProfilesRedeploysFromScratch),
     ("same target conflicts block deployment", SameTargetConflictBlocksDeployment),
     ("identical legacy entries are coalesced", IdenticalLegacyEntriesAreCoalesced),
@@ -48,6 +52,11 @@ var tests = new (string Name, Action Body)[]
     ("ue4ss release service caches installs and rolls back versions", Ue4ssReleaseServiceCachesInstallsAndRollsBackVersions),
     ("official catalog loads and orders releases", OfficialCatalogLoadsAndOrdersReleases),
     ("official catalog verifies and imports package", OfficialCatalogVerifiesAndImportsPackage),
+    ("official catalog conflicts must be declared by package", OfficialCatalogConflictsMustBeDeclaredByPackage),
+    ("official install downloads catalog dependencies first", OfficialInstallDownloadsDependencies),
+    ("semantic versions order prereleases correctly", SemanticVersionsOrderPrereleases),
+    ("profiles export and import version pins", ProfilesExportAndImportVersionPins),
+    ("multiple mod versions can be installed and selected by profile", MultipleModVersionsCanBeSelected),
     ("desktop onboarding opens setup without resetting tabs", DesktopOnboardingOpensSetup),
     ("desktop mod input keeps the Mods tab selected", DesktopModInputKeepsModsTab)
 };
@@ -122,7 +131,7 @@ static void DesktopModInputKeepsModsTab()
         var tabs = window.GetLogicalDescendants().OfType<TabControl>().Single();
         tabs.SelectedIndex = 2;
         var mods = ((TabItem)tabs.Items[2]!).Content as Control;
-        var toggle = mods!.GetLogicalDescendants().OfType<CheckBox>().Single();
+        var toggle = mods!.GetLogicalDescendants().OfType<CheckBox>().Single(x => string.Equals(x.Content?.ToString(), "On", StringComparison.Ordinal));
 
         toggle.IsChecked = false;
         toggle.RaiseEvent(new RoutedEventArgs(ToggleButton.ClickEvent));
@@ -188,7 +197,7 @@ static void PackageInspectorRejectsZipSlip()
 static void OfficialCatalogLoadsAndOrdersReleases()
 {
     const string json = """
-    {"schemaVersion":"1","repository":"official","mods":[{"id":"demo-mod","name":"Demo","releases":[{"version":"1.0.0","packageUrl":"https://example.test/old.rmod","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"version":"1.2.0","packageUrl":"https://example.test/new.rmod","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}]}
+    {"schemaVersion":"1","repository":"rmm-registry","mods":[{"id":"demo-mod","name":"Demo","releases":[{"version":"1.0.0","packageUrl":"https://example.test/old.rmod","sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},{"version":"1.2.0","packageUrl":"https://example.test/new.rmod","sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}]}
     """;
     using var http = new HttpClient(new FakeHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json) }));
     using var env = TestEnv.Create();
@@ -196,6 +205,45 @@ static void OfficialCatalogLoadsAndOrdersReleases()
     var result = service.LoadAsync().GetAwaiter().GetResult();
     Assert(result.Success, result.Error ?? "catalog load failed");
     Assert(result.Value!.Mods[0].Latest!.Version == "1.2.0", "catalog should select the highest release version");
+}
+
+static void SemanticVersionsOrderPrereleases()
+{
+    Assert(SemanticVersion.Compare("1.2.0-beta.2", "1.2.0-beta.10") < 0, "numeric prerelease identifiers should be numeric");
+    Assert(SemanticVersion.Compare("1.2.0", "1.2.0-rc.1") > 0, "stable should follow prerelease");
+}
+
+static void ProfilesExportAndImportVersionPins()
+{
+    using var env = TestEnv.Create();
+    env.Database.CreateProfile("stable", "Stable");
+    env.Database.SetProfileMod("stable", "demo", true, 5, "1.0.0");
+    var path = Path.Combine(env.Root, "stable.json");
+    Assert(env.Database.ExportProfile("stable", path).Success, "profile export should succeed");
+    var imported = env.Database.ImportProfile(path, "copy", "Copy");
+    Assert(imported.Success, imported.Error ?? "profile import should succeed");
+    Assert(env.Database.GetProfileMods("copy").Single().Version == "1.0.0", "profile pin should survive export/import");
+}
+
+static void MultipleModVersionsCanBeSelected()
+{
+    using var env = TestEnv.Create();
+    var game = env.CreateGame();
+    env.InstallFakeUe4ss(game);
+    env.Database.UpsertGame(new GameRecord("ragnarock", "Ragnarock", game, null, null, "test"));
+    var v1 = env.CreatePackage("versioned", manifest => { manifest.Version = "1.0.0"; manifest.Files = [new ManifestFile { Type = "ue4ss-lua", Source = "Scripts/main.lua", ModFolder = "Versioned" }]; }, files => files["Scripts/main.lua"] = "v1");
+    Assert(env.Importer.Import(v1).Success, "first version should import");
+    File.Move(v1, v1 + ".old");
+    var v2 = env.CreatePackage("versioned", manifest => { manifest.Version = "2.0.0"; manifest.Files = [new ManifestFile { Type = "ue4ss-lua", Source = "Scripts/main.lua", ModFolder = "Versioned" }]; }, files => files["Scripts/main.lua"] = "v2");
+    Assert(env.Importer.Import(v2).Success, "second version should import");
+    Assert(env.Database.GetModVersions("versioned").Count == 2, "both versions should remain installed");
+    env.Database.SetProfileMod("default", "versioned", true, 0, "1.0.0");
+    Assert(env.DeploymentService().Deploy(game).Success, "pinned first version should deploy");
+    var target = Path.Combine(game, "Ragnarock", "Binaries", "Win64", "ue4ss", "Mods", "Versioned", "scripts", "main.lua");
+    Assert(File.ReadAllText(target) == "v1", "profile should deploy its selected version");
+    env.Database.SetProfileMod("default", "versioned", true, 0, "2.0.0");
+    Assert(env.DeploymentService().Deploy(game).Success, "pinned second version should deploy");
+    Assert(File.ReadAllText(target) == "v2", "profile should switch to its selected version");
 }
 
 static void OfficialCatalogVerifiesAndImportsPackage()
@@ -211,6 +259,45 @@ static void OfficialCatalogVerifiesAndImportsPackage()
     var result = service.DownloadAndImportAsync(mod, release).GetAwaiter().GetResult();
     Assert(result.Success, result.Error ?? "official package import failed");
     Assert(env.Database.GetMod("official-demo") is not null, "verified official package should be installed");
+}
+
+static void OfficialCatalogConflictsMustBeDeclaredByPackage()
+{
+    using var env = TestEnv.Create();
+    var source = env.CreatePackage("official-demo", _ => { }, files => files["Scripts/main.lua"] = "print('official')");
+    var bytes = File.ReadAllBytes(source);
+    var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+    using var http = new HttpClient(new FakeHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) }));
+    var service = new OfficialCatalogService(env.Paths, env.Database, env.Logger, http);
+    var mod = new CatalogMod("official-demo", "Official Demo", "Tester", null, [], Conflicts: ["other-mod"]);
+    var release = new CatalogRelease("1.0.0", "https://example.test/demo.rmod", hash);
+    var result = service.DownloadAndImportAsync(mod, release).GetAwaiter().GetResult();
+    Assert(!result.Success, "official package missing a catalog conflict should be rejected");
+    Assert(result.Error!.Contains("missing registry conflicts", StringComparison.Ordinal), "conflict mismatch should explain the missing declaration");
+}
+
+static void OfficialInstallDownloadsDependencies()
+{
+    using var env = TestEnv.Create();
+    var api = File.ReadAllBytes(env.CreatePackage("catalog-api", manifest => manifest.Files = [new ManifestFile { Type = "loose-file", Source = "Scripts/api.lua" }], files => files["Scripts/api.lua"] = "api"));
+    var vote = File.ReadAllBytes(env.CreatePackage("catalog-vote", manifest => manifest.Files = [new ManifestFile { Type = "loose-file", Source = "Scripts/vote.lua" }], files => files["Scripts/vote.lua"] = "vote"));
+    var apiHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(api));
+    var voteHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(vote));
+    var catalogJson = $"{{\"schemaVersion\":\"1\",\"repository\":\"rmm-registry\",\"mods\":[{{\"id\":\"catalog-api\",\"name\":\"API\",\"releases\":[{{\"version\":\"1.0.0\",\"packageUrl\":\"https://example.test/api.rmod\",\"sha256\":\"{apiHash}\"}}]}},{{\"id\":\"catalog-vote\",\"name\":\"Vote\",\"dependencies\":{{\"catalog-api\":\">=1.0.0\"}},\"releases\":[{{\"version\":\"1.0.0\",\"packageUrl\":\"https://example.test/vote.rmod\",\"sha256\":\"{voteHash}\"}}]}}]}}";
+    using var http = new HttpClient(new FakeHttpHandler(request =>
+    {
+        if (request.RequestUri!.AbsoluteUri.EndsWith("api.rmod", StringComparison.Ordinal)) return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(api) };
+        if (request.RequestUri.AbsoluteUri.EndsWith("vote.rmod", StringComparison.Ordinal)) return new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(vote) };
+        return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(catalogJson) };
+    }));
+    var service = new OfficialCatalogService(env.Paths, env.Database, env.Logger, http);
+    var catalog = service.LoadAsync().GetAwaiter().GetResult();
+    Assert(catalog.Success, catalog.Error ?? "catalog with dependencies should load");
+    var voteMod = catalog.Value!.Mods.Single(m => m.Id == "catalog-vote");
+    var result = service.DownloadAndImportAsync(voteMod, voteMod.Latest!).GetAwaiter().GetResult();
+    Assert(result.Success, result.Error ?? "dependent official package should install");
+    Assert(env.Database.GetMod("catalog-api") is not null, "dependency should be installed automatically");
+    Assert(env.Database.GetMod("catalog-vote") is not null, "requested mod should be installed");
 }
 
 static void ImportDeployDisableCleanupCycle()
@@ -367,6 +454,68 @@ static void ModifiedDeployedFilesBlockOverwrite()
 
     var redeploy = service.Deploy(game);
     Assert(!redeploy.Success, "redeploy should fail when an owned target was modified outside the manager");
+}
+
+static void ExistingManagedModFilesCanBeRepaired()
+{
+    using var env = TestEnv.Create();
+    var game = env.CreateGame();
+    env.InstallFakeUe4ss(game);
+    env.Database.UpsertGame(new GameRecord("ragnarock", "Ragnarock", game, null, null, "test"));
+
+    var package = env.CreatePackage("repairable-mod", manifest =>
+    {
+        manifest.Files = [new ManifestFile { Type = "ue4ss-lua", Source = "Scripts/main.lua", ModFolder = "RepairableMod" }];
+    }, files => files["Scripts/main.lua"] = "print('new')");
+    Assert(env.Importer.Import(package).Success, "repairable package import should succeed");
+    env.Database.SetProfileMod("default", "repairable-mod", true, 0);
+
+    var target = Path.Combine(game, "Ragnarock", "Binaries", "Win64", "ue4ss", "Mods", "RepairableMod", "scripts", "main.lua");
+    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+    File.WriteAllText(target, "print('old')");
+
+    var deploy = env.DeploymentService().Deploy(game);
+    Assert(deploy.Success, deploy.Error ?? "managed existing file should be repairable");
+    Assert(File.ReadAllText(target) == "print('new')", "repair should replace the existing managed mod file");
+}
+
+static void UnmanagedTargetFilesRequireReconciliation()
+{
+    using var env = TestEnv.Create();
+    var game = env.CreateGame();
+    env.Database.UpsertGame(new GameRecord("ragnarock", "Ragnarock", game, null, null, "test"));
+
+    var package = env.CreatePackage("reconcile-mod", manifest =>
+    {
+        manifest.Files = [new ManifestFile { Type = "pak", Source = "ReconcileMod_P.pak", LoadOrder = 503 }];
+    }, files => files["ReconcileMod_P.pak"] = "manager package");
+    Assert(env.Importer.Import(package).Success, "reconciliation package should import");
+    env.Database.SetProfileMod("default", "reconcile-mod", true, 0);
+    var target = Path.Combine(game, "Ragnarock", "Content", "Paks", "~mods", "0503_reconcile-mod_ReconcileMod_P.pak");
+    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+    File.WriteAllText(target, "existing game file");
+
+    var service = env.DeploymentService();
+    var preview = service.Preview(game);
+    Assert(preview.Success, preview.Error ?? "reconciliation preview failed");
+    Assert(preview.Value!.Conflicts.Any(c => c.Kind == "unmanaged-file" && c.BlocksDeployment), "unmanaged target should be reported before deployment");
+    Assert(!service.Deploy(game).Success, "unmanaged target should require consent");
+    var reconciled = service.Deploy(game, allowUnmanagedFiles: true);
+    Assert(reconciled.Success, reconciled.Error ?? "consented reconciliation should succeed");
+    Assert(File.ReadAllText(target) == "manager package", "reconciliation should overwrite the selected target");
+}
+
+static void RemovingModClearsInstallation()
+{
+    using var env = TestEnv.Create();
+    var package = env.CreatePackage("remove-mod", _ => { }, files => files["Scripts/main.lua"] = "print('remove')");
+    Assert(env.Importer.Import(package).Success, "remove package import should succeed");
+    Assert(env.Database.GetMod("remove-mod") is not null, "remove package should be installed");
+
+    var result = env.DeploymentService().RemoveMod("remove-mod");
+    Assert(result.Success, result.Error ?? "mod removal should succeed");
+    Assert(env.Database.GetMod("remove-mod") is null, "removed mod should not remain in the database");
+    Assert(!env.Database.GetProfileMods("default").Any(m => m.ModId == "remove-mod"), "removed mod should leave profile entries");
 }
 
 static void SwitchingProfilesRedeploysFromScratch()

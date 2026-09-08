@@ -20,6 +20,8 @@ public sealed class PackageImporter
         _logger = logger;
     }
 
+    public ManagerDatabase Database => _database;
+
     public Result<ModManifest> Import(string archivePath, bool developerMode = false)
     {
         var inspection = new PackageInspector().Inspect(archivePath, developerMode);
@@ -65,6 +67,8 @@ public sealed class PackageImporter
             }
 
             var manifest = inspection.Value!.Manifest;
+            if (!PathSafety.IsSafeRelativePath(manifest.Version))
+                return Result<ModManifest>.Fail("Manifest version cannot be used as a safe library folder name.");
             foreach (var file in manifest.Files)
             {
                 var source = PathSafety.CombineUnderRoot(staging, file.Source);
@@ -74,12 +78,13 @@ public sealed class PackageImporter
                 }
             }
 
-            var installRoot = Path.Combine(_paths.ModLibrary, manifest.Id);
+            var installRoot = Path.Combine(_paths.ModLibrary, manifest.Id, manifest.Version);
             if (Directory.Exists(installRoot))
             {
                 Directory.Delete(installRoot, recursive: true);
             }
 
+            Directory.CreateDirectory(Path.GetDirectoryName(installRoot)!);
             Directory.Move(staging, installRoot);
             var installedManifestPath = Path.Combine(installRoot, "manifest.json");
             _database.UpsertMod(manifest, installRoot, installedManifestPath, archivePath);

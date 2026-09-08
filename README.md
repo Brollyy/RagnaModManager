@@ -3,7 +3,13 @@
 Cross-platform Ragnarock mod manager built with .NET 9 and Avalonia.
 
 The desktop app helps you locate Ragnarock, install `.rmod` packages, manage
-playsets, deploy mods safely, configure RE-UE4SS, and launch the game.
+profiles, deploy mods safely, configure RE-UE4SS, and launch the game.
+
+Version 1.2.0 adds searchable and bulk mod management, actionable dependency
+resolution, profile import/export and version pins, deployment recovery, drag-
+and-drop imports, and saved launch arguments. See
+[the 1.2.0 release notes](RELEASE-1.2.0.md) and the local
+[1.2.0 roadmap](ROADMAP-1.2.0.md).
 
 ## Build
 
@@ -58,15 +64,18 @@ dotnet publish src/ui/RagnaModManager.Desktop/RagnaModManager.Desktop.csproj -c 
 Zip the matching `artifacts/RagnaModManager-*` folder for distribution. Users
 can run `RagnaModManager` on Linux or `RagnaModManager.exe` on Windows.
 
-## Official mod registry
+## Community mod catalog
 
-The desktop app includes an Official Mod Library backed by the separate
+The desktop app includes a Community Mod Library backed by the separate
 [`Brollyy/RagnaModManager-ModRegistry`](https://github.com/Brollyy/RagnaModManager-ModRegistry)
 repository. It can browse releases, download packages over HTTPS, verify their
 SHA-256 checksums, cache them, and install updates.
 
+This is a community project and catalog. It is not affiliated with or endorsed
+by Ragnarock, Wanadev, or RagnaCustoms.
+
 For development or testing, set `RMM_OFFICIAL_REGISTRY_URL` to another HTTPS
-catalog. Manual imports remain available for packages outside the official
+catalog. Manual imports remain available for packages outside the community
 registry and should be treated as untrusted.
 
 The catalog uses schema version `1`:
@@ -74,13 +83,16 @@ The catalog uses schema version `1`:
 ```json
 {
   "schemaVersion": "1",
-  "repository": "official",
+  "repository": "rmm-registry",
   "mods": [
     {
       "id": "better-hit-feedback",
       "name": "Better Hit Feedback",
       "author": "Author",
       "description": "Improves hit feedback.",
+      "dependencies": {
+        "ragnacustoms-api": ">=0.2.1"
+      },
       "releases": [
         {
           "version": "1.0.0",

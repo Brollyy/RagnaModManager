@@ -13,6 +13,6 @@ public sealed record ModRecord(
 
 public sealed record ProfileRecord(string Id, string Name, string GameId, bool IsActive);
 
-public sealed record ProfileModRecord(string ProfileId, string ModId, bool Enabled, int Priority);
+public sealed record ProfileModRecord(string ProfileId, string ModId, bool Enabled, int Priority, string? Version = null);
 
 public sealed record DeployedFileRecord(string ProfileId, string ModId, string SourcePath, string TargetPath, string DeploymentMethod, string Checksum);

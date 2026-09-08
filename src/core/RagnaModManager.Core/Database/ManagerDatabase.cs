@@ -1,4 +1,6 @@
 using RagnaModManager.Core.Manifests;
+using RagnaModManager.Core.Common;
+using RagnaModManager.Core.Compatibility;
 using RagnaModManager.Core.Platform;
 using RagnaModManager.Core.Profiles;
 using System.Text.Json;
@@ -43,6 +45,18 @@ public sealed class ManagerDatabase
               installed_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS mod_versions (
+              id TEXT NOT NULL,
+              version TEXT NOT NULL,
+              name TEXT NOT NULL,
+              author TEXT,
+              installed_path TEXT NOT NULL,
+              manifest_path TEXT NOT NULL,
+              source_archive TEXT,
+              installed_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              PRIMARY KEY (id, version)
+            );
             CREATE TABLE IF NOT EXISTS profiles (
               id TEXT PRIMARY KEY,
               name TEXT NOT NULL,
@@ -56,6 +70,7 @@ public sealed class ManagerDatabase
               mod_id TEXT NOT NULL,
               enabled INTEGER NOT NULL DEFAULT 1,
               priority INTEGER NOT NULL DEFAULT 0,
+              version TEXT,
               PRIMARY KEY (profile_id, mod_id)
             );
             CREATE TABLE IF NOT EXISTS deployed_files (
@@ -69,6 +84,8 @@ public sealed class ManagerDatabase
               deployed_at TEXT NOT NULL
             );
             """);
+        try { db.Execute("ALTER TABLE profile_mods ADD COLUMN version TEXT;"); } catch (Exception) { }
+        db.Execute("INSERT OR IGNORE INTO mod_versions (id, version, name, author, installed_path, manifest_path, source_archive, installed_at, updated_at) SELECT id, version, name, author, installed_path, manifest_path, source_archive, installed_at, updated_at FROM mods;");
         EnsureDefaultProfile();
     }
 
@@ -101,6 +118,11 @@ public sealed class ManagerDatabase
         using var db = Open();
         var now = Now();
         db.Execute($"""
+            INSERT INTO mod_versions (id, version, name, author, installed_path, manifest_path, source_archive, installed_at, updated_at)
+            VALUES ({Q(manifest.Id)}, {Q(manifest.Version)}, {Q(manifest.Name)}, {Q(manifest.Author)}, {Q(installedPath)}, {Q(manifestPath)}, {Q(sourceArchive)}, {Q(now)}, {Q(now)})
+            ON CONFLICT(id, version) DO UPDATE SET name=excluded.name, author=excluded.author, installed_path=excluded.installed_path, manifest_path=excluded.manifest_path, source_archive=excluded.source_archive, updated_at=excluded.updated_at;
+            """);
+        db.Execute($"""
             INSERT INTO mods (id, name, version, author, installed_path, manifest_path, source_archive, checksum, installed_at, updated_at)
             VALUES ({Q(manifest.Id)}, {Q(manifest.Name)}, {Q(manifest.Version)}, {Q(manifest.Author)}, {Q(installedPath)}, {Q(manifestPath)}, {Q(sourceArchive)}, NULL, {Q(now)}, {Q(now)})
             ON CONFLICT(id) DO UPDATE SET
@@ -120,10 +142,21 @@ public sealed class ManagerDatabase
         return db.Query("SELECT * FROM mods ORDER BY name").Select(ToMod).ToList();
     }
 
-    public ModRecord? GetMod(string id)
+    public IReadOnlyList<ModRecord> GetModVersions(string id)
     {
         using var db = Open();
-        return db.Query($"SELECT * FROM mods WHERE id={Q(id)} LIMIT 1").Select(ToMod).FirstOrDefault();
+        return db.Query($"SELECT id, name, version, author, installed_path, manifest_path, source_archive FROM mod_versions WHERE id={Q(id)}")
+            .Select(ToMod).OrderByDescending(m => m.Version, Comparer<string>.Create(SemanticVersion.Compare)).ToList();
+    }
+
+    public ModRecord? GetMod(string id)
+    {
+        return GetModVersions(id).FirstOrDefault() ?? GetCurrentMod(id);
+    }
+
+    public ModRecord? GetMod(string id, string version)
+    {
+        return GetModVersions(id).FirstOrDefault(m => string.Equals(m.Version, version, StringComparison.OrdinalIgnoreCase));
     }
 
     public void EnsureDefaultProfile(string gameId = "ragnarock")
@@ -202,6 +235,42 @@ public sealed class ManagerDatabase
         }
     }
 
+    public void RenameProfile(string profileId, string name)
+    {
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            throw new InvalidOperationException("Profile name is required.");
+        }
+
+        if (GetProfile(profileId) is null)
+        {
+            throw new InvalidOperationException($"Profile does not exist: {profileId}");
+        }
+
+        using var db = Open();
+        db.Execute($"UPDATE profiles SET name={Q(name.Trim())}, updated_at={Q(Now())} WHERE id={Q(profileId)};");
+        WriteProfileJson(profileId);
+    }
+
+    public void DeleteProfile(string profileId)
+    {
+        var profile = GetProfile(profileId) ?? throw new InvalidOperationException($"Profile does not exist: {profileId}");
+        if (profile.IsActive)
+        {
+            throw new InvalidOperationException("Switch to another profile before deleting the active profile.");
+        }
+
+        if (GetProfiles().Count <= 1)
+        {
+            throw new InvalidOperationException("At least one profile must remain.");
+        }
+
+        using var db = Open();
+        db.Execute($"DELETE FROM profile_mods WHERE profile_id={Q(profileId)}; DELETE FROM deployed_files WHERE profile_id={Q(profileId)}; DELETE FROM profiles WHERE id={Q(profileId)};");
+        var profilePath = Path.Combine(_paths.Profiles, profileId + ".json");
+        if (File.Exists(profilePath)) File.Delete(profilePath);
+    }
+
     public void AddModToDefaultProfile(string modId, bool enabled, int priority)
     {
         foreach (var profile in GetProfiles())
@@ -210,9 +279,33 @@ public sealed class ManagerDatabase
         }
     }
 
-    public void SetProfileMod(string profileId, string modId, bool enabled, int priority)
+    public void SetProfileMod(string profileId, string modId, bool enabled, int priority, string? version = null)
     {
-        SetProfileMod(profileId, modId, enabled, priority, insertOnly: false);
+        SetProfileMod(profileId, modId, enabled, priority, version, insertOnly: false);
+    }
+
+    public void RemoveProfileMod(string profileId, string modId)
+    {
+        using var db = Open();
+        db.Execute($"DELETE FROM profile_mods WHERE profile_id={Q(profileId)} AND mod_id={Q(modId)};");
+        WriteProfileJson(profileId);
+    }
+
+    public void ClearProfileModVersion(string profileId, string modId)
+    {
+        using var db = Open();
+        db.Execute($"UPDATE profile_mods SET version=NULL WHERE profile_id={Q(profileId)} AND mod_id={Q(modId)};");
+        WriteProfileJson(profileId);
+    }
+
+    public void RemoveMod(string modId)
+    {
+        using var db = Open();
+        db.Execute($"DELETE FROM profile_mods WHERE mod_id={Q(modId)}; DELETE FROM deployed_files WHERE mod_id={Q(modId)}; DELETE FROM mod_versions WHERE id={Q(modId)}; DELETE FROM mods WHERE id={Q(modId)};");
+        foreach (var profile in GetProfiles())
+        {
+            WriteProfileJson(profile.Id);
+        }
     }
 
     public IReadOnlyList<ProfileModRecord> GetProfileMods(string profileId)
@@ -256,25 +349,26 @@ public sealed class ManagerDatabase
         }
     }
 
-    private void SetProfileMod(string profileId, string modId, bool enabled, int priority, bool insertOnly)
+    private void SetProfileMod(string profileId, string modId, bool enabled, int priority, string? version = null, bool insertOnly = false)
     {
         using (var db = Open())
         {
             if (insertOnly)
             {
                 db.Execute($"""
-                    INSERT OR IGNORE INTO profile_mods (profile_id, mod_id, enabled, priority)
-                    VALUES ({Q(profileId)}, {Q(modId)}, {(enabled ? 1 : 0)}, {priority});
+                    INSERT OR IGNORE INTO profile_mods (profile_id, mod_id, enabled, priority, version)
+                    VALUES ({Q(profileId)}, {Q(modId)}, {(enabled ? 1 : 0)}, {priority}, {Q(version)});
                     """);
             }
             else
             {
                 db.Execute($"""
-                    INSERT INTO profile_mods (profile_id, mod_id, enabled, priority)
-                    VALUES ({Q(profileId)}, {Q(modId)}, {(enabled ? 1 : 0)}, {priority})
+                    INSERT INTO profile_mods (profile_id, mod_id, enabled, priority, version)
+                    VALUES ({Q(profileId)}, {Q(modId)}, {(enabled ? 1 : 0)}, {priority}, {Q(version)})
                     ON CONFLICT(profile_id, mod_id) DO UPDATE SET
                       enabled=excluded.enabled,
-                      priority=excluded.priority;
+                      priority=excluded.priority,
+                      version=COALESCE(excluded.version, profile_mods.version);
                     """);
             }
         }
@@ -293,7 +387,7 @@ public sealed class ManagerDatabase
 
         var mods = db.Query($"SELECT * FROM profile_mods WHERE profile_id={Q(profileId)} ORDER BY priority, mod_id")
             .Select(ToProfileMod)
-            .Select(m => new ProfileModDocument(m.ModId, m.Enabled, m.Priority))
+            .Select(m => new ProfileModDocument(m.ModId, m.Enabled, m.Priority, m.Version))
             .ToList();
         var document = new ProfileDocument(profile.Id, profile.Name, mods);
         var path = Path.Combine(_paths.Profiles, profile.Id + ".json");
@@ -301,7 +395,54 @@ public sealed class ManagerDatabase
         File.WriteAllText(path, JsonSerializer.Serialize(document, JsonOptions));
     }
 
+    public Result ExportProfile(string profileId, string destinationPath)
+    {
+        var profile = GetProfile(profileId);
+        if (profile is null) return Result.Fail($"Profile does not exist: {profileId}");
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(destinationPath))!);
+            var mods = GetProfileMods(profileId)
+                .Select(m => new ProfileModDocument(m.ModId, m.Enabled, m.Priority, m.Version))
+                .ToList();
+            var document = new ProfileDocument(profile.Id, profile.Name, mods);
+            File.WriteAllText(destinationPath, JsonSerializer.Serialize(document, JsonOptions));
+            return Result.Ok();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return Result.Fail($"Could not export profile: {ex.Message}");
+        }
+    }
+
+    public Result<ProfileRecord> ImportProfile(string sourcePath, string profileId, string name)
+    {
+        try
+        {
+            var document = JsonSerializer.Deserialize<ProfileDocument>(File.ReadAllText(sourcePath), JsonOptions);
+            if (document is null || document.Mods is null)
+                return Result<ProfileRecord>.Fail("The profile file is empty or malformed.");
+            CreateProfile(profileId, name);
+            foreach (var mod in document.Mods)
+            {
+                if (string.IsNullOrWhiteSpace(mod.Id)) continue;
+                SetProfileMod(profileId, mod.Id, mod.Enabled, mod.Priority, mod.Version);
+            }
+            return Result<ProfileRecord>.Ok(GetProfile(profileId)!);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidOperationException)
+        {
+            return Result<ProfileRecord>.Fail($"Could not import profile: {ex.Message}");
+        }
+    }
+
     private SqliteConnection Open() => new(_path);
+
+    private ModRecord? GetCurrentMod(string id)
+    {
+        using var db = Open();
+        return db.Query($"SELECT * FROM mods WHERE id={Q(id)} LIMIT 1").Select(ToMod).FirstOrDefault();
+    }
 
     private static string Q(string? value) => SqliteConnection.Quote(value);
 
@@ -327,7 +468,7 @@ public sealed class ManagerDatabase
         new(row["id"]!, row["name"]!, row["game_id"]!, row["is_active"] == "1");
 
     private static ProfileModRecord ToProfileMod(Dictionary<string, string?> row) =>
-        new(row["profile_id"]!, row["mod_id"]!, row["enabled"] == "1", int.Parse(row["priority"] ?? "0"));
+        new(row["profile_id"]!, row["mod_id"]!, row["enabled"] == "1", int.Parse(row["priority"] ?? "0"), row.GetValueOrDefault("version"));
 
     private static DeployedFileRecord ToDeployedFile(Dictionary<string, string?> row) =>
         new(row["profile_id"]!, row["mod_id"]!, row["source_path"]!, row["target_path"]!, row["deployment_method"]!, row["checksum"] ?? "");

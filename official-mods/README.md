@@ -67,13 +67,16 @@ manager; the package manifest ID and version must match the catalog entry.
 ```json
 {
   "schemaVersion": "1",
-  "repository": "official",
+  "repository": "rmm-registry",
   "mods": [
     {
       "id": "better-hit-feedback",
       "name": "Better Hit Feedback",
       "author": "Author",
       "description": "Improves hit feedback.",
+      "dependencies": {
+        "ragnacustoms-api": ">=0.2.1"
+      },
       "releases": [
         {
           "version": "1.0.0",
@@ -95,6 +98,8 @@ manager; the package manifest ID and version must match the catalog entry.
 - Install, enable, disable, update, rollback, and remove the package.
 - Test with the supported Ragnarock and RE-UE4SS versions.
 - Confirm dependencies and conflicts are declared.
+- Confirm every catalog dependency has a matching catalog entry and a release
+  satisfying the declared version requirement.
 - Confirm the GitHub Release asset is immutable and calculate its SHA-256.
 - Merge only the catalog entry for the reviewed release.
 - Remove or mark releases that become incompatible or unsafe; document the

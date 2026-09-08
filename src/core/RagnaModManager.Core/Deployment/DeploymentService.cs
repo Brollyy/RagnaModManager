@@ -26,20 +26,39 @@ public sealed class DeploymentService
         _logger = logger;
     }
 
-    public Result<DeploymentPlan> Preview(string gameRoot) => _planner.BuildPlan(gameRoot);
-
-    public Result Deploy(string gameRoot, bool allowWarnings = false)
+    public Result<DeploymentPlan> Preview(string gameRoot)
     {
         var planResult = _planner.BuildPlan(gameRoot);
+        if (!planResult.Success || planResult.Value is null)
+        {
+            return planResult;
+        }
+
+        var plan = planResult.Value;
+        var reconciliation = FindUnmanagedFiles(plan, gameRoot);
+        var warnings = plan.Warnings.Concat(FindUnmanagedDirectoryWarnings(plan, gameRoot)).ToList();
+        return Result<DeploymentPlan>.Ok(plan with
+        {
+            Conflicts = plan.Conflicts.Concat(reconciliation).ToList(),
+            Warnings = warnings
+        });
+    }
+
+    public Result Deploy(string gameRoot, bool allowWarnings = false, bool allowUnmanagedFiles = false)
+    {
+        var planResult = Preview(gameRoot);
         if (!planResult.Success)
         {
             return Result.Fail(planResult.Error!);
         }
 
         var plan = planResult.Value!;
-        if (!plan.CanDeploy)
+        var blockingConflicts = plan.Conflicts
+            .Where(c => c.BlocksDeployment && (!allowUnmanagedFiles || c.Kind != "unmanaged-file"))
+            .ToList();
+        if (blockingConflicts.Count > 0)
         {
-            return Result.Fail("Deployment blocked by conflicts: " + string.Join("; ", plan.Conflicts.Where(c => c.BlocksDeployment).Select(c => c.Message)));
+            return Result.Fail("Deployment blocked by conflicts: " + string.Join("; ", blockingConflicts.Select(c => c.Message)));
         }
 
         if (!allowWarnings && plan.Conflicts.Any(c => !c.BlocksDeployment))
@@ -49,6 +68,13 @@ public sealed class DeploymentService
 
         try
         {
+            var reconciledTargets = allowUnmanagedFiles
+                ? plan.Conflicts
+                    .Where(c => c.Kind == "unmanaged-file")
+                    .SelectMany(c => c.Items)
+                    .Select(item => item.TargetPath)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : [];
             var retained = new List<DeployedFileRecord>();
             foreach (var profile in _database.GetProfiles())
             {
@@ -73,7 +99,10 @@ public sealed class DeploymentService
                     return Result.Fail($"Source file missing during deployment: {item.SourcePath}");
                 }
 
-                if (File.Exists(item.TargetPath) && !CanOverwriteOwnedFile(plan.ProfileId, item.TargetPath))
+                if (File.Exists(item.TargetPath) &&
+                    !CanOverwriteOwnedFile(plan.ProfileId, item.TargetPath) &&
+                    !CanOverwriteManagedModFile(gameRoot, item) &&
+                    !reconciledTargets.Contains(item.TargetPath))
                 {
                     return Result.Fail($"Target file already exists and is not owned by this manager: {item.TargetPath}");
                 }
@@ -234,6 +263,46 @@ public sealed class DeploymentService
         }
     }
 
+    public Result RemoveMod(string modId, string? gameRoot = null)
+    {
+        var files = _database.GetProfiles()
+            .SelectMany(profile => _database.GetDeployedFiles(profile.Id))
+            .Where(file => file.ModId.Equals(modId, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(file => file.TargetPath, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToList();
+
+        try
+        {
+            foreach (var file in files)
+            {
+                if (!File.Exists(file.TargetPath)) continue;
+                if (!string.Equals(Sha256.FileChecksum(file.TargetPath), file.Checksum, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Result.Fail($"Cannot remove {modId}: a deployed file was changed outside the manager: {file.TargetPath}");
+                }
+            }
+
+            foreach (var file in files)
+            {
+                if (!File.Exists(file.TargetPath)) continue;
+                File.Delete(file.TargetPath);
+            }
+
+            _database.RemoveMod(modId);
+            if (gameRoot is not null)
+            {
+                RemoveUe4ssModLines(gameRoot, modId);
+            }
+
+            return Result.Ok();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            return Result.Fail($"Could not remove {modId}: {ex.Message}");
+        }
+    }
+
     private bool CanOverwriteOwnedFile(string profileId, string targetPath)
     {
         var previous = _database.GetDeployedFiles(profileId)
@@ -245,6 +314,96 @@ public sealed class DeploymentService
 
         return File.Exists(targetPath) &&
                string.Equals(Sha256.FileChecksum(targetPath), previous.Checksum, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool CanOverwriteManagedModFile(string gameRoot, DeploymentItem item)
+    {
+        if (!_rules.IsApprovedTarget(gameRoot, item.TargetPath) ||
+            !item.SourcePath.StartsWith(_paths.ModLibrary + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var modsRoot = Path.GetDirectoryName(_rules.GetUe4ssModsFile(gameRoot));
+        if (modsRoot is null) return false;
+        var relative = Path.GetRelativePath(modsRoot, item.TargetPath);
+        var separator = relative.IndexOf(Path.DirectorySeparatorChar);
+        var folder = separator > 0 ? relative[..separator] : relative;
+        var expectedFolder = string.IsNullOrWhiteSpace(item.ModFolder) ? item.ModId : item.ModFolder;
+        return folder.Equals(expectedFolder, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private IReadOnlyList<DeploymentConflict> FindUnmanagedFiles(DeploymentPlan plan, string gameRoot)
+    {
+        return plan.Items
+            .Where(item => File.Exists(item.TargetPath) &&
+                           !CanOverwriteOwnedFile(plan.ProfileId, item.TargetPath) &&
+                           !CanOverwriteManagedModFile(gameRoot, item))
+            .GroupBy(item => item.TargetPath, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new DeploymentConflict(
+                "unmanaged-file",
+                $"Existing game file is not tracked by RagnaModManager and would be overwritten: {group.Key}",
+                group.ToList(),
+                BlocksDeployment: true))
+            .ToList();
+    }
+
+    private IReadOnlyList<string> FindUnmanagedDirectoryWarnings(DeploymentPlan plan, string gameRoot)
+    {
+        var unmanaged = GetUnmanagedFiles(gameRoot, plan.Items);
+        if (unmanaged.Count == 0) return [];
+
+        return [$"Found {unmanaged.Count} unmanaged file(s) in the game’s UE4SS Mods folder. They will remain untouched unless a selected mod targets the same path and you approve reconciliation."];
+    }
+
+    public IReadOnlyList<string> GetUnmanagedFiles(string gameRoot, IReadOnlyList<DeploymentItem>? plannedItems = null)
+    {
+        var modsRoot = Path.GetDirectoryName(_rules.GetUe4ssModsFile(gameRoot));
+        if (modsRoot is null || !Directory.Exists(modsRoot)) return [];
+        var managedTargets = _database.GetProfiles()
+            .SelectMany(profile => _database.GetDeployedFiles(profile.Id))
+            .Select(file => file.TargetPath)
+            .Concat(plannedItems?.Select(item => item.TargetPath) ?? [])
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        return Directory.EnumerateFiles(modsRoot, "*", SearchOption.AllDirectories)
+            .Where(path => !Path.GetFileName(path).Equals("mods.txt", StringComparison.OrdinalIgnoreCase))
+            .Where(path => !managedTargets.Contains(path))
+            .ToList();
+    }
+
+    public Result<int> RemoveUnmanagedFiles(string gameRoot)
+    {
+        var modsRoot = Path.GetDirectoryName(_rules.GetUe4ssModsFile(gameRoot));
+        if (modsRoot is null || !Directory.Exists(modsRoot)) return Result<int>.Ok(0);
+        var files = GetUnmanagedFiles(gameRoot);
+        foreach (var file in files) File.Delete(file);
+
+        var managedFolders = _database.GetProfiles()
+            .SelectMany(profile => _database.GetDeployedFiles(profile.Id))
+            .Select(file => TryGetUe4ssModFolder(gameRoot, file.TargetPath, out var folder) ? folder : null)
+            .Where(folder => folder is not null)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var modsFile = _rules.GetUe4ssModsFile(gameRoot);
+        if (File.Exists(modsFile))
+        {
+            var remaining = File.ReadAllLines(modsFile)
+                .Where(line => !TryGetUe4ssModsFileFolder(line, out var folder) || managedFolders.Contains(folder!))
+                .ToArray();
+            File.WriteAllLines(modsFile, remaining);
+        }
+
+        return Result<int>.Ok(files.Count);
+    }
+
+    private void RemoveUe4ssModLines(string gameRoot, string modId)
+    {
+        var modsFile = _rules.GetUe4ssModsFile(gameRoot);
+        if (!File.Exists(modsFile)) return;
+        var remaining = File.ReadAllLines(modsFile)
+            .Where(line => !TryGetUe4ssModsFileFolder(line, out var folder) ||
+                           !folder!.Equals(modId, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        File.WriteAllLines(modsFile, remaining);
     }
 
     private void BackupPreviousDeployment(string profileId)

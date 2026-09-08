@@ -32,6 +32,8 @@ public sealed record AppPaths(
     }
 
     public string CurrentDeploymentPath => Path.Combine(Deployment, "current.json");
+    public string LaunchArgumentsPath => Path.Combine(Root, "launch-arguments.txt");
+    public string CatalogLastCheckedPath => Path.Combine(Root, "official-registry-checked.txt");
 
     public string Ue4ssDownloads => Path.Combine(Downloads, "ue4ss");
 

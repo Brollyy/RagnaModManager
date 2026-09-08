@@ -12,9 +12,9 @@ public interface IGameDeploymentRules
     IEnumerable<DeploymentConflict> GetRequirementConflicts(string gameRoot, ModManifest manifest, IReadOnlyList<DeploymentItem> manifestItems);
 }
 
-public sealed record DeploymentItem(string ModId, string SourcePath, string TargetPath, string Method, string FileType);
+public sealed record DeploymentItem(string ModId, string SourcePath, string TargetPath, string Method, string FileType, string? ModFolder = null);
 
-public sealed record DeploymentConflict(string Kind, string Message, IReadOnlyList<DeploymentItem> Items, bool BlocksDeployment);
+public sealed record DeploymentConflict(string Kind, string Message, IReadOnlyList<DeploymentItem> Items, bool BlocksDeployment, string? RelatedModId = null);
 
 public sealed record DeploymentPlan(
     string ProfileId,
