@@ -29,7 +29,7 @@
           <WrapPanel Grid.Column="1" Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" VerticalAlignment="Center">
             <Button Content="Set up automatically" Classes="accent" IsVisible="{Binding ShowSetupAction}" Command="{Binding SetupAutomatically}" />
             <Button Content="Add a mod" Classes="accent" Command="{Binding AddMod}" />
-            <Button Content="Open game folder" Command="{Binding OpenGameFolder}" />
+            <Button Content="Open game folder" IsEnabled="{Binding CanOpenGame}" Command="{Binding OpenGameFolder}" />
             <Button Content="Open mod library" Command="{Binding OpenModLibrary}" />
           </WrapPanel>
         </Grid>

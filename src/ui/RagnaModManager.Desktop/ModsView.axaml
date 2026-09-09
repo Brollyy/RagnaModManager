@@ -12,21 +12,23 @@
       <Border Classes="card" Padding="12">
         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
           <TextBox Text="{Binding Search, Mode=TwoWay}" Watermark="Search installed mods…" MinWidth="280" KeyDown="OnSearchKeyDown" />
-          <Button Grid.Column="1" Content="Clear" Command="{Binding ClearSearch}" />
+          <WrapPanel Grid.Column="1" Orientation="Horizontal" ItemSpacing="6"><Button Content="Search" Command="{Binding SearchAction}"/><Button Content="Clear" IsEnabled="{Binding HasSearch}" Command="{Binding ClearSearch}" /></WrapPanel>
         </Grid>
       </Border>
       <Border Classes="card" Padding="12">
         <StackPanel Spacing="10">
           <TextBlock Text="Bulk actions" FontWeight="SemiBold"/>
           <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
-            <Button Content="Select all" Command="{Binding SelectAll}"/><Button Content="Clear selection" Command="{Binding ClearSelection}"/>
-            <Button Content="Enable all visible" Command="{Binding EnableAll}"/><Button Content="Disable all visible" Command="{Binding DisableAll}"/>
-            <Button Content="Enable selected" Command="{Binding EnableSelected}"/><Button Content="Disable selected" Command="{Binding DisableSelected}"/>
-            <Button Content="Remove selected" Command="{Binding RemoveSelected}"/>
+            <Button Content="Select all" IsEnabled="{Binding HasVisibleItems}" Command="{Binding SelectAll}"/><Button Content="Clear selection" IsEnabled="{Binding HasSelectedItems}" Command="{Binding ClearSelection}"/>
+            <Button Content="Enable all visible" IsEnabled="{Binding HasVisibleItems}" Command="{Binding EnableAll}"/><Button Content="Disable all visible" IsEnabled="{Binding HasVisibleItems}" Command="{Binding DisableAll}"/>
+            <Button Content="Enable selected" IsEnabled="{Binding HasSelectedItems}" Command="{Binding EnableSelected}"/><Button Content="Disable selected" IsEnabled="{Binding HasSelectedItems}" Command="{Binding DisableSelected}"/>
+            <Button Content="Remove selected" IsEnabled="{Binding HasSelectedItems}" Command="{Binding RemoveSelected}"/>
           </WrapPanel>
         </StackPanel>
       </Border>
-      <Border Classes="warning" IsVisible="{Binding HasDependencyNotice}" Padding="14"><TextBlock Text="{Binding DependencyNotice}" TextWrapping="Wrap"/></Border>
+      <Border Classes="warning" IsVisible="{Binding HasDependencyNotice}" Padding="14">
+        <StackPanel Spacing="8"><TextBlock Text="Dependencies need attention" FontWeight="SemiBold"/><ItemsControl ItemsSource="{Binding DependencyIssues}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="local:DependencyIssueViewModel"><Grid ColumnDefinitions="*,Auto" ColumnSpacing="8"><TextBlock Text="{Binding Message}" TextWrapping="Wrap"/><Button Grid.Column="1" Content="{Binding ActionLabel}" IsVisible="{Binding HasAction}" Command="{Binding Action}"/></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel>
+      </Border>
       <ListBox ItemsSource="{Binding Items}" Background="Transparent" BorderThickness="0">
         <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
         <ListBox.ItemTemplate>
@@ -36,12 +38,13 @@
                 <StackPanel Spacing="4"><TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"/><TextBlock Text="{Binding Version}" Foreground="#9AAAC2"/><TextBlock Text="{Binding Status}" Foreground="{Binding StatusBrush}"/></StackPanel>
                 <StackPanel Grid.Column="1" Spacing="7" HorizontalAlignment="Right">
                   <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
-                    <CheckBox Content="Select" IsChecked="{Binding Selected, Mode=TwoWay}" VerticalAlignment="Center"/>
-                    <Button Content="Enabled" IsVisible="{Binding Enabled}" Command="{Binding ToggleEnabled}"/>
-                    <Button Content="Disabled" IsVisible="{Binding IsDisabled}" Command="{Binding ToggleEnabled}"/>
-                    <Button Content="Move up" IsEnabled="{Binding CanMoveUp}" Command="{Binding MoveUp}"/>
-                    <Button Content="Move down" IsEnabled="{Binding CanMoveDown}" Command="{Binding MoveDown}"/>
-                    <Button Content="Details" Command="{Binding Details}"/><Button Content="Source" IsVisible="{Binding HasSource}" Command="{Binding OpenSource}"/><Button Content="Remove" Command="{Binding Remove}"/>
+                    <CheckBox Content="Select" IsVisible="{Binding IsInstalled}" IsChecked="{Binding Selected, Mode=TwoWay}" VerticalAlignment="Center"/>
+                    <Button Content="Remove from setup" IsVisible="{Binding IsMissing}" Command="{Binding RemoveFromSetup}"/>
+                    <Button Content="Enabled" IsVisible="{Binding IsInstalled}" Command="{Binding ToggleEnabled}"/>
+                    <Button Content="Disabled" IsVisible="{Binding IsInstalled}" Command="{Binding ToggleEnabled}"/>
+                    <Button Content="Move up" IsVisible="{Binding IsInstalled}" IsEnabled="{Binding CanMoveUp}" Command="{Binding MoveUp}"/>
+                    <Button Content="Move down" IsVisible="{Binding IsInstalled}" IsEnabled="{Binding CanMoveDown}" Command="{Binding MoveDown}"/>
+                    <Button Content="Details" IsVisible="{Binding IsInstalled}" Command="{Binding Details}"/><Button Content="Source" IsVisible="{Binding HasSource}" Command="{Binding OpenSource}"/><Button Content="Remove" IsVisible="{Binding IsInstalled}" Command="{Binding Remove}"/>
                   </WrapPanel>
                   <WrapPanel Orientation="Horizontal" ItemSpacing="6" IsVisible="{Binding HasMultipleVersions}">
                     <ComboBox ItemsSource="{Binding Versions}" SelectedItem="{Binding SelectedVersion, Mode=TwoWay}" MinWidth="120"/>
@@ -53,7 +56,7 @@
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>
-      <Border Classes="empty" IsVisible="{Binding IsEmpty}" Padding="32"><StackPanel Spacing="8" HorizontalAlignment="Center"><TextBlock Text="No mods installed yet." FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/><TextBlock Text="Add a mod to start building this setup." Opacity="0.6" HorizontalAlignment="Center"/><Button Content="Add your first mod" Classes="accent" Command="{Binding AddMod}" HorizontalAlignment="Center"/></StackPanel></Border>
+      <Border Classes="empty" IsVisible="{Binding IsEmpty}" Padding="32"><StackPanel Spacing="8" HorizontalAlignment="Center"><TextBlock Text="{Binding EmptyTitle}" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/><TextBlock Text="{Binding EmptyMessage}" Opacity="0.6" HorizontalAlignment="Center"/><Button Content="Add your first mod" IsVisible="{Binding ShowAddFirstMod}" Classes="accent" Command="{Binding AddMod}" HorizontalAlignment="Center"/></StackPanel></Border>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

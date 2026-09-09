@@ -49,6 +49,8 @@ public partial class MainWindow : Window
     private string? _catalogLastChecked;
     private string _librarySearch = "";
     private readonly HashSet<string> _selectedCatalogMods = new(StringComparer.OrdinalIgnoreCase);
+    private string _catalogSortColumn = "Name";
+    private bool _catalogSortDescending;
     private string _launchArguments = "";
     private readonly HashSet<string> _selectedMods = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<ProfileModRecord>> _appliedProfileSnapshots = new(StringComparer.OrdinalIgnoreCase);
@@ -173,6 +175,7 @@ public partial class MainWindow : Window
         dashboard.PlayStatus = game is null ? "Set up first" : !ready ? "Needs setup" : synchronized ? "Ready to play" : "Apply changes";
         dashboard.PlayDetail = game is null ? "Choose your game folder" : "Ragnarock";
         dashboard.ShowSetupAction = game is null;
+        dashboard.CanOpenGame = game is not null;
         dashboard.Headline = game is null
             ? "Welcome! Let’s get Ragnarock ready for mods."
             : ready
@@ -192,9 +195,11 @@ public partial class MainWindow : Window
         {
             var conflicts = plan.Value.Conflicts.Where(c => c.BlocksDeployment).Select(FriendlyDeploymentConflict).ToList();
             var warnings = plan.Value.Warnings.Where(w => !w.StartsWith("Found ", StringComparison.Ordinal)).ToList();
-            dashboard.ShowDeploymentNotice = !synchronized || conflicts.Count > 0 || warnings.Count > 0;
+            var unmanagedWarning = plan.Value.Warnings.FirstOrDefault(w => w.StartsWith("Found ", StringComparison.Ordinal));
+            dashboard.ShowDeploymentNotice = !synchronized || conflicts.Count > 0 || warnings.Count > 0 || unmanagedWarning is not null;
             dashboard.DeploymentMessage = synchronized ? "Your setup is active." : "Your setup is not active.";
-            dashboard.DeploymentDetails = string.Join(Environment.NewLine, conflicts.Concat(warnings.Select(w => "Notice: " + w)));
+            IEnumerable<string> unmanagedDetail = unmanagedWarning is null ? [] : new[] { unmanagedWarning };
+            dashboard.DeploymentDetails = string.Join(Environment.NewLine, conflicts.Concat(unmanagedDetail).Concat(warnings.Select(w => "Notice: " + w)));
         }
 
         dashboard.SetupAutomatically = new RelayCommand(SetupAutomatically);
@@ -213,9 +218,29 @@ public partial class MainWindow : Window
         var model = _viewModel.Mods;
         model.Search = _modSearch;
         model.Items.Clear();
+        model.DependencyIssues.Clear();
         var visible = mods.Where(m => string.IsNullOrWhiteSpace(_modSearch) || m.Name.Contains(_modSearch, StringComparison.OrdinalIgnoreCase) || m.Id.Contains(_modSearch, StringComparison.OrdinalIgnoreCase)).ToList();
         var state = _database.GetProfileMods(active.Id).ToDictionary(m => m.ModId, StringComparer.OrdinalIgnoreCase);
         var enabledOrder = state.Values.Where(m => m.Enabled).OrderBy(m => m.Priority).ThenBy(m => m.ModId, StringComparer.OrdinalIgnoreCase).ToList();
+        foreach (var missing in state.Values.Where(item => _database.GetMod(item.ModId) is null))
+        {
+            var missingRow = new ModRowViewModel
+            {
+                Id = missing.ModId,
+                Name = missing.ModId,
+                Version = "",
+                IsMissing = true,
+                SelectedVersion = missing.Version ?? ""
+            };
+            missingRow.RemoveFromSetup = new RelayCommand(() =>
+            {
+                _database.RemoveProfileMod(active.Id, missing.ModId);
+                _changesPending = true;
+                SetStatus($"Removed missing mod {missing.ModId} from {active.Name}.", error: true);
+                ShowDashboard(2);
+            });
+            model.Items.Add(missingRow);
+        }
         foreach (var mod in visible)
         {
             state.TryGetValue(mod.Id, out var profileMod);
@@ -262,18 +287,23 @@ public partial class MainWindow : Window
                 if (e.PropertyName == nameof(ModRowViewModel.Selected))
                 {
                     if (row.Selected) _selectedMods.Add(row.Id); else _selectedMods.Remove(row.Id);
+                    model.RefreshState();
                 }
             };
             model.Items.Add(row);
         }
-        var conflicts = planResult?.Success == true && planResult.Value is not null
-            ? planResult.Value.Conflicts.Where(c => c.Kind is "missing-dependency" or "disabled-dependency" or "dependency-version" or "profile-version").Select(c => "• " + c.Message).ToList()
-            : [];
-        model.DependencyNotice = conflicts.Count == 0 ? "" : "Dependencies need attention\n" + string.Join(Environment.NewLine, conflicts);
+        if (planResult?.Success == true && planResult.Value is not null)
+        {
+            foreach (var conflict in planResult.Value.Conflicts.Where(c => c.Kind is "missing-dependency" or "disabled-dependency" or "dependency-version" or "profile-version"))
+                model.DependencyIssues.Add(CreateDependencyIssue(conflict));
+        }
+        model.DependencyNotice = model.DependencyIssues.Count == 0 ? "" : "Dependencies need attention";
         model.SearchCommand = new RelayCommand(() => { _modSearch = model.Search.Trim(); ShowDashboard(2); });
+        model.SearchAction = model.SearchCommand;
         model.ClearSearch = new RelayCommand(() => { _modSearch = ""; ShowDashboard(2); });
         model.AddMod = new AsyncRelayCommand(ImportModPackage);
-        model.SelectAll = new RelayCommand(() => { foreach (var row in model.Items) { row.Selected = true; _selectedMods.Add(row.Id); } });
+        model.ImportDropped = path => ImportModPackage(path);
+        model.SelectAll = new RelayCommand(() => { foreach (var row in model.Items.Where(item => item.IsInstalled)) { row.Selected = true; _selectedMods.Add(row.Id); } model.RefreshState(); });
         model.ClearSelection = new RelayCommand(() => { _selectedMods.Clear(); ShowDashboard(2); });
         model.EnableAll = new RelayCommand(() => SetAllVisibleMods(active, mods, true));
         model.DisableAll = new RelayCommand(() => SetAllVisibleMods(active, mods, false));
@@ -281,6 +311,50 @@ public partial class MainWindow : Window
         model.DisableSelected = new RelayCommand(() => SetSelectedMods(active, false));
         model.RemoveSelected = new AsyncRelayCommand(RemoveSelectedMods);
         model.RefreshState();
+    }
+
+    private DependencyIssueViewModel CreateDependencyIssue(DeploymentConflict conflict)
+    {
+        var relatedId = conflict.RelatedModId;
+        if (relatedId is null)
+            return new DependencyIssueViewModel { Message = conflict.Message };
+
+        var dependency = _database.GetMod(relatedId);
+        if (dependency is not null && conflict.Kind == "disabled-dependency")
+        {
+            return new DependencyIssueViewModel
+            {
+                Message = conflict.Message,
+                ActionLabel = $"Enable {dependency.Name}",
+                Action = new RelayCommand(() =>
+                {
+                    var profile = _database.GetActiveProfile();
+                    var existing = _database.GetProfileMods(profile.Id).FirstOrDefault(mod => mod.ModId.Equals(dependency.Id, StringComparison.OrdinalIgnoreCase));
+                    _database.SetProfileMod(profile.Id, dependency.Id, true, existing?.Priority ?? 0, existing?.Version ?? dependency.Version);
+                    _changesPending = true;
+                    SetStatus($"Enabled dependency {dependency.Name}.");
+                    ShowDashboard(2);
+                })
+            };
+        }
+
+        var catalogMod = _officialCatalogResult?.Value?.Mods.FirstOrDefault(mod => mod.Id.Equals(relatedId, StringComparison.OrdinalIgnoreCase));
+        if (catalogMod?.Latest is not null)
+        {
+            return new DependencyIssueViewModel
+            {
+                Message = conflict.Message,
+                ActionLabel = dependency is null ? $"Install {catalogMod.Name}" : $"Update {dependency.Name}",
+                Action = new AsyncRelayCommand(() => InstallOfficial(catalogMod, catalogMod.Latest!, null))
+            };
+        }
+
+        return new DependencyIssueViewModel
+        {
+            Message = conflict.Message,
+            ActionLabel = "Open Discover",
+            Action = new RelayCommand(() => _tabs.SelectedIndex = 1)
+        };
     }
 
     private void PopulateDiscoverModel(IReadOnlyList<ModRecord> installed)
@@ -335,6 +409,7 @@ public partial class MainWindow : Window
                     if (e.PropertyName == nameof(DiscoverModViewModel.Selected))
                     {
                         if (row.Selected) AddCatalogSelectionWithDependencies(catalogMod); else _selectedCatalogMods.Remove(catalogMod.Id);
+                        model.RefreshState();
                     }
                 };
                 model.Mods.Add(row);
@@ -345,7 +420,34 @@ public partial class MainWindow : Window
         model.Refresh = new AsyncRelayCommand(RefreshOfficialCatalog);
         model.InstallSelected = new AsyncRelayCommand(InstallSelectedOfficial);
         model.UpdateAll = new AsyncRelayCommand(() => UpdateAllOfficial(installed));
+        var catalogForSelection = _officialCatalogResult?.Value;
+        model.SelectAll = new RelayCommand(() =>
+        {
+            var select = !model.Mods.All(row => row.Selected);
+            foreach (var row in model.Mods)
+            {
+                row.Selected = select;
+                if (select && catalogForSelection is not null)
+                {
+                    var catalogMod = catalogForSelection.Mods.FirstOrDefault(mod => mod.Id.Equals(row.Id, StringComparison.OrdinalIgnoreCase));
+                    if (catalogMod is not null) AddCatalogSelectionWithDependencies(catalogMod);
+                }
+                else _selectedCatalogMods.Remove(row.Id);
+            }
+            model.RefreshState();
+        });
+        model.HasUpdates = _officialCatalogResult?.Success == true;
+        model.SortByName = new RelayCommand(() => SortCatalogBy("Name"));
+        model.SortByLatest = new RelayCommand(() => SortCatalogBy("Latest"));
+        model.SortByInstalled = new RelayCommand(() => SortCatalogBy("Installed"));
         model.RefreshState();
+    }
+
+    private void SortCatalogBy(string column)
+    {
+        if (_catalogSortColumn == column) _catalogSortDescending = !_catalogSortDescending;
+        else { _catalogSortColumn = column; _catalogSortDescending = false; }
+        ShowDashboard(1);
     }
 
     private void PopulateProfilesModel(ProfileRecord active)
@@ -390,9 +492,25 @@ public partial class MainWindow : Window
         model.GamePath = game?.InstallPath ?? "";
         model.HasGame = game is not null;
         model.GameStatus = game is null ? "Choose your Ragnarock folder to get started." : _detector.Validate(game.InstallPath).IsValid ? "Ragnarock is ready." : "This folder needs attention. Choose the correct Ragnarock folder.";
-        model.ApplyStatus = game is null ? "Choose your Ragnarock folder above first." : planResult is { Success: true, Value: not null } plan
-            ? (!_changesPending && IsDeploymentSynchronized(plan.Value) ? "Your current mod setup is active in Ragnarock." : "Your current mod setup has changes waiting to be applied.")
-            : "We can’t check your mod setup yet. Resolve the issue shown here first.";
+        if (game is null)
+        {
+            model.ApplyStatus = "Choose your Ragnarock folder above first.";
+        }
+        else if (planResult is { Success: true, Value: not null } plan)
+        {
+            var applyLines = new List<string>
+            {
+                !_changesPending && IsDeploymentSynchronized(plan.Value) ? "Your current mod setup is active in Ragnarock." : "Your current mod setup has changes waiting to be applied."
+            };
+            applyLines.AddRange(plan.Value.Conflicts.Where(c => c.BlocksDeployment).Select(FriendlyDeploymentConflict));
+            var unmanagedCount = CreateDeploymentService().GetUnmanagedFiles(game.InstallPath).Count;
+            if (unmanagedCount > 0) applyLines.Add($"There {(unmanagedCount == 1 ? "is 1 extra mod file" : $"are {unmanagedCount} extra mod files")} in the game folder.");
+            model.ApplyStatus = string.Join(Environment.NewLine, applyLines);
+        }
+        else
+        {
+            model.ApplyStatus = "We can’t check your mod setup yet. Resolve the issue shown here first.";
+        }
         model.CanCleanUp = game is not null && CreateDeploymentService().GetUnmanagedFiles(game.InstallPath).Count > 0;
         var scriptMods = planResult?.Success == true && planResult.Value is not null
             ? planResult.Value.Items.Where(i => i.FileType.Equals("ue4ss-lua", StringComparison.OrdinalIgnoreCase) || i.FileType.Equals("ue4ss-dll", StringComparison.OrdinalIgnoreCase)).Select(i => i.ModId).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
@@ -571,7 +689,17 @@ public partial class MainWindow : Window
 
     private IEnumerable<CatalogMod> SortCatalog(IEnumerable<CatalogMod> mods)
     {
-        return mods.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase);
+        var sorted = _catalogSortColumn switch
+        {
+            "Latest" => _catalogSortDescending
+                ? mods.OrderByDescending(m => m.Latest?.Version, Comparer<string?>.Create((a, b) => SemanticVersion.Compare(a, b)))
+                : mods.OrderBy(m => m.Latest?.Version, Comparer<string?>.Create((a, b) => SemanticVersion.Compare(a, b))),
+            "Installed" => _catalogSortDescending
+                ? mods.OrderByDescending(m => _database.GetMod(m.Id)?.Version, Comparer<string?>.Create((a, b) => SemanticVersion.Compare(a, b)))
+                : mods.OrderBy(m => _database.GetMod(m.Id)?.Version, Comparer<string?>.Create((a, b) => SemanticVersion.Compare(a, b))),
+            _ => _catalogSortDescending ? mods.OrderByDescending(m => m.Name) : mods.OrderBy(m => m.Name)
+        };
+        return sorted.ThenBy(m => m.Name, StringComparer.OrdinalIgnoreCase);
     }
 
     private void ToggleCatalogSelection(CatalogMod mod, bool selected)

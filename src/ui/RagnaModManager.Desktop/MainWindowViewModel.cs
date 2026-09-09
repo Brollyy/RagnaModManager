@@ -119,6 +119,7 @@ public sealed class DashboardViewModel : ObservableObject
     public string PlayStatus { get; set; } = "Set up first";
     public string PlayDetail { get; set; } = "Choose your game folder";
     public bool ShowSetupAction { get; set; }
+    public bool CanOpenGame { get; set; }
     public bool ShowDeploymentNotice { get; set; }
     public string DeploymentMessage { get; set; } = "Your setup is not active.";
     public string DeploymentDetails { get; set; } = "";
@@ -140,7 +141,9 @@ public sealed class ModRowViewModel : ObservableObject
     public string Author { get; init; } = "";
     public string SourceUrl { get; init; } = "";
     public bool HasSource => !string.IsNullOrWhiteSpace(SourceUrl);
-    public string Status => Enabled ? "Enabled in this setup" : "Disabled in this setup";
+    public bool IsMissing { get; init; }
+    public bool IsInstalled => !IsMissing;
+    public string Status => IsMissing ? "Missing from the mod library" : Enabled ? "Enabled in this setup" : "Disabled in this setup";
     public string StatusBrush => Enabled ? "#4DE1C1" : "#9AAAC2";
     public bool IsDisabled => !Enabled;
     public bool HasMultipleVersions => Versions.Count > 1;
@@ -161,6 +164,7 @@ public sealed class ModRowViewModel : ObservableObject
     public ICommand? Details { get; set; }
     public ICommand? OpenSource { get; set; }
     public ICommand? Remove { get; set; }
+    public ICommand? RemoveFromSetup { get; set; }
 }
 
 public sealed class ModsPageViewModel : ObservableObject
@@ -169,8 +173,15 @@ public sealed class ModsPageViewModel : ObservableObject
     public string Search { get => _search; set => SetField(ref _search, value); }
     public string Subtitle { get; set; } = "These are the mods you have installed. Enable one to use it in your current setup.";
     public ObservableCollection<ModRowViewModel> Items { get; } = [];
+    public ObservableCollection<DependencyIssueViewModel> DependencyIssues { get; } = [];
     public bool HasItems => Items.Count > 0;
     public bool IsEmpty => !HasItems;
+    public bool HasSearch => !string.IsNullOrWhiteSpace(Search);
+    public string EmptyTitle => HasSearch ? "No installed mods match that search." : "No mods installed yet.";
+    public string EmptyMessage => HasSearch ? "Try a different mod name." : "Add a mod to start building this setup.";
+    public bool ShowAddFirstMod => !HasSearch;
+    public bool HasVisibleItems => Items.Any(item => item.IsInstalled);
+    public bool HasSelectedItems => Items.Any(item => item.Selected && item.IsInstalled);
     public ICommand? SearchCommand { get; set; }
     public ICommand? ClearSearch { get; set; }
     public ICommand? AddMod { get; set; }
@@ -181,9 +192,19 @@ public sealed class ModsPageViewModel : ObservableObject
     public ICommand? EnableSelected { get; set; }
     public ICommand? DisableSelected { get; set; }
     public ICommand? RemoveSelected { get; set; }
+    public ICommand? SearchAction { get; set; }
+    public Func<string, Task>? ImportDropped { get; set; }
     public string DependencyNotice { get; set; } = "";
     public bool HasDependencyNotice => !string.IsNullOrWhiteSpace(DependencyNotice);
-    public void RefreshState() { OnPropertyChanged(nameof(HasItems)); OnPropertyChanged(nameof(IsEmpty)); OnPropertyChanged(nameof(HasDependencyNotice)); }
+    public void RefreshState() { OnPropertyChanged(nameof(HasItems)); OnPropertyChanged(nameof(IsEmpty)); OnPropertyChanged(nameof(HasSearch)); OnPropertyChanged(nameof(EmptyTitle)); OnPropertyChanged(nameof(EmptyMessage)); OnPropertyChanged(nameof(ShowAddFirstMod)); OnPropertyChanged(nameof(HasVisibleItems)); OnPropertyChanged(nameof(HasSelectedItems)); OnPropertyChanged(nameof(HasDependencyNotice)); }
+}
+
+public sealed class DependencyIssueViewModel
+{
+    public string Message { get; init; } = "";
+    public string ActionLabel { get; init; } = "";
+    public bool HasAction => Action is not null;
+    public ICommand? Action { get; init; }
 }
 
 public sealed class DiscoverModViewModel : ObservableObject
@@ -207,17 +228,24 @@ public sealed class DiscoverPageViewModel : ObservableObject
 {
     private string _search = "";
     public string Search { get => _search; set => SetField(ref _search, value); }
+    public bool HasSearch => !string.IsNullOrWhiteSpace(Search);
     public string Status { get; set; } = "Community catalog has not been loaded yet.";
     public bool IsLoading { get; set; }
     public bool HasCatalog { get; set; }
     public bool IsEmpty => Mods.Count == 0;
     public ObservableCollection<DiscoverModViewModel> Mods { get; } = [];
+    public bool CanInstallSelected => Mods.Any(mod => mod.Selected);
+    public bool HasUpdates { get; set; }
     public ICommand? SearchCommand { get; set; }
     public ICommand? ClearSearch { get; set; }
     public ICommand? Refresh { get; set; }
     public ICommand? InstallSelected { get; set; }
     public ICommand? UpdateAll { get; set; }
-    public void RefreshState() => OnPropertyChanged(nameof(IsEmpty));
+    public ICommand? SelectAll { get; set; }
+    public ICommand? SortByName { get; set; }
+    public ICommand? SortByLatest { get; set; }
+    public ICommand? SortByInstalled { get; set; }
+    public void RefreshState() { OnPropertyChanged(nameof(IsEmpty)); OnPropertyChanged(nameof(HasSearch)); OnPropertyChanged(nameof(CanInstallSelected)); OnPropertyChanged(nameof(HasUpdates)); }
 }
 
 public sealed class ProfileRowViewModel : ObservableObject
@@ -256,6 +284,9 @@ public sealed class SettingsPageViewModel : ObservableObject
     public string RecoverySummary { get; set; } = "Choose your Ragnarock folder before using recovery tools.";
     public string LaunchArguments { get => _launchArguments; set => SetField(ref _launchArguments, value); }
     public bool HasGame { get; set; }
+    public bool CanApplySetup => HasGame;
+    public bool CanRecover => HasGame;
+    public bool CanUseSupport => HasGame;
     public bool CanCleanUp { get; set; }
     public bool HasCachedSupport { get; set; }
     public ObservableCollection<string> CachedSupportVersions { get; } = [];

@@ -7,12 +7,12 @@
     <StackPanel Spacing="14">
       <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12"><StackPanel Spacing="5"><TextBlock Text="Discover" FontSize="24" FontWeight="SemiBold"/><TextBlock Text="Find community mods for Ragnarock and install them with one click." Foreground="#9AAAC2" TextWrapping="Wrap"/></StackPanel><Button Grid.Column="1" Content="Refresh mod list" Classes="accent" Command="{Binding Refresh}" VerticalAlignment="Center"/></Grid>
       <Border Classes="card" Padding="12">
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8"><TextBox Text="{Binding Search, Mode=TwoWay}" Watermark="Search community mods…" MinWidth="280" KeyDown="OnSearchKeyDown"/><Button Grid.Column="1" Content="Clear" Command="{Binding ClearSearch}"/></Grid>
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8"><TextBox Text="{Binding Search, Mode=TwoWay}" Watermark="Search community mods…" MinWidth="280" KeyDown="OnSearchKeyDown"/><WrapPanel Grid.Column="1" Orientation="Horizontal" ItemSpacing="6"><Button Content="Search" Command="{Binding SearchCommand}"/><Button Content="Clear" IsEnabled="{Binding HasSearch}" Command="{Binding ClearSearch}"/></WrapPanel></Grid>
       </Border>
-      <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8"><Button Content="Install selected" Classes="accent" Command="{Binding InstallSelected}"/><Button Content="Update all" Command="{Binding UpdateAll}"/></WrapPanel>
+      <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8"><Button Content="Install selected" Classes="accent" IsEnabled="{Binding CanInstallSelected}" Command="{Binding InstallSelected}"/><Button Content="Update all" IsEnabled="{Binding HasUpdates}" Command="{Binding UpdateAll}"/></WrapPanel>
       <TextBlock Text="{Binding Status}" Foreground="#9AAAC2" TextWrapping="Wrap"/>
       <Border Classes="card" Padding="10">
-        <Grid ColumnDefinitions="28,Auto,2*,3*,120,140,220" ColumnSpacing="8"><TextBlock Grid.Column="1" Text="All" FontWeight="SemiBold"/><TextBlock Grid.Column="2" Text="Mod" FontWeight="SemiBold"/><TextBlock Grid.Column="3" Text="Description" FontWeight="SemiBold"/><TextBlock Grid.Column="4" Text="Latest" FontWeight="SemiBold"/><TextBlock Grid.Column="5" Text="Installed" FontWeight="SemiBold"/><TextBlock Grid.Column="6" Text="Actions" FontWeight="SemiBold"/></Grid>
+        <Grid ColumnDefinitions="28,Auto,2*,3*,120,140,220" ColumnSpacing="8"><Button Grid.Column="1" Content="All" Command="{Binding SelectAll}"/><Button Grid.Column="2" Content="Mod" Command="{Binding SortByName}"/><TextBlock Grid.Column="3" Text="Description" FontWeight="SemiBold"/><Button Grid.Column="4" Content="Latest" Command="{Binding SortByLatest}"/><Button Grid.Column="5" Content="Installed" Command="{Binding SortByInstalled}"/><TextBlock Grid.Column="6" Text="Actions" FontWeight="SemiBold"/></Grid>
       </Border>
       <ListBox ItemsSource="{Binding Mods}" Background="Transparent" BorderThickness="0">
         <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
