@@ -1,11 +1,21 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:RagnaModManager.Desktop"
         x:Class="RagnaModManager.Desktop.MainWindow"
+        x:DataType="local:MainWindowViewModel"
         Title="{Binding WindowTitle}"
         Width="1240"
         Height="820"
         MinWidth="900"
         MinHeight="640">
+  <Window.Styles>
+    <Style Selector="Button:pointerover">
+      <Setter Property="RenderTransform" Value="scale(1.02)" />
+    </Style>
+    <Style Selector="Button:pressed">
+      <Setter Property="RenderTransform" Value="scale(0.99)" />
+    </Style>
+  </Window.Styles>
   <DockPanel x:Name="ShellRoot" Margin="24">
     <Border DockPanel.Dock="Top"
             Background="#111B2E"
@@ -31,6 +41,15 @@
     </Border>
     <Border x:Name="PendingChangesBar" DockPanel.Dock="Bottom" IsVisible="False" />
     <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Margin="4,12,4,0" Foreground="#9AAAC2" TextWrapping="Wrap" />
-    <ContentControl x:Name="Body" />
+    <TabControl x:Name="NavigationTabs"
+                TabStripPlacement="Left"
+                HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch">
+      <TabItem Header="HOME"><local:PageHost x:Name="HomePage" /></TabItem>
+      <TabItem Header="DISCOVER"><local:PageHost x:Name="DiscoverPage" /></TabItem>
+      <TabItem Header="MODS"><local:PageHost x:Name="ModsPage" /></TabItem>
+      <TabItem Header="SETUPS"><local:PageHost x:Name="SetupsPage" /></TabItem>
+      <TabItem Header="SETTINGS"><local:PageHost x:Name="SettingsPage" /></TabItem>
+    </TabControl>
   </DockPanel>
 </Window>

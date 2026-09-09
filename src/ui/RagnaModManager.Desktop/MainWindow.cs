@@ -39,8 +39,12 @@ public partial class MainWindow : Window
     private readonly OfficialCatalogService _officialCatalog;
     private readonly FolderOpener _folderOpener = new();
 
-    private ContentControl _body = null!;
-    private readonly TabControl _tabs = new();
+    private TabControl _tabs = null!;
+    private PageHost _homePage = null!;
+    private PageHost _discoverPage = null!;
+    private PageHost _modsPage = null!;
+    private PageHost _setupsPage = null!;
+    private PageHost _settingsPage = null!;
     private TextBlock _status = null!;
     private Border _pendingChangesBar = null!;
     private Button? _launchButton;
@@ -92,7 +96,12 @@ public partial class MainWindow : Window
 
     private void BuildShell()
     {
-        _body = this.FindControl<ContentControl>("Body") ?? throw new InvalidOperationException("Body host was not loaded.");
+        _tabs = this.FindControl<TabControl>("NavigationTabs") ?? throw new InvalidOperationException("Navigation tabs were not loaded.");
+        _homePage = this.FindControl<PageHost>("HomePage") ?? throw new InvalidOperationException("Home page was not loaded.");
+        _discoverPage = this.FindControl<PageHost>("DiscoverPage") ?? throw new InvalidOperationException("Discover page was not loaded.");
+        _modsPage = this.FindControl<PageHost>("ModsPage") ?? throw new InvalidOperationException("Mods page was not loaded.");
+        _setupsPage = this.FindControl<PageHost>("SetupsPage") ?? throw new InvalidOperationException("Setups page was not loaded.");
+        _settingsPage = this.FindControl<PageHost>("SettingsPage") ?? throw new InvalidOperationException("Settings page was not loaded.");
         _pendingChangesBar = this.FindControl<Border>("PendingChangesBar") ?? throw new InvalidOperationException("Pending changes bar was not loaded.");
         _status = this.FindControl<TextBlock>("StatusText") ?? throw new InvalidOperationException("Status host was not loaded.");
         _launchButton = this.FindControl<Button>("LaunchButton") ?? throw new InvalidOperationException("Launch button was not loaded.");
@@ -140,15 +149,12 @@ public partial class MainWindow : Window
         _rebuildingTabs = true;
         try
         {
-            _tabs.Items.Clear();
-            _tabs.TabStripPlacement = Dock.Left;
-            _tabs.Items.Add(Tab("HOME", BuildDashboardPage(game, active, mods, planResult)));
-            _tabs.Items.Add(Tab("DISCOVER", new ScrollViewer { Content = BuildOfficialCatalog(mods) }));
-            _tabs.Items.Add(Tab("MODS", BuildModsPage(active, mods, planResult)));
-            _tabs.Items.Add(Tab("SETUPS", new ScrollViewer { Content = BuildProfiles(active) }));
-            _tabs.Items.Add(Tab("SETTINGS", BuildSettingsPage(game, planResult)));
+            _homePage.SetContent(BuildDashboardPage(game, active, mods, planResult));
+            _discoverPage.SetContent(BuildOfficialCatalog(mods));
+            _modsPage.SetContent(BuildModsPage(active, mods, planResult));
+            _setupsPage.SetContent(BuildProfiles(active));
+            _settingsPage.SetContent(BuildSettingsPage(game, planResult));
             _tabs.SelectedIndex = Math.Min(_selectedTab, _tabs.Items.Count - 1);
-            _body.Content = _tabs;
         }
         finally
         {
@@ -632,8 +638,6 @@ public partial class MainWindow : Window
             return false;
         }
     }
-
-    private static TabItem Tab(string header, Control content) => new() { Header = header, Content = content };
 
     private static string FriendlyDeploymentConflict(DeploymentConflict conflict) => conflict.Kind switch
     {
@@ -1983,8 +1987,6 @@ public partial class MainWindow : Window
             if (change.Property == ToggleButton.IsCheckedProperty)
                 SetExpanded(change.GetNewValue<bool?>() == true);
         };
-        toggle.Click += (_, _) => SetExpanded(toggle.IsChecked == true);
-
         return new Border
         {
             Background = new SolidColorBrush(Color.Parse("#17243B")),
