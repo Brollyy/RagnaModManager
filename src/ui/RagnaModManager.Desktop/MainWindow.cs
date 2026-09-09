@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
+using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using System.Diagnostics;
@@ -24,7 +25,7 @@ using RagnaModManager.Ragnarock.Ue4ss;
 
 namespace RagnaModManager.Desktop;
 
-public sealed class MainWindow : Window
+public partial class MainWindow : Window
 {
     private const string Ue4ssZipHelp = "If a mod asks for script support, choose its support ZIP here and the manager will install it for you.";
 
@@ -38,11 +39,10 @@ public sealed class MainWindow : Window
     private readonly OfficialCatalogService _officialCatalog;
     private readonly FolderOpener _folderOpener = new();
 
-    private readonly ContentControl _body = new();
+    private ContentControl _body = null!;
     private readonly TabControl _tabs = new();
-    private readonly TextBlock _status = new() { TextWrapping = TextWrapping.Wrap };
-    private readonly Border _pendingChangesBar = new();
-    private TextBlock? _setupBadge;
+    private TextBlock _status = null!;
+    private Border _pendingChangesBar = null!;
     private Button? _launchButton;
     private TextBlock? _libraryStatus;
     private int _selectedTab;
@@ -58,14 +58,12 @@ public sealed class MainWindow : Window
     private readonly HashSet<string> _selectedMods = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _expandedAccordions = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<ProfileModRecord>> _appliedProfileSnapshots = new(StringComparer.OrdinalIgnoreCase);
+    private readonly MainWindowViewModel _viewModel = new();
 
     public MainWindow()
     {
-        Title = "Ragna Mod Manager";
-        Width = 1240;
-        Height = 820;
-        MinWidth = 900;
-        MinHeight = 640;
+        InitializeComponent();
+        DataContext = _viewModel;
 
         var root = Environment.GetEnvironmentVariable("RMM_DATA_DIR");
         _paths = string.IsNullOrWhiteSpace(root) ? AppPaths.CreateDefault() : AppPaths.Create(root);
@@ -90,42 +88,15 @@ public sealed class MainWindow : Window
         }
     }
 
+    private void InitializeComponent() => AvaloniaXamlLoader.Load(this);
+
     private void BuildShell()
     {
-        var root = new DockPanel { Margin = new Thickness(24) };
-
-        var header = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-            Margin = new Thickness(0)
-        };
-        _setupBadge = new TextBlock
-        {
-            Text = "Current setup: Default",
-            Foreground = new SolidColorBrush(Color.Parse("#4DE1C1")),
-            FontSize = 12,
-            Margin = new Thickness(0, 4, 0, 0)
-        };
-        header.Children.Add(Cell(new StackPanel
-        {
-            Spacing = 5,
-            Children =
-            {
-                new TextBlock { Text = "RMM  //  RAGNAROCK", FontSize = 12, FontWeight = FontWeight.Bold, Foreground = new SolidColorBrush(Color.Parse("#4DE1C1")), LetterSpacing = 1.5 },
-                new TextBlock { Text = "Ragnarock, your way.", FontSize = 28, FontWeight = FontWeight.SemiBold },
-                new TextBlock
-                {
-                    Text = "Choose mods, turn them on, and play.",
-                    Foreground = new SolidColorBrush(Color.Parse("#9AAAC2")),
-                    TextWrapping = TextWrapping.Wrap
-                },
-                _setupBadge
-            }
-        }, 0));
-
-        _launchButton = PrimaryButton("Launch Ragnarock");
+        _body = this.FindControl<ContentControl>("Body") ?? throw new InvalidOperationException("Body host was not loaded.");
+        _pendingChangesBar = this.FindControl<Border>("PendingChangesBar") ?? throw new InvalidOperationException("Pending changes bar was not loaded.");
+        _status = this.FindControl<TextBlock>("StatusText") ?? throw new InvalidOperationException("Status host was not loaded.");
+        _launchButton = this.FindControl<Button>("LaunchButton") ?? throw new InvalidOperationException("Launch button was not loaded.");
         _launchButton.Click += (_, _) => LaunchGame();
-        header.Children.Add(Cell(_launchButton, 1));
 
         _tabs.SelectionChanged += (_, _) =>
         {
@@ -136,32 +107,7 @@ public sealed class MainWindow : Window
             }
         };
 
-        var headerCard = new Border
-        {
-            Background = new SolidColorBrush(Color.Parse("#111B2E")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#2A3A55")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(14),
-            BoxShadow = BoxShadows.Parse("0 4 12 0 #15000000"),
-            Padding = new Thickness(22),
-            Margin = new Thickness(0, 0, 0, 18),
-            Child = header
-        };
-        DockPanel.SetDock(headerCard, Dock.Top);
-        root.Children.Add(headerCard);
-
         _pendingChangesBar.IsVisible = false;
-        _pendingChangesBar.Margin = new Thickness(0, 12, 0, 0);
-        DockPanel.SetDock(_pendingChangesBar, Dock.Bottom);
-        root.Children.Add(_pendingChangesBar);
-
-        _status.Margin = new Thickness(4, 12, 4, 0);
-        _status.Foreground = new SolidColorBrush(Color.Parse("#9AAAC2"));
-        DockPanel.SetDock(_status, Dock.Bottom);
-        root.Children.Add(_status);
-
-        root.Children.Add(_body);
-        Content = root;
     }
 
     private void ShowDashboard()
@@ -176,7 +122,7 @@ public sealed class MainWindow : Window
         var active = _database.GetActiveProfile();
         var mods = _database.GetMods();
         EnsureAppliedProfileSnapshot(active.Id);
-        _setupBadge?.SetCurrentValue(TextBlock.TextProperty, $"Current setup: {active.Name}");
+        _viewModel.CurrentSetup = active.Name;
         var planResult = game is null ? null : CreateDeploymentService().Preview(game.InstallPath);
         if (planResult is { Success: true, Value: not null })
         {
@@ -187,6 +133,8 @@ public sealed class MainWindow : Window
         }
         var canLaunch = game is not null && !_changesPending && planResult is { Success: true, Value: not null } &&
                         !planResult.Value.Conflicts.Any(conflict => conflict.BlocksDeployment);
+        _viewModel.CanLaunch = canLaunch;
+        _viewModel.HasPendingChanges = _changesPending;
         _launchButton?.SetCurrentValue(Avalonia.Controls.Button.IsEnabledProperty, canLaunch);
 
         _rebuildingTabs = true;

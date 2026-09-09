@@ -1,0 +1,36 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="RagnaModManager.Desktop.MainWindow"
+        Title="{Binding WindowTitle}"
+        Width="1240"
+        Height="820"
+        MinWidth="900"
+        MinHeight="640">
+  <DockPanel x:Name="ShellRoot" Margin="24">
+    <Border DockPanel.Dock="Top"
+            Background="#111B2E"
+            BorderBrush="#2A3A55"
+            BorderThickness="1"
+            CornerRadius="14"
+            BoxShadow="0 4 12 0 #15000000"
+            Padding="22"
+            Margin="0,0,0,18">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="5">
+          <TextBlock Text="RMM  //  RAGNAROCK" FontSize="12" FontWeight="Bold" Foreground="#4DE1C1" />
+          <TextBlock Text="Ragnarock, your way." FontSize="28" FontWeight="SemiBold" />
+          <TextBlock Text="Choose mods, enable them, and play." Foreground="#9AAAC2" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding CurrentSetupLabel}" Foreground="#4DE1C1" FontSize="12" />
+        </StackPanel>
+        <Button x:Name="LaunchButton"
+                Grid.Column="1"
+                Content="Launch Ragnarock"
+                Classes="accent"
+                VerticalAlignment="Center" />
+      </Grid>
+    </Border>
+    <Border x:Name="PendingChangesBar" DockPanel.Dock="Bottom" IsVisible="False" />
+    <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Margin="4,12,4,0" Foreground="#9AAAC2" TextWrapping="Wrap" />
+    <ContentControl x:Name="Body" />
+  </DockPanel>
+</Window>
