@@ -1,5 +1,6 @@
 bin/
 obj/
+artifacts/
 .dotnet_home/
 .idea/
 .vs/
