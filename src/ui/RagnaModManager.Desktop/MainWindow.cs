@@ -40,15 +40,8 @@ public partial class MainWindow : Window
     private readonly FolderOpener _folderOpener = new();
 
     private TabControl _tabs = null!;
-    private PageHost _homePage = null!;
-    private PageHost _discoverPage = null!;
-    private PageHost _modsPage = null!;
-    private PageHost _setupsPage = null!;
-    private PageHost _settingsPage = null!;
     private TextBlock _status = null!;
-    private Border _pendingChangesBar = null!;
     private Button? _launchButton;
-    private TextBlock? _libraryStatus;
     private int _selectedTab;
     private bool _rebuildingTabs;
     private bool _changesPending;
@@ -56,17 +49,20 @@ public partial class MainWindow : Window
     private string? _catalogLastChecked;
     private string _librarySearch = "";
     private readonly HashSet<string> _selectedCatalogMods = new(StringComparer.OrdinalIgnoreCase);
-    private string _catalogSortColumn = "Name";
-    private bool _catalogSortDescending;
     private string _launchArguments = "";
     private readonly HashSet<string> _selectedMods = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _expandedAccordions = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<ProfileModRecord>> _appliedProfileSnapshots = new(StringComparer.OrdinalIgnoreCase);
     private readonly MainWindowViewModel _viewModel = new();
 
     public MainWindow()
     {
         InitializeComponent();
+        // Some Linux window managers restore a stale compact geometry before the
+        // first layout pass. Keep the intended desktop canvas explicit.
+        Width = 1240;
+        Height = 820;
+        MinWidth = 900;
+        MinHeight = 640;
         DataContext = _viewModel;
 
         var root = Environment.GetEnvironmentVariable("RMM_DATA_DIR");
@@ -88,7 +84,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            Content = Page("Startup failed", Text(ex.Message));
+            Content = new TextBlock { Text = $"Startup failed\n\n{ex.Message}", TextWrapping = TextWrapping.Wrap, Margin = new Thickness(24) };
         }
     }
 
@@ -97,15 +93,11 @@ public partial class MainWindow : Window
     private void BuildShell()
     {
         _tabs = this.FindControl<TabControl>("NavigationTabs") ?? throw new InvalidOperationException("Navigation tabs were not loaded.");
-        _homePage = this.FindControl<PageHost>("HomePage") ?? throw new InvalidOperationException("Home page was not loaded.");
-        _discoverPage = this.FindControl<PageHost>("DiscoverPage") ?? throw new InvalidOperationException("Discover page was not loaded.");
-        _modsPage = this.FindControl<PageHost>("ModsPage") ?? throw new InvalidOperationException("Mods page was not loaded.");
-        _setupsPage = this.FindControl<PageHost>("SetupsPage") ?? throw new InvalidOperationException("Setups page was not loaded.");
-        _settingsPage = this.FindControl<PageHost>("SettingsPage") ?? throw new InvalidOperationException("Settings page was not loaded.");
-        _pendingChangesBar = this.FindControl<Border>("PendingChangesBar") ?? throw new InvalidOperationException("Pending changes bar was not loaded.");
         _status = this.FindControl<TextBlock>("StatusText") ?? throw new InvalidOperationException("Status host was not loaded.");
         _launchButton = this.FindControl<Button>("LaunchButton") ?? throw new InvalidOperationException("Launch button was not loaded.");
         _launchButton.Click += (_, _) => LaunchGame();
+        _viewModel.ApplyChanges = new RelayCommand(DeployActiveProfile);
+        _viewModel.RevertChanges = new RelayCommand(RevertPendingChanges);
 
         _tabs.SelectionChanged += (_, _) =>
         {
@@ -116,7 +108,6 @@ public partial class MainWindow : Window
             }
         };
 
-        _pendingChangesBar.IsVisible = false;
     }
 
     private void ShowDashboard()
@@ -149,11 +140,7 @@ public partial class MainWindow : Window
         _rebuildingTabs = true;
         try
         {
-            _homePage.SetContent(BuildDashboardPage(game, active, mods, planResult));
-            _discoverPage.SetContent(BuildOfficialCatalog(mods));
-            _modsPage.SetContent(BuildModsPage(active, mods, planResult));
-            _setupsPage.SetContent(BuildProfiles(active));
-            _settingsPage.SetContent(BuildSettingsPage(game, planResult));
+            RefreshDeclarativeViews(game, active, mods, planResult);
             _tabs.SelectedIndex = Math.Min(_selectedTab, _tabs.Items.Count - 1);
         }
         finally
@@ -163,172 +150,290 @@ public partial class MainWindow : Window
         UpdatePendingChangesBar();
     }
 
-    private Control BuildDashboardPage(GameRecord? game, ProfileRecord active, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
+    private void RefreshDeclarativeViews(GameRecord? game, ProfileRecord active, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
     {
-        return new ScrollViewer
-        {
-            Content = new StackPanel { Spacing = 14, Children =
-            {
-                BuildDashboardSummary(game, active, mods, planResult),
-                BuildQuickActions(game),
-                BuildDashboardDeploymentStatus(game, planResult)
-            }}
-        };
+        PopulateDashboardModel(game, active, mods, planResult);
+        PopulateModsModel(active, mods, planResult);
+        PopulateDiscoverModel(mods);
+        PopulateProfilesModel(active);
+        PopulateSettingsModel(game, planResult);
+
+        _viewModel.RefreshPages();
     }
 
-    private Control BuildDashboardDeploymentStatus(GameRecord? game, Core.Common.Result<DeploymentPlan>? planResult)
+    private void PopulateDashboardModel(GameRecord? game, ProfileRecord active, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
     {
-        if (game is null || planResult is not { Success: true, Value: not null }) return new Border { IsVisible = false };
-        var plan = planResult.Value;
-        var synchronized = !_changesPending && IsDeploymentSynchronized(plan);
-        if (synchronized && plan.Warnings.Count == 0) return new Border { IsVisible = false };
-        var content = new List<Control>
+        var enabled = GetEnabledMods().Count;
+        var ready = game is not null && new RagnarockCompatibilityChecker().Check(game.InstallPath).CanManage;
+        var synchronized = game is not null && !_changesPending && planResult is { Success: true, Value: not null } && IsDeploymentSynchronized(planResult.Value);
+        var dashboard = _viewModel.Dashboard;
+        dashboard.SetupName = active.Name;
+        dashboard.ActiveMods = enabled == 0 ? "None yet" : $"{enabled} active";
+        dashboard.InstalledMods = $"{mods.Count} installed";
+        dashboard.PlayStatus = game is null ? "Set up first" : !ready ? "Needs setup" : synchronized ? "Ready to play" : "Apply changes";
+        dashboard.PlayDetail = game is null ? "Choose your game folder" : "Ragnarock";
+        dashboard.ShowSetupAction = game is null;
+        dashboard.Headline = game is null
+            ? "Welcome! Let’s get Ragnarock ready for mods."
+            : ready
+                ? synchronized
+                    ? enabled == 0 ? "Ragnarock is ready. Add a mod or launch without mods." : "Your setup is ready. Launch Ragnarock or change your mods."
+                    : "Ragnarock is ready, but your setup is not applied."
+                : "One quick setup step remains before you can use mods.";
+        dashboard.HeadlineBrush = game is null || !ready ? "#FFB15C" : "#4DE1C1";
+        dashboard.NextSteps = game is null
+            ? "Set up your game folder, then choose your first mod. We’ll keep the rest of the setup out of your way."
+            : ready
+                ? synchronized ? "Browse for something new, or launch Ragnarock with this setup." : "Review your active mods, then apply the setup before launching Ragnarock."
+                : "Choose a valid Ragnarock folder to continue.";
+        dashboard.ShowDeploymentNotice = false;
+        dashboard.DeploymentDetails = "";
+        if (game is not null && planResult is { Success: true, Value: not null } plan)
         {
-            Text(synchronized ? "Your setup is active" : "Your setup is not active")
-        };
-        var conflicts = plan.Conflicts.Where(c => c.BlocksDeployment).Select(FriendlyDeploymentConflict).ToList();
-        if (conflicts.Count > 0)
-        {
-            content.Add(Text(string.Join(Environment.NewLine, conflicts)));
+            var conflicts = plan.Value.Conflicts.Where(c => c.BlocksDeployment).Select(FriendlyDeploymentConflict).ToList();
+            var warnings = plan.Value.Warnings.Where(w => !w.StartsWith("Found ", StringComparison.Ordinal)).ToList();
+            dashboard.ShowDeploymentNotice = !synchronized || conflicts.Count > 0 || warnings.Count > 0;
+            dashboard.DeploymentMessage = synchronized ? "Your setup is active." : "Your setup is not active.";
+            dashboard.DeploymentDetails = string.Join(Environment.NewLine, conflicts.Concat(warnings.Select(w => "Notice: " + w)));
         }
-        var unmanagedWarning = plan.Warnings.FirstOrDefault(w => w.StartsWith("Found ", StringComparison.Ordinal));
-        if (unmanagedWarning is not null)
-        {
-            var count = unmanagedWarning.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-                .FirstOrDefault(part => int.TryParse(part, out _));
-            content.Add(Text(count is not null ? $"{count} extra mod file{(count == "1" ? "" : "s")} found." : "Extra mod files were found."));
-            content.Add(MutedText("These files are outside your current setup. Open Settings if you want to clean them up."));
-        }
-        content.AddRange(plan.Warnings.Where(w => !w.StartsWith("Found ", StringComparison.Ordinal)).Select(w => MutedText("Notice: " + w)));
-        if (!synchronized)
-        {
-            content.Add(MutedText("Your latest choices are waiting. Use Apply changes below to make this setup active."));
-        }
-        return Section("Before you play", content.ToArray());
-    }
 
-    private Control BuildModsPage(ProfileRecord active, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
-    {
-        var import = PrimaryButton("Add mod file");
-        import.Click += async (_, _) => await ImportModPackage();
-        var search = new TextBox { Watermark = "Search installed mods…", Text = _modSearch, MinWidth = 300 };
-        search.KeyDown += (_, e) =>
+        dashboard.SetupAutomatically = new RelayCommand(SetupAutomatically);
+        dashboard.AddMod = new AsyncRelayCommand(ImportModPackage);
+        dashboard.OpenGameFolder = new RelayCommand(() =>
         {
-            if (e.Key == Key.Enter)
-            {
-                _modSearch = search.Text?.Trim() ?? "";
-                ShowDashboard(2);
-            }
-        };
-        var searchAction = Button("Search");
-        searchAction.Click += (_, _) => { _modSearch = search.Text?.Trim() ?? ""; ShowDashboard(2); };
-        var clearSearch = Button("Clear");
-        clearSearch.IsEnabled = !string.IsNullOrWhiteSpace(_modSearch);
-        clearSearch.Click += (_, _) => { _modSearch = ""; ShowDashboard(2); };
-        var searchBox = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { Cell(search, 0), Cell(clearSearch, 1) } };
-        var visibleMods = mods.Where(m => string.IsNullOrWhiteSpace(_modSearch) ||
-            m.Name.Contains(_modSearch, StringComparison.OrdinalIgnoreCase) ||
-            m.Id.Contains(_modSearch, StringComparison.OrdinalIgnoreCase)).ToList();
-        var enableAll = Button("Enable all visible");
-        enableAll.IsEnabled = visibleMods.Count > 0;
-        enableAll.Click += (_, _) => SetAllVisibleMods(active, mods, true);
-        var disableAll = Button("Disable all visible");
-        disableAll.IsEnabled = visibleMods.Count > 0;
-        disableAll.Click += (_, _) => SetAllVisibleMods(active, mods, false);
-        var enableSelected = Button("Enable selected");
-        enableSelected.IsEnabled = _selectedMods.Any(id => visibleMods.Any(m => m.Id.Equals(id, StringComparison.OrdinalIgnoreCase)));
-        enableSelected.Click += (_, _) => SetSelectedMods(active, true);
-        var disableSelected = Button("Disable selected");
-        disableSelected.IsEnabled = enableSelected.IsEnabled;
-        disableSelected.Click += (_, _) => SetSelectedMods(active, false);
-        var removeSelected = Button("Remove selected");
-        removeSelected.IsEnabled = _selectedMods.Any(id => visibleMods.Any(m => m.Id.Equals(id, StringComparison.OrdinalIgnoreCase)));
-        removeSelected.Click += async (_, _) => await RemoveSelectedMods();
-        var selectAll = Button("Select all");
-        selectAll.IsEnabled = visibleMods.Count > 0;
-        selectAll.Click += (_, _) => { foreach (var mod in visibleMods) _selectedMods.Add(mod.Id); ShowDashboard(2); };
-        var selectNone = Button("Clear selection");
-        selectNone.Click += (_, _) => { _selectedMods.Clear(); ShowDashboard(2); };
-        var page = new StackPanel { Spacing = 14, Children =
-        {
-            new TextBlock { Text = "Your mods", FontSize = 24, FontWeight = FontWeight.SemiBold },
-            Text("These are the mods you have installed. Enable one to use it in your current setup."),
-            Wrap(searchBox, searchAction, import),
-            CompactExpander("Bulk actions", Wrap(selectAll, selectNone, enableAll, disableAll, enableSelected, disableSelected, removeSelected), 150),
-            MutedText("You can also drag and drop a mod file anywhere in this page."),
-            BuildDependencyNotice(planResult),
-            BuildModList(active, mods)
-        }};
-        DragDrop.SetAllowDrop(page, true);
-        page.AddHandler(DragDrop.DropEvent, async (_, e) =>
-        {
-            var file = e.DataTransfer.TryGetFiles()?.FirstOrDefault(f => f.Name.EndsWith(".rmod", StringComparison.OrdinalIgnoreCase));
-            if (file is not null) await ImportModPackage(file.Path.LocalPath);
+            var current = _database.GetGame();
+            if (current is null) SetStatus("Choose your Ragnarock folder first.", error: true);
+            else OpenFolder(current.InstallPath);
         });
-        return new ScrollViewer
-        {
-            Content = page
-        };
+        dashboard.OpenModLibrary = new RelayCommand(() => OpenFolder(_paths.ModLibrary));
     }
 
-    private Control BuildDependencyNotice(Core.Common.Result<DeploymentPlan>? planResult)
+    private void PopulateModsModel(ProfileRecord active, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
     {
-        var conflicts = planResult?.Success == true && planResult.Value is not null
-            ? planResult.Value.Conflicts
-                .Where(conflict => conflict.Kind is "missing-dependency" or "disabled-dependency" or "dependency-version" or "profile-version")
-                .ToList()
-            : [];
-        if (conflicts.Count == 0) return new Border { IsVisible = false };
-
-        var details = new StackPanel { Spacing = 4 };
-        details.Children.Add(new TextBlock
+        var model = _viewModel.Mods;
+        model.Search = _modSearch;
+        model.Items.Clear();
+        var visible = mods.Where(m => string.IsNullOrWhiteSpace(_modSearch) || m.Name.Contains(_modSearch, StringComparison.OrdinalIgnoreCase) || m.Id.Contains(_modSearch, StringComparison.OrdinalIgnoreCase)).ToList();
+        var state = _database.GetProfileMods(active.Id).ToDictionary(m => m.ModId, StringComparer.OrdinalIgnoreCase);
+        var enabledOrder = state.Values.Where(m => m.Enabled).OrderBy(m => m.Priority).ThenBy(m => m.ModId, StringComparer.OrdinalIgnoreCase).ToList();
+        foreach (var mod in visible)
         {
-            Text = "Dependencies need attention",
-            FontWeight = FontWeight.SemiBold,
-            Foreground = new SolidColorBrush(Color.Parse("#FF8B8B"))
-        });
-        details.Children.Add(Text("These enabled mods cannot be applied until their dependencies are installed, enabled, or updated."));
-        foreach (var conflict in conflicts)
-        {
-            var action = conflict.RelatedModId is null ? null : BuildDependencyAction(conflict);
-            details.Children.Add(action is null
-                ? new TextBlock { Text = "• " + conflict.Message, Foreground = new SolidColorBrush(Color.Parse("#FF8B8B")), TextWrapping = TextWrapping.Wrap }
-                : Wrap(new TextBlock { Text = "• " + conflict.Message, Foreground = new SolidColorBrush(Color.Parse("#FF8B8B")), TextWrapping = TextWrapping.Wrap }, action));
-        }
-
-        return Card(details);
-    }
-
-    private Control BuildDependencyAction(DeploymentConflict conflict)
-    {
-        var dependency = _database.GetMod(conflict.RelatedModId!);
-        if (dependency is not null && conflict.Kind == "disabled-dependency")
-        {
-            var enable = Button($"Enable {dependency.Name}");
-            enable.Click += (_, _) =>
+            state.TryGetValue(mod.Id, out var profileMod);
+            var versions = _database.GetModVersions(mod.Id).Select(v => v.Version).ToList();
+            var selectedVersion = profileMod?.Version ?? mod.Version;
+            var orderIndex = enabledOrder.FindIndex(item => item.ModId.Equals(mod.Id, StringComparison.OrdinalIgnoreCase));
+            var row = new ModRowViewModel
             {
-                var profile = _database.GetActiveProfile();
-                var existing = _database.GetProfileMods(profile.Id)
-                    .FirstOrDefault(mod => mod.ModId.Equals(dependency.Id, StringComparison.OrdinalIgnoreCase));
-                _database.SetProfileMod(profile.Id, dependency.Id, true, existing?.Priority ?? 0, existing?.Version ?? dependency.Version);
-                _changesPending = true;
-                SetStatus($"Enabled dependency {dependency.Name}.");
-                ShowDashboard(2);
+                Id = mod.Id,
+                Name = mod.Name,
+                Version = $"Version {selectedVersion}" + (string.IsNullOrWhiteSpace(mod.Author) ? "" : $" by {mod.Author}"),
+                Author = mod.Author ?? "",
+                SourceUrl = _officialCatalogResult?.Value?.Mods.FirstOrDefault(c => c.Id.Equals(mod.Id, StringComparison.OrdinalIgnoreCase))?.SourceUrl ?? "",
+                Enabled = profileMod?.Enabled == true,
+                Selected = _selectedMods.Contains(mod.Id),
+                SelectedVersion = selectedVersion,
+                CanMoveUp = profileMod?.Enabled == true && orderIndex > 0,
+                CanMoveDown = profileMod?.Enabled == true && orderIndex >= 0 && orderIndex < enabledOrder.Count - 1
             };
-            return enable;
+            foreach (var version in versions) row.Versions.Add(version);
+            row.ToggleEnabled = new RelayCommand(() =>
+            {
+                var enabled = !row.Enabled;
+                _database.SetProfileMod(active.Id, mod.Id, enabled, profileMod?.Priority ?? 0, row.SelectedVersion);
+                _changesPending = true;
+                SetStatus($"{mod.Name} is now {(enabled ? "enabled" : "disabled")} in {active.Name}.");
+                ShowDashboard(2);
+            });
+            row.ChangeVersion = new RelayCommand(() =>
+            {
+                if (string.IsNullOrWhiteSpace(row.SelectedVersion)) return;
+                _database.SetProfileMod(active.Id, mod.Id, row.Enabled, profileMod?.Priority ?? 0, row.SelectedVersion);
+                _changesPending = true;
+                SetStatus($"Using {mod.Name} version {row.SelectedVersion} in {active.Name}.");
+                ShowDashboard(2);
+            });
+            row.MoveUp = new RelayCommand(() => ChangePriority(active.Id, mod, profileMod?.Priority ?? 0, -1));
+            row.MoveDown = new RelayCommand(() => ChangePriority(active.Id, mod, profileMod?.Priority ?? 0, 1));
+            row.Details = new AsyncRelayCommand(() => ShowInstalledModDetails(mod));
+            row.OpenSource = new RelayCommand(() => OpenExternalLink(row.SourceUrl));
+            row.Remove = new AsyncRelayCommand(() => RemoveMod(mod));
+            row.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(ModRowViewModel.Selected))
+                {
+                    if (row.Selected) _selectedMods.Add(row.Id); else _selectedMods.Remove(row.Id);
+                }
+            };
+            model.Items.Add(row);
         }
+        var conflicts = planResult?.Success == true && planResult.Value is not null
+            ? planResult.Value.Conflicts.Where(c => c.Kind is "missing-dependency" or "disabled-dependency" or "dependency-version" or "profile-version").Select(c => "• " + c.Message).ToList()
+            : [];
+        model.DependencyNotice = conflicts.Count == 0 ? "" : "Dependencies need attention\n" + string.Join(Environment.NewLine, conflicts);
+        model.SearchCommand = new RelayCommand(() => { _modSearch = model.Search.Trim(); ShowDashboard(2); });
+        model.ClearSearch = new RelayCommand(() => { _modSearch = ""; ShowDashboard(2); });
+        model.AddMod = new AsyncRelayCommand(ImportModPackage);
+        model.SelectAll = new RelayCommand(() => { foreach (var row in model.Items) { row.Selected = true; _selectedMods.Add(row.Id); } });
+        model.ClearSelection = new RelayCommand(() => { _selectedMods.Clear(); ShowDashboard(2); });
+        model.EnableAll = new RelayCommand(() => SetAllVisibleMods(active, mods, true));
+        model.DisableAll = new RelayCommand(() => SetAllVisibleMods(active, mods, false));
+        model.EnableSelected = new RelayCommand(() => SetSelectedMods(active, true));
+        model.DisableSelected = new RelayCommand(() => SetSelectedMods(active, false));
+        model.RemoveSelected = new AsyncRelayCommand(RemoveSelectedMods);
+        model.RefreshState();
+    }
 
-        var catalogMod = _officialCatalogResult?.Value?.Mods.FirstOrDefault(m =>
-            string.Equals(m.Id, conflict.RelatedModId, StringComparison.OrdinalIgnoreCase));
-        if (catalogMod?.Latest is not null)
+    private void PopulateDiscoverModel(IReadOnlyList<ModRecord> installed)
+    {
+        var model = _viewModel.Discover;
+        model.Search = _librarySearch;
+        model.Mods.Clear();
+        model.IsLoading = _catalogLoading;
+        model.HasCatalog = _officialCatalogResult?.Success == true;
+        model.Status = _catalogLoading
+            ? "Loading community catalog…"
+            : _officialCatalogResult is null
+                ? "Community catalog has not been loaded yet."
+                : _officialCatalogResult.Success
+                    ? $"Community catalog loaded: {CountPhrase(_officialCatalogResult.Value!.Mods.Count, "mod")}. Last checked {_catalogLastChecked ?? "not yet"}."
+                    : _officialCatalogResult.Error ?? "Could not load the community catalog.";
+
+        if (_officialCatalogResult?.Value is { } catalog)
         {
-            var install = Button(dependency is null ? $"Install {catalogMod.Name}" : $"Update {dependency.Name}");
-            install.Click += async (_, _) => await InstallOfficial(catalogMod, catalogMod.Latest, install);
-            return install;
+            var visible = catalog.Mods.Where(m => string.IsNullOrWhiteSpace(_librarySearch) || m.Name.Contains(_librarySearch, StringComparison.OrdinalIgnoreCase) || m.Id.Contains(_librarySearch, StringComparison.OrdinalIgnoreCase));
+            foreach (var catalogMod in SortCatalog(visible))
+            {
+                var releases = catalogMod.Releases.OrderByDescending(r => r.Version, Comparer<string>.Create(SemanticVersion.Compare)).ToList();
+                var latest = releases.FirstOrDefault();
+                var installedVersions = _database.GetModVersions(catalogMod.Id);
+                var current = installedVersions.FirstOrDefault() ?? installed.FirstOrDefault(m => m.Id.Equals(catalogMod.Id, StringComparison.OrdinalIgnoreCase));
+                var row = new DiscoverModViewModel
+                {
+                    Id = catalogMod.Id,
+                    Name = catalogMod.Name,
+                    Description = catalogMod.Description ?? "No description provided.",
+                    Latest = latest?.Version ?? "—",
+                    Installed = installedVersions.Count switch { 0 => "Not installed", 1 => installedVersions[0].Version, _ => $"{installedVersions.Count} versions" },
+                    InstalledBrush = current is not null && latest is not null && IsNewerVersion(latest.Version, current.Version) ? "#FFB15C" : "#9AAAC2",
+                    Selected = _selectedCatalogMods.Contains(catalogMod.Id),
+                    SelectedRelease = latest?.Version ?? ""
+                };
+                foreach (var release in releases) row.Releases.Add(release.Version);
+                row.ToggleSelected = new RelayCommand(() =>
+                {
+                    if (row.Selected) AddCatalogSelectionWithDependencies(catalogMod); else _selectedCatalogMods.Remove(catalogMod.Id);
+                });
+                row.Install = new AsyncRelayCommand(async () =>
+                {
+                    var release = releases.FirstOrDefault(r => r.Version.Equals(row.SelectedRelease, StringComparison.OrdinalIgnoreCase)) ?? latest;
+                    if (release is not null) await InstallOfficial(catalogMod, release, null);
+                });
+                row.Details = new AsyncRelayCommand(() => ShowDetails(catalogMod.Name,
+                    $"{catalogMod.Description ?? "No description."}{Environment.NewLine}Author: {catalogMod.Author ?? "Unknown"}{Environment.NewLine}License: {catalogMod.License ?? "Not specified"}{Environment.NewLine}Source: {catalogMod.SourceUrl ?? "Not specified"}{Environment.NewLine}{Environment.NewLine}Dependencies:{Environment.NewLine}{FormatDependencies(catalogMod.Dependencies)}{Environment.NewLine}{Environment.NewLine}Releases: {string.Join(", ", releases.Select(r => r.Version))}{Environment.NewLine}{Environment.NewLine}{latest?.Changelog ?? "No release notes provided."}", catalogMod.SourceUrl));
+                row.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName == nameof(DiscoverModViewModel.Selected))
+                    {
+                        if (row.Selected) AddCatalogSelectionWithDependencies(catalogMod); else _selectedCatalogMods.Remove(catalogMod.Id);
+                    }
+                };
+                model.Mods.Add(row);
+            }
         }
-        var open = Button("Open Discover");
-        open.Click += (_, _) => _tabs.SelectedIndex = 1;
-        return open;
+        model.SearchCommand = new RelayCommand(() => { _librarySearch = model.Search.Trim(); ShowDashboard(1); });
+        model.ClearSearch = new RelayCommand(() => { _librarySearch = ""; ShowDashboard(1); });
+        model.Refresh = new AsyncRelayCommand(RefreshOfficialCatalog);
+        model.InstallSelected = new AsyncRelayCommand(InstallSelectedOfficial);
+        model.UpdateAll = new AsyncRelayCommand(() => UpdateAllOfficial(installed));
+        model.RefreshState();
+    }
+
+    private void PopulateProfilesModel(ProfileRecord active)
+    {
+        var model = _viewModel.Profiles;
+        model.Items.Clear();
+        foreach (var profile in _database.GetProfiles())
+        {
+            var enabled = _database.GetProfileMods(profile.Id).Where(m => m.Enabled).ToList();
+            var names = enabled.Select(m => _database.GetMod(m.ModId)?.Name ?? m.ModId).Take(5).ToList();
+            var row = new ProfileRowViewModel
+            {
+                Id = profile.Id,
+                Name = profile.Name,
+                IsActive = profile.Id.Equals(active.Id, StringComparison.OrdinalIgnoreCase),
+                Summary = enabled.Count == 0 ? "No mods turned on" : CountPhrase(enabled.Count, "active mod") + (names.Count == 0 ? "" : $"{Environment.NewLine}{string.Join(", ", names)}")
+            };
+            row.Rename = new RelayCommand(() =>
+            {
+                try { _database.RenameProfile(profile.Id, row.Name); SetStatus($"Renamed setup to {row.Name.Trim()}."); ShowDashboard(3); }
+                catch (InvalidOperationException ex) { SetStatus(ex.Message, error: true); }
+            });
+            row.Use = new RelayCommand(() => { _database.SetActiveProfile(profile.Id); TryRedeployAfterProfileChange(profile); ShowDashboard(3); });
+            row.Duplicate = new RelayCommand(() => CreateProfile(profile.Name + " Copy", profile));
+            row.Delete = new AsyncRelayCommand(async () =>
+            {
+                if (!await Confirm("Delete setup", $"Delete setup ‘{profile.Name}’ and its saved mod selections? This cannot be undone.", "Delete setup")) return;
+                try { _database.DeleteProfile(profile.Id); SetStatus($"Deleted setup {profile.Name}."); ShowDashboard(3); }
+                catch (InvalidOperationException ex) { SetStatus(ex.Message, error: true); }
+            });
+            model.Items.Add(row);
+        }
+        model.Create = new RelayCommand(() => CreateProfile(model.NewName.Trim(), null));
+        model.Export = new AsyncRelayCommand(() => ExportCurrentProfile(active));
+        model.Import = new AsyncRelayCommand(ImportProfile);
+    }
+
+    private void PopulateSettingsModel(GameRecord? game, Core.Common.Result<DeploymentPlan>? planResult)
+    {
+        var model = _viewModel.Settings;
+        model.Intro = game is null ? "Choose your game folder, apply your mod setup, and add support only when a mod needs it." : "Your game is connected. Apply your mod setup, and add support only when a mod needs it.";
+        model.GamePath = game?.InstallPath ?? "";
+        model.HasGame = game is not null;
+        model.GameStatus = game is null ? "Choose your Ragnarock folder to get started." : _detector.Validate(game.InstallPath).IsValid ? "Ragnarock is ready." : "This folder needs attention. Choose the correct Ragnarock folder.";
+        model.ApplyStatus = game is null ? "Choose your Ragnarock folder above first." : planResult is { Success: true, Value: not null } plan
+            ? (!_changesPending && IsDeploymentSynchronized(plan.Value) ? "Your current mod setup is active in Ragnarock." : "Your current mod setup has changes waiting to be applied.")
+            : "We can’t check your mod setup yet. Resolve the issue shown here first.";
+        model.CanCleanUp = game is not null && CreateDeploymentService().GetUnmanagedFiles(game.InstallPath).Count > 0;
+        var scriptMods = planResult?.Success == true && planResult.Value is not null
+            ? planResult.Value.Items.Where(i => i.FileType.Equals("ue4ss-lua", StringComparison.OrdinalIgnoreCase) || i.FileType.Equals("ue4ss-dll", StringComparison.OrdinalIgnoreCase)).Select(i => i.ModId).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
+            : [];
+        model.SupportStatus = game is null ? "Choose your game folder first." : _ue4ss.Detect(game.InstallPath).Installed ? "Script support is installed." : "Script support is not installed yet.";
+        var scriptNames = scriptMods.Select(id => _database.GetMod(id)?.Name ?? id).ToList();
+        model.SupportNote = scriptNames.Count == 0 ? "Your current mods don’t need anything extra." : $"{CountPhrase(scriptNames.Count, "active mod")} {(scriptNames.Count == 1 ? "needs" : "need")} script support: {string.Join(", ", scriptNames)}.";
+        model.RecoverySummary = planResult is { Success: true, Value: not null } p ? $"This session has {CountPhrase(p.Value.Conflicts.Count(c => c.BlocksDeployment), "issue")} that stop changes from being applied." : "Choose your Ragnarock folder before using recovery tools.";
+        model.LaunchArguments = _launchArguments;
+        model.CachedSupportVersions.Clear();
+        foreach (var release in _ue4ssReleases.GetCachedReleases()) model.CachedSupportVersions.Add($"{release.Version} ({release.AssetName})");
+        model.HasCachedSupport = model.CachedSupportVersions.Count > 0;
+        model.DetectGame = new RelayCommand(() => { var install = _detector.DetectFirstValid(); if (install is null) SetStatus("No Ragnarock Steam install was found. Choose the folder manually.", error: true); else { SaveGame(install); SetStatus(install.IsValid ? "Ragnarock folder saved." : "Folder saved, but it may need attention.", !install.IsValid); ShowDashboard(); } });
+        model.BrowseGame = new AsyncRelayCommand(async () =>
+        {
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "Choose Ragnarock folder", AllowMultiple = false });
+            if (folders.Count > 0) { model.GamePath = folders[0].Path.LocalPath; }
+        });
+        model.SaveGame = new RelayCommand(() => { if (string.IsNullOrWhiteSpace(model.GamePath)) { SetStatus("Choose your Ragnarock folder first.", error: true); return; } var install = _detector.Validate(model.GamePath); SaveGame(install); SetStatus(install.IsValid ? "Ragnarock folder saved." : "Folder saved, but it may need attention.", !install.IsValid); ShowDashboard(); });
+        model.ApplySetup = new RelayCommand(DeployActiveProfile);
+        model.CleanUp = new AsyncRelayCommand(async () =>
+        {
+            if (game is null) return;
+            var unmanaged = CreateDeploymentService().GetUnmanagedFiles(game.InstallPath);
+            if (unmanaged.Count == 0 || !await Confirm("Clean up extra mod files", $"Remove {CountPhrase(unmanaged.Count, "file")} that are outside this app’s setup? This cannot be undone.", "Clean up files")) return;
+            var result = CreateDeploymentService().RemoveUnmanagedFiles(game.InstallPath); SetStatus(result.Success ? $"Removed {CountPhrase(result.Value, "extra mod file")}." : result.Error ?? "Could not remove extra mod files.", !result.Success); ShowDashboard(4);
+        });
+        model.CheckSupport = new AsyncRelayCommand(CheckUe4ssUpdates);
+        model.InstallSupport = new AsyncRelayCommand(InstallUe4ssSupport);
+        model.UseCachedSupport = new RelayCommand(() =>
+        {
+            var current = _database.GetGame(); var cached = _ue4ssReleases.GetCachedReleases();
+            var index = model.CachedSupportVersions.IndexOf(model.SelectedCachedSupport);
+            if (current is null || index < 0 || index >= cached.Count) return;
+            var result = _ue4ssReleases.InstallCachedRelease(current.InstallPath, cached[index]); SetStatus(result.Success ? $"Installed saved script support {cached[index].Version}." : result.Error ?? "Script support installation failed.", !result.Success); ShowDashboard(4);
+        });
+        model.Rollback = new RelayCommand(() => { var result = CreateDeploymentService().RollbackLatest(); SetStatus(result.Success ? "The last change was undone." : result.Error ?? "Could not undo the last change.", !result.Success); ShowDashboard(4); });
+        model.ResetDeployment = new AsyncRelayCommand(async () => { if (!await Confirm("Remove applied setup", "Remove the setup currently applied by this app from the game folder? Backups are retained when possible.", "Remove setup")) return; var result = CreateDeploymentService().ResetDeployment(); SetStatus(result.Success ? "The applied setup was removed." : result.Error ?? "Could not remove the applied setup.", !result.Success); ShowDashboard(4); });
+        model.SaveLaunchOptions = new RelayCommand(() => { _launchArguments = model.LaunchArguments ?? ""; File.WriteAllText(_paths.LaunchArgumentsPath, _launchArguments); SetStatus(string.IsNullOrWhiteSpace(_launchArguments) ? "Launch arguments cleared." : "Launch arguments saved."); });
+        model.OpenLogs = new RelayCommand(() => OpenFolder(_paths.Logs));
+        model.OpenIssues = new RelayCommand(() => OpenExternalLink("https://github.com/Brollyy/RagnaModManager/issues"));
     }
 
     private void SetAllVisibleMods(ProfileRecord profile, IReadOnlyList<ModRecord> mods, bool enabled)
@@ -419,195 +524,6 @@ public partial class MainWindow : Window
         ShowDashboard(2);
     }
 
-    private Control BuildSettingsPage(GameRecord? game, Core.Common.Result<DeploymentPlan>? planResult)
-    {
-        var openLogs = Button("Open app logs");
-        openLogs.Click += (_, _) => OpenFolder(_paths.Logs);
-        var openIssues = Button("Report a problem on GitHub");
-        openIssues.Click += (_, _) => OpenExternalLink("https://github.com/Brollyy/RagnaModManager/issues");
-        return new ScrollViewer
-        {
-            Content = new StackPanel { Spacing = 14, Children =
-            {
-                new TextBlock { Text = "Get Ragnarock ready", FontSize = 24, FontWeight = FontWeight.SemiBold },
-                Text(game is null
-                    ? "Choose your game folder, apply your mod setup, and add support only when a mod needs it."
-                    : "Your game is connected. Apply your mod setup, and add support only when a mod needs it."),
-                BuildGameSetup(game),
-                BuildProfileFileStatus(game, planResult),
-                BuildScriptSupportSettings(game, planResult),
-                CompactExpander("If something goes wrong", BuildDeploymentRecovery(game, planResult)),
-                CompactExpander("Advanced launch options", BuildLaunchOptions()),
-                CompactExpander("Troubleshooting", Section("Get help", Text("Open the logs when support asks for them, or report a problem on GitHub."), Wrap(openLogs, openIssues)))
-            }}
-        };
-    }
-
-    private Control BuildProfileFileStatus(GameRecord? game, Core.Common.Result<DeploymentPlan>? planResult)
-    {
-        var lines = new List<string>();
-        if (game is null)
-        {
-            lines.Add("Choose your Ragnarock folder above first.");
-        }
-        else if (planResult is { Success: true, Value: not null } plan)
-        {
-            var applied = !_changesPending && IsDeploymentSynchronized(plan.Value);
-            lines.Add(applied ? "Your current mod setup is active in Ragnarock." : "Your current mod setup has changes waiting to be applied.");
-            lines.AddRange(plan.Value.Conflicts.Where(c => c.BlocksDeployment).Select(FriendlyDeploymentConflict));
-            var unmanaged = CreateDeploymentService().GetUnmanagedFiles(game.InstallPath);
-            if (unmanaged.Count == 1) lines.Add("There is 1 extra mod file in the game folder.");
-            else if (unmanaged.Count > 1) lines.Add($"There are {unmanaged.Count} extra mod files in the game folder.");
-        }
-        else
-        {
-            lines.Add("We can’t check your mod setup yet. Resolve the issue shown here first.");
-        }
-
-        var apply = PrimaryButton("Apply setup");
-        apply.IsEnabled = game is not null;
-        apply.Click += (_, _) => DeployActiveProfile();
-        var remove = Button("Clean up extra files");
-        remove.IsEnabled = game is not null && CreateDeploymentService().GetUnmanagedFiles(game.InstallPath).Count > 0;
-        remove.Click += async (_, _) =>
-        {
-            if (game is null) return;
-            var unmanaged = CreateDeploymentService().GetUnmanagedFiles(game.InstallPath);
-            if (unmanaged.Count == 0) return;
-            if (!await Confirm("Clean up extra mod files", $"Remove {CountPhrase(unmanaged.Count, "file")} that are outside this app’s setup? This cannot be undone.", "Clean up files")) return;
-            var result = CreateDeploymentService().RemoveUnmanagedFiles(game.InstallPath);
-            SetStatus(result.Success ? $"Removed {CountPhrase(result.Value, "extra mod file")}." : result.Error ?? "Could not remove extra mod files.", !result.Success);
-            ShowDashboard(4);
-        };
-        return Section("Apply your mod setup", Text(string.Join(Environment.NewLine, lines)), MutedText("Applying updates the files this app manages. Other game files are left alone."), Wrap(apply, remove));
-    }
-
-    private Control BuildScriptSupportSettings(GameRecord? game, Core.Common.Result<DeploymentPlan>? planResult)
-    {
-        var scriptMods = planResult?.Success == true && planResult.Value is not null
-            ? planResult.Value.Items.Where(i => i.FileType.Equals("ue4ss-lua", StringComparison.OrdinalIgnoreCase) || i.FileType.Equals("ue4ss-dll", StringComparison.OrdinalIgnoreCase)).Select(i => i.ModId).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
-            : [];
-        var status = game is null
-            ? "Choose your game folder first."
-            : _ue4ss.Detect(game.InstallPath).Installed ? "Script support is installed." : "Script support is not installed yet.";
-        var scriptModNames = scriptMods.Select(id => _database.GetMod(id)?.Name ?? id).ToList();
-        var note = scriptModNames.Count == 0
-            ? "Your current mods don’t need anything extra."
-            : $"{CountPhrase(scriptModNames.Count, "active mod")} { (scriptModNames.Count == 1 ? "needs" : "need") } script support: {string.Join(", ", scriptModNames)}.";
-        var check = PrimaryButton("Check for support updates");
-        check.IsEnabled = game is not null;
-        check.Click += async (_, _) => await CheckUe4ssUpdates();
-        var install = Button("Install support from file");
-        install.IsEnabled = game is not null;
-        install.Click += async (_, _) => await InstallUe4ssSupport();
-        var controls = new List<Control>
-        {
-            Text($"Status: {status}"),
-            MutedText(note),
-            MutedText("Only needed by mods that use scripts."),
-            Wrap(check, install)
-        };
-        var cached = _ue4ssReleases.GetCachedReleases();
-        if (cached.Count > 0)
-        {
-            var picker = new ComboBox { ItemsSource = cached.Select(r => $"{r.Version} ({r.AssetName})").ToList(), SelectedIndex = 0, MinWidth = 280 };
-            var use = Button("Use saved support version");
-            use.IsEnabled = game is not null;
-            use.Click += (_, _) =>
-            {
-                var current = _database.GetGame();
-                if (current is null || picker.SelectedIndex < 0 || picker.SelectedIndex >= cached.Count) return;
-                var result = _ue4ssReleases.InstallCachedRelease(current.InstallPath, cached[picker.SelectedIndex]);
-                SetStatus(result.Success ? $"Installed saved script support {cached[picker.SelectedIndex].Version}." : result.Error ?? "Script support installation failed.", !result.Success);
-                ShowDashboard(4);
-            };
-            controls.Add(CompactExpander("Use an older support release", Wrap(MutedText("Use this only when a mod requires an older support release."), picker, use), 120));
-        }
-        return Section("Support for script-based mods", controls.ToArray());
-    }
-
-    private Control BuildDeploymentRecovery(GameRecord? game, Core.Common.Result<DeploymentPlan>? planResult)
-    {
-        var summary = planResult is { Success: true, Value: not null }
-            ? $"This session has {CountPhrase(planResult.Value.Conflicts.Count(c => c.BlocksDeployment), "issue")} that stop changes from being applied."
-            : "Choose your Ragnarock folder before using recovery tools.";
-        var rollback = Button("Undo last change");
-        rollback.IsEnabled = game is not null;
-        rollback.Click += (_, _) =>
-        {
-            var result = CreateDeploymentService().RollbackLatest();
-            SetStatus(result.Success ? "The last change was undone." : result.Error ?? "Could not undo the last change.", !result.Success);
-            ShowDashboard(4);
-        };
-        var reset = Button("Remove applied setup");
-        reset.IsEnabled = game is not null;
-        reset.Click += async (_, _) =>
-        {
-            if (!await Confirm("Remove applied setup", "Remove the setup currently applied by this app from the game folder? Backups are retained when possible.", "Remove setup")) return;
-            var result = CreateDeploymentService().ResetDeployment();
-            SetStatus(result.Success ? "The applied setup was removed." : result.Error ?? "Could not remove the applied setup.", !result.Success);
-            ShowDashboard(4);
-        };
-        return Section("Undo or repair changes", Text(summary), MutedText("These actions affect files applied by this app. They do not touch unrelated game files."), Row(rollback, reset));
-    }
-
-    private Control BuildLaunchOptions()
-    {
-        var arguments = new TextBox { Text = _launchArguments, Watermark = "Optional launch arguments", MinWidth = 420 };
-        var save = Button("Save launch options");
-        save.Click += (_, _) =>
-        {
-            _launchArguments = arguments.Text ?? "";
-            File.WriteAllText(_paths.LaunchArgumentsPath, _launchArguments);
-            SetStatus(string.IsNullOrWhiteSpace(_launchArguments) ? "Launch arguments cleared." : "Launch arguments saved.");
-        };
-        return Section("Launch options", Text("Most players can leave this empty. These options are only used when launching Ragnarock directly; Steam launches ignore them."), Wrap(arguments, save));
-    }
-
-    private Control BuildDashboardSummary(GameRecord? game, ProfileRecord active, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
-    {
-        var enabled = GetEnabledMods().Count;
-        var ready = game is not null && new RagnarockCompatibilityChecker().Check(game.InstallPath).CanManage;
-        var synchronized = game is not null && !_changesPending && planResult is { Success: true, Value: not null } && IsDeploymentSynchronized(planResult.Value);
-        var headline = game is null
-            ? "Welcome! Let’s get Ragnarock ready for mods."
-            : ready
-                ? synchronized
-                    ? enabled == 0
-                        ? "Ragnarock is ready. Add a mod or launch without mods."
-                        : "Your setup is ready. Launch Ragnarock or change your mods."
-                    : "Ragnarock is ready, but your setup is not applied."
-                : "One quick setup step remains before you can use mods.";
-        var state = new TextBlock
-        {
-            Text = headline,
-            FontSize = 18,
-            FontWeight = FontWeight.SemiBold,
-            Foreground = game is null || !ready ? new SolidColorBrush(Color.Parse("#FFB15C")) : new SolidColorBrush(Color.Parse("#4DE1C1")),
-            TextWrapping = TextWrapping.Wrap
-        };
-        var metrics = new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("*,*,*"),
-            ColumnSpacing = 10,
-            Children =
-            {
-                Cell(MetricCard("SETUP", active.Name, "Your current setup"), 0),
-                Cell(MetricCard("ACTIVE MODS", enabled == 0 ? "None yet" : $"{enabled} active", $"{mods.Count} installed"), 1),
-                Cell(MetricCard("PLAY STATUS", game is null ? "Set up first" : !ready ? "Needs setup" : synchronized ? "Ready to play" : "Apply changes", game is null ? "Choose your game folder" : "Ragnarock"), 2)
-            }
-        };
-        var nextSteps = game is null
-            ? "Set up your game folder, then choose your first mod. We’ll keep the rest of the setup out of your way."
-            : ready
-                ? synchronized
-                    ? "Browse for something new, or launch Ragnarock with this setup."
-                    : "Review your active mods, then apply the setup before launching Ragnarock."
-                : "Choose a valid Ragnarock folder to continue.";
-        return Section("Your session", state, metrics,
-            Section("What to do next", Text(nextSteps)));
-    }
-
     private bool IsDeploymentSynchronized(DeploymentPlan plan)
     {
         if (plan.Conflicts.Any(c => c.BlocksDeployment) || !File.Exists(_paths.CurrentDeploymentPath)) return false;
@@ -653,140 +569,9 @@ public partial class MainWindow : Window
         _ => "Your setup has an issue that must be resolved before it can be applied."
     };
 
-    private Control BuildOfficialCatalog(IReadOnlyList<ModRecord> installed)
-    {
-        var refresh = PrimaryButton("Refresh mod list");
-        refresh.Click += async (_, _) => await RefreshOfficialCatalog();
-        var updateAll = Button("Update all");
-        updateAll.Click += async (_, _) => await UpdateAllOfficial(installed);
-        updateAll.IsEnabled = _officialCatalogResult?.Success == true;
-        var installSelected = Button("Install selected");
-        installSelected.Click += async (_, _) => await InstallSelectedOfficial();
-        installSelected.IsEnabled = _selectedCatalogMods.Count > 0;
-        var search = new TextBox { Watermark = "Search community mods…", Text = _librarySearch, MinWidth = 300 };
-        search.KeyDown += (_, e) =>
-        {
-            if (e.Key == Key.Enter)
-            {
-                _librarySearch = search.Text?.Trim() ?? "";
-                ShowDashboard(1);
-            }
-        };
-        var searchAction = Button("Search");
-        searchAction.Click += (_, _) => { _librarySearch = search.Text?.Trim() ?? ""; ShowDashboard(1); };
-        var clearSearch = Button("Clear");
-        clearSearch.Click += (_, _) => { _librarySearch = ""; ShowDashboard(1); };
-        var searchBox = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), Children = { Cell(search, 0), Cell(clearSearch, 1) } };
-        var content = new StackPanel { Spacing = 10 };
-        content.Children.Add(Text("Find community mods for Ragnarock and install them with one click."));
-        content.Children.Add(MutedText("Community content is maintained by mod authors and players."));
-        content.Children.Add(Wrap(searchBox, searchAction, refresh, installSelected, updateAll));
-        _libraryStatus = new TextBlock { TextWrapping = TextWrapping.Wrap };
-        content.Children.Add(_libraryStatus);
-
-        if (_catalogLoading)
-        {
-            content.Children.Add(MutedText("Loading community catalog…"));
-        }
-        else if (_officialCatalogResult is null)
-        {
-            content.Children.Add(MutedText("Community catalog has not been loaded yet."));
-        }
-        else if (_officialCatalogResult is { Success: false })
-        {
-            content.Children.Add(Text(_officialCatalogResult.Error ?? "Could not load the community catalog."));
-        }
-        else if (_officialCatalogResult?.Value is { Mods.Count: 0 })
-        {
-            content.Children.Add(MutedText("No community mods are published yet."));
-        }
-        else if (_officialCatalogResult?.Value is { } catalog)
-        {
-            var visibleMods = catalog.Mods.Where(m => string.IsNullOrWhiteSpace(_librarySearch) || m.Name.Contains(_librarySearch, StringComparison.OrdinalIgnoreCase) || m.Id.Contains(_librarySearch, StringComparison.OrdinalIgnoreCase)).ToList();
-            if (visibleMods.Count == 0)
-            {
-                var clearSearchButton = Button("Clear search");
-                clearSearchButton.IsEnabled = !string.IsNullOrWhiteSpace(_librarySearch);
-                clearSearchButton.Click += (_, _) => { _librarySearch = ""; ShowDashboard(1); };
-                content.Children.Add(EmptyState(
-                    string.IsNullOrWhiteSpace(_librarySearch) ? "No community mods yet." : "No mods match that search.",
-                    string.IsNullOrWhiteSpace(_librarySearch) ? "Check back when the community catalog has something new." : "Try a different mod name.",
-                    clearSearchButton));
-            }
-            else
-            {
-                content.Children.Add(BuildCatalogHeader(visibleMods));
-                foreach (var mod in SortCatalog(visibleMods))
-                    content.Children.Add(OfficialModRow(mod, installed));
-            }
-        }
-
-        return new StackPanel
-        {
-            Spacing = 14,
-            Children =
-            {
-                new TextBlock { Text = "Discover", FontSize = 24, FontWeight = FontWeight.SemiBold },
-                Section("Discover mods", content)
-            }
-        };
-    }
-
-    private Control BuildCatalogHeader(IReadOnlyList<CatalogMod> visibleMods)
-    {
-        var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("28,Auto,*,*,120,120,220"), ColumnSpacing = 8, Margin = new Thickness(8, 4) };
-        var selectAll = new CheckBox { Content = "All", IsChecked = visibleMods.Count > 0 && visibleMods.All(m => _selectedCatalogMods.Contains(m.Id)) };
-        selectAll.Click += (_, _) =>
-        {
-            foreach (var mod in visibleMods)
-            {
-                if (selectAll.IsChecked == true) AddCatalogSelectionWithDependencies(mod);
-                else _selectedCatalogMods.Remove(mod.Id);
-            }
-            ShowDashboard(1);
-        };
-        grid.Children.Add(MutedText(""));
-        grid.Children.Add(Cell(selectAll, 1));
-        grid.Children.Add(Cell(SortButton("Mod", "Name"), 2));
-        grid.Children.Add(Cell(MutedText("Description"), 3));
-        grid.Children.Add(Cell(SortButton("Latest", "Latest"), 4));
-        grid.Children.Add(Cell(SortButton("Installed", "Installed"), 5));
-        grid.Children.Add(Cell(MutedText("Actions"), 6));
-        return new Border
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            Background = new SolidColorBrush(Color.Parse("#17243B")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#2A3A55")),
-            BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = grid
-        };
-    }
-
-    private Button SortButton(string label, string column)
-    {
-        var button = Button($"{label}{(_catalogSortColumn == column ? (_catalogSortDescending ? " (descending)" : " (ascending)") : "")}");
-        button.Click += (_, _) =>
-        {
-            if (_catalogSortColumn == column) _catalogSortDescending = !_catalogSortDescending;
-            else { _catalogSortColumn = column; _catalogSortDescending = false; }
-            ShowDashboard(1);
-        };
-        return button;
-    }
-
     private IEnumerable<CatalogMod> SortCatalog(IEnumerable<CatalogMod> mods)
     {
-        var sorted = _catalogSortColumn switch
-        {
-            "Latest" => _catalogSortDescending
-                ? mods.OrderByDescending(m => m.Latest?.Version, Comparer<string?>.Create((a, b) => SemanticVersion.Compare(a, b)))
-                : mods.OrderBy(m => m.Latest?.Version, Comparer<string?>.Create((a, b) => SemanticVersion.Compare(a, b))),
-            "Installed" => _catalogSortDescending
-                ? mods.OrderByDescending(m => _database.GetMod(m.Id)?.Version, Comparer<string?>.Create((a, b) => SemanticVersion.Compare(a, b)))
-                : mods.OrderBy(m => _database.GetMod(m.Id)?.Version, Comparer<string?>.Create((a, b) => SemanticVersion.Compare(a, b))),
-            _ => _catalogSortDescending ? mods.OrderByDescending(m => m.Name) : mods.OrderBy(m => m.Name)
-        };
-        return sorted.ThenBy(m => m.Name, StringComparer.OrdinalIgnoreCase);
+        return mods.OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase);
     }
 
     private void ToggleCatalogSelection(CatalogMod mod, bool selected)
@@ -846,63 +631,12 @@ public partial class MainWindow : Window
     private Core.Common.Result<OfficialCatalog>? _officialCatalogResult;
     private bool _catalogLoading;
 
-    private Control OfficialModRow(CatalogMod catalogMod, IReadOnlyList<ModRecord> installed)
-    {
-        var installedVersions = _database.GetModVersions(catalogMod.Id);
-        var current = installedVersions.FirstOrDefault() ?? installed.FirstOrDefault(m => string.Equals(m.Id, catalogMod.Id, StringComparison.OrdinalIgnoreCase));
-        var releases = catalogMod.Releases
-            .OrderByDescending(r => r.Version, Comparer<string>.Create(SemanticVersion.Compare))
-            .ToList();
-        var latest = releases.FirstOrDefault();
-        var updateAvailable = current is not null && latest is not null && IsNewerVersion(latest.Version, current.Version);
-        var picker = new ComboBox
-        {
-            ItemsSource = releases.Select(r => r.Version).ToList(),
-            SelectedIndex = 0,
-            MinWidth = 130
-        };
-        var install = Button(current is null ? "Install" : updateAvailable ? "Update" : "Reinstall");
-        install.Click += async (_, _) =>
-        {
-            if (picker.SelectedIndex >= 0 && picker.SelectedIndex < releases.Count)
-                await InstallOfficial(catalogMod, releases[picker.SelectedIndex], install);
-        };
-        var check = new CheckBox { IsChecked = _selectedCatalogMods.Contains(catalogMod.Id), VerticalAlignment = VerticalAlignment.Center };
-        check.Click += (_, _) => ToggleCatalogSelection(catalogMod, check.IsChecked == true);
-        var expand = new ToggleButton { Content = "›", Width = 24, Height = 24, Padding = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Center };
-        var compact = new Grid { ColumnDefinitions = new ColumnDefinitions("28,Auto,*,*,120,120,220"), ColumnSpacing = 8, Margin = new Thickness(8, 5), HorizontalAlignment = HorizontalAlignment.Stretch };
-        compact.Children.Add(expand);
-        compact.Children.Add(Cell(check, 1));
-        compact.Children.Add(Cell(new TextBlock { Text = catalogMod.Name, FontWeight = FontWeight.SemiBold }, 2));
-        compact.Children.Add(Cell(new TextBlock { Text = catalogMod.Description ?? "No description provided.", Foreground = Brushes.DimGray, TextWrapping = TextWrapping.Wrap, MaxHeight = 38 }, 3));
-        compact.Children.Add(Cell(new TextBlock { Text = latest?.Version ?? "—" }, 4));
-        compact.Children.Add(Cell(new TextBlock { Text = installedVersions.Count switch { 0 => "Not installed", 1 => installedVersions[0].Version, _ => $"{installedVersions.Count} versions" }, Foreground = updateAvailable ? Brushes.DarkGoldenrod : Brushes.DimGray }, 5));
-        compact.Children.Add(Cell(new TextBlock { Text = "Select a release below", Foreground = Brushes.DimGray }, 6));
-        var details = Button("Details");
-        details.Click += async (_, _) => await ShowDetails(catalogMod.Name, $"{catalogMod.Description ?? "No description."}{Environment.NewLine}Author: {catalogMod.Author ?? "Unknown"}{Environment.NewLine}License: {catalogMod.License ?? "Not specified"}{Environment.NewLine}Source: {catalogMod.SourceUrl ?? "Not specified"}{Environment.NewLine}{Environment.NewLine}Dependencies:{Environment.NewLine}{FormatDependencies(catalogMod.Dependencies)}{Environment.NewLine}{Environment.NewLine}Available releases: {string.Join(", ", releases.Select(r => $"{r.Version}{(r.SizeBytes is null ? "" : $" ({r.SizeBytes / 1024} KB)")}"))}{Environment.NewLine}{Environment.NewLine}{releases[0].Changelog ?? "No release notes provided."}", catalogMod.SourceUrl);
-        var detailText = $"{catalogMod.Description ?? "No description."}{Environment.NewLine}Author: {catalogMod.Author ?? "Unknown"}{Environment.NewLine}License: {catalogMod.License ?? "Not specified"}{Environment.NewLine}Source: {catalogMod.SourceUrl ?? "Not specified"}{Environment.NewLine}{Environment.NewLine}Dependencies:{Environment.NewLine}{FormatDependencies(catalogMod.Dependencies)}{Environment.NewLine}{Environment.NewLine}Releases: {string.Join(", ", releases.Select(r => $"{r.Version}{(r.SizeBytes is null ? "" : $" ({r.SizeBytes / 1024} KB)")}"))}{Environment.NewLine}{Environment.NewLine}{releases[0].Changelog ?? "No release notes provided."}";
-        var detailActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { picker, install, details } };
-        var detailPanel = new StackPanel { Margin = new Thickness(36, 0, 8, 8), Spacing = 8, IsVisible = false, Children = { Text(detailText), detailActions } };
-        expand.Click += (_, _) =>
-        {
-            detailPanel.IsVisible = expand.IsChecked == true;
-            expand.Content = expand.IsChecked == true ? "⌄" : "›";
-        };
-        return new Border
-        {
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            BorderBrush = Brushes.LightGray,
-            BorderThickness = new Thickness(0, 0, 0, 1),
-            Child = new StackPanel { Children = { compact, detailPanel } }
-        };
-    }
-
     private static string FormatDependencies(IReadOnlyDictionary<string, string>? dependencies) =>
         dependencies is null or { Count: 0 } ? "None" : string.Join(Environment.NewLine, dependencies.Select(d => $"- {d.Key} {d.Value}"));
 
-    private async Task InstallOfficial(CatalogMod catalogMod, CatalogRelease release, Button install)
+    private async Task InstallOfficial(CatalogMod catalogMod, CatalogRelease release, Button? install)
     {
-        install.IsEnabled = false;
+        if (install is not null) install.IsEnabled = false;
         try
         {
             SetStatus($"Downloading {catalogMod.Name} {release.Version}…");
@@ -921,7 +655,7 @@ public partial class MainWindow : Window
         }
         finally
         {
-            install.IsEnabled = true;
+            if (install is not null) install.IsEnabled = true;
         }
     }
 
@@ -935,84 +669,11 @@ public partial class MainWindow : Window
         File.WriteAllText(_paths.CatalogLastCheckedPath, _catalogLastChecked);
         _catalogLoading = false;
         ShowDashboard(returnTab);
-        SetLibraryStatus(_officialCatalogResult.Success ? $"Community catalog loaded: {CountPhrase(_officialCatalogResult.Value!.Mods.Count, "mod")}. Last checked {_catalogLastChecked}." : $"Community catalog unavailable (last checked {_catalogLastChecked ?? "never"}): {_officialCatalogResult.Error}", !_officialCatalogResult.Success);
-    }
-
-    private void SetLibraryStatus(string message, bool error = false)
-    {
-        if (_libraryStatus is not null)
-        {
-            _libraryStatus.Text = message;
-            _libraryStatus.Foreground = error ? new SolidColorBrush(Color.Parse("#FF8B8B")) : new SolidColorBrush(Color.Parse("#4DE1C1"));
-        }
-    }
-
-    private Control BuildQuickActions(GameRecord? game)
-    {
-        var actions = new List<Control>();
-        if (game is null)
-        {
-            var setup = PrimaryButton("Set up automatically");
-            setup.Click += (_, _) => SetupAutomatically();
-            actions.Add(setup);
-        }
-
-        var import = PrimaryButton("Add a mod");
-        import.Click += async (_, _) => await ImportModPackage();
-
-        var openGame = Button("Open game folder");
-        var openMods = Button("Open mod library");
-        openGame.IsEnabled = game is not null;
-        openGame.Click += (_, _) =>
-        {
-            var currentGame = _database.GetGame();
-            if (currentGame is null)
-            {
-                SetStatus("Choose your Ragnarock folder first.", error: true);
-                return;
-            }
-
-            OpenFolder(currentGame.InstallPath);
-        };
-        openMods.Click += (_, _) => OpenFolder(_paths.ModLibrary);
-
-        return Card(new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-            Children =
-            {
-                Cell(new StackPanel
-                {
-                    Spacing = 6,
-                    Children =
-                    {
-                        new TextBlock { Text = game is null ? "Start here" : "Manage your mods", FontSize = 20, FontWeight = FontWeight.SemiBold },
-                        MutedText(game is null ? "One setup step, then you can browse and play." : "Choose a mod, turn it on, or launch Ragnarock.")
-                    }
-                }, 0),
-                Cell(Row(actions.Concat([import, openGame, openMods]).ToArray()), 1)
-            }
-        });
     }
 
     private void UpdatePendingChangesBar()
     {
-        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 12, VerticalAlignment = VerticalAlignment.Center };
-        content.Children.Add(new TextBlock { Text = "This setup has unapplied changes.", FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center });
-        var apply = PrimaryButton("Apply changes");
-        apply.IsEnabled = _database.GetGame() is not null;
-        apply.Click += (_, _) => DeployActiveProfile();
-        content.Children.Add(apply);
-        var revert = Button("Revert changes");
-        revert.Click += (_, _) => RevertPendingChanges();
-        content.Children.Add(revert);
-        _pendingChangesBar.Child = content;
-        _pendingChangesBar.IsVisible = _changesPending;
-        _pendingChangesBar.Background = new SolidColorBrush(Color.Parse("#3B2D1B"));
-        _pendingChangesBar.BorderBrush = new SolidColorBrush(Color.Parse("#FFB15C"));
-        _pendingChangesBar.BorderThickness = new Thickness(1);
-        _pendingChangesBar.CornerRadius = new CornerRadius(6);
-        _pendingChangesBar.Padding = new Thickness(12, 8);
+        _viewModel.HasPendingChanges = _changesPending;
     }
 
     private void SetupAutomatically()
@@ -1029,322 +690,6 @@ public partial class MainWindow : Window
         SaveGame(install);
         ShowDashboard(0);
         SetStatus("Ragnarock is ready. Browse Discover or import a mod.");
-    }
-
-    private Control BuildGameSetup(GameRecord? game)
-    {
-        var pathBox = new TextBox
-        {
-            Text = game?.InstallPath ?? "",
-            Watermark = "/path/to/steamapps/common/Ragnarock",
-            MinWidth = 420
-        };
-
-        var status = Text(game is null
-            ? "Choose your Ragnarock folder to get started."
-            : _detector.Validate(game.InstallPath).IsValid
-                ? "Ragnarock is ready."
-                : "This folder needs attention. Choose the correct Ragnarock folder.");
-
-        var detect = Button("Find Automatically");
-        detect.Click += (_, _) =>
-        {
-            var install = _detector.DetectFirstValid();
-            if (install is null)
-            {
-                SetStatus("No Ragnarock Steam install was found. Choose the folder manually.", error: true);
-                return;
-            }
-
-            SaveGame(install);
-            SetStatus(install.IsValid ? "Ragnarock folder saved." : "Folder saved, but it may need attention.", !install.IsValid);
-            ShowDashboard();
-        };
-
-        var browse = Button("Choose Folder");
-        browse.Click += async (_, _) =>
-        {
-            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-            {
-                Title = "Choose Ragnarock folder",
-                AllowMultiple = false
-            });
-            if (folders.Count > 0)
-            {
-                pathBox.Text = folders[0].Path.LocalPath;
-            }
-        };
-
-        var save = PrimaryButton("Save Folder");
-        save.Click += (_, _) =>
-        {
-            if (string.IsNullOrWhiteSpace(pathBox.Text))
-            {
-                SetStatus("Choose your Ragnarock folder first.", error: true);
-                return;
-            }
-
-            var install = _detector.Validate(pathBox.Text);
-            SaveGame(install);
-            SetStatus(install.IsValid ? "Ragnarock folder saved." : "Folder saved, but it may need attention.", !install.IsValid);
-            ShowDashboard();
-        };
-
-        return Section("Connect Ragnarock",
-            status,
-            Wrap(pathBox, browse, detect, save));
-    }
-
-    private Control BuildModList(ProfileRecord active, IReadOnlyList<ModRecord> mods)
-    {
-        var state = _database.GetProfileMods(active.Id).ToDictionary(m => m.ModId, StringComparer.OrdinalIgnoreCase);
-        var list = new StackPanel { Spacing = 10 };
-
-        if (mods.Count == 0)
-        {
-            var addFirst = PrimaryButton("Add your first mod");
-            addFirst.Click += async (_, _) => await ImportModPackage();
-            list.Children.Add(EmptyState("No mods installed yet.", "Add a mod to start building this setup.", addFirst));
-        }
-        else
-        {
-            var visibleCount = 0;
-            foreach (var missing in state.Values.Where(p => _database.GetMod(p.ModId) is null))
-            {
-                var removeMissing = Button("Remove from setup");
-                removeMissing.Click += (_, _) =>
-                {
-                    _database.RemoveProfileMod(active.Id, missing.ModId);
-                    _changesPending = true;
-                    SetStatus($"Removed missing mod {missing.ModId} from {active.Name}.", error: true);
-                    ShowDashboard(2);
-                };
-                list.Children.Add(Card(new Grid
-                {
-                    ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-                    Children =
-                    {
-                        Cell(new StackPanel { Children = { new TextBlock { Text = missing.ModId, FontWeight = FontWeight.SemiBold }, MutedText("Missing from the mod library") } }, 0),
-                        Cell(removeMissing, 1)
-                    }
-                }));
-            }
-            foreach (var mod in mods)
-            {
-                if (!string.IsNullOrWhiteSpace(_modSearch) &&
-                    !mod.Name.Contains(_modSearch, StringComparison.OrdinalIgnoreCase) &&
-                    !mod.Id.Contains(_modSearch, StringComparison.OrdinalIgnoreCase)) continue;
-                state.TryGetValue(mod.Id, out var profileMod);
-                list.Children.Add(ModRow(active, mod, profileMod));
-                visibleCount++;
-            }
-            if (visibleCount == 0 && !string.IsNullOrWhiteSpace(_modSearch))
-            {
-                var clearSearch = Button("Clear search");
-                clearSearch.Click += (_, _) => { _modSearch = ""; ShowDashboard(2); };
-                list.Children.Add(EmptyState("No installed mods match that search.", "Try a different mod name.", clearSearch));
-            }
-        }
-
-        return Section($"Mods in {active.Name}", list);
-    }
-
-    private Control ModRow(ProfileRecord active, ModRecord mod, ProfileModRecord? profileMod)
-    {
-        var versions = _database.GetModVersions(mod.Id);
-        var selectedVersion = profileMod?.Version ?? mod.Version;
-        var versionPicker = new ComboBox
-        {
-            ItemsSource = versions.Select(v => v.Version).ToList(),
-            SelectedIndex = Math.Max(0, versions.Select(v => v.Version).ToList().FindIndex(v => string.Equals(v, selectedVersion, StringComparison.OrdinalIgnoreCase))),
-            MinWidth = 110
-        };
-        versionPicker.SelectionChanged += (_, _) =>
-        {
-            if (versionPicker.SelectedIndex < 0 || versionPicker.SelectedIndex >= versions.Count) return;
-            var selectedVersion = versions[versionPicker.SelectedIndex].Version;
-            _database.SetProfileMod(active.Id, mod.Id, profileMod?.Enabled == true, profileMod?.Priority ?? 0, selectedVersion);
-            _changesPending = true;
-            SetStatus($"Using {mod.Name} version {selectedVersion} in {active.Name}.");
-            ShowDashboard(2);
-        };
-        var selected = new CheckBox { IsChecked = _selectedMods.Contains(mod.Id), Content = "Select", VerticalAlignment = VerticalAlignment.Center };
-        selected.Click += (_, _) => { if (selected.IsChecked == true) _selectedMods.Add(mod.Id); else _selectedMods.Remove(mod.Id); };
-        var enabled = new CheckBox
-        {
-            IsChecked = profileMod?.Enabled == true,
-            Content = profileMod?.Enabled == true ? "Enabled" : "Disabled",
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        enabled.Click += (_, _) =>
-        {
-            var isEnabled = enabled.IsChecked == true;
-            if (isEnabled)
-                _database.SetProfileMod(active.Id, mod.Id, true, profileMod?.Priority ?? 0, profileMod?.Version ?? mod.Version);
-            else
-                _database.SetProfileMod(active.Id, mod.Id, false, profileMod?.Priority ?? 0, profileMod?.Version ?? mod.Version);
-            _changesPending = true;
-            SetStatus($"{mod.Name} is now {(isEnabled ? "enabled" : "disabled")} in {active.Name}.");
-            ShowDashboard();
-        };
-
-        var moveEarlier = Button("Move up");
-        var enabledOrder = _database.GetProfileMods(active.Id)
-            .Where(item => item.Enabled)
-            .OrderBy(item => item.Priority)
-            .ThenBy(item => item.ModId, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        var orderIndex = enabledOrder.FindIndex(item => item.ModId.Equals(mod.Id, StringComparison.OrdinalIgnoreCase));
-        moveEarlier.IsEnabled = profileMod?.Enabled == true && orderIndex > 0;
-        moveEarlier.Click += (_, _) => ChangePriority(active.Id, mod, profileMod?.Priority ?? 0, -1);
-
-        var moveLater = Button("Move down");
-        moveLater.IsEnabled = profileMod?.Enabled == true && orderIndex >= 0 && orderIndex < enabledOrder.Count - 1;
-        moveLater.Click += (_, _) => ChangePriority(active.Id, mod, profileMod?.Priority ?? 0, 1);
-
-        var remove = Button("Remove");
-        remove.Click += async (_, _) => await RemoveMod(mod);
-        var details = Button("Details");
-        details.Click += async (_, _) => await ShowInstalledModDetails(mod);
-
-        var modActions = new StackPanel
-        {
-            Spacing = 6,
-            Children = { Wrap(selected, enabled, moveEarlier, moveLater, details, remove) }
-        };
-        if (versions.Count > 1)
-        {
-            modActions.Children.Add(CompactExpander(
-                "Choose a different version",
-                Wrap(MutedText("Most players should leave this on the latest version."), versionPicker),
-                120,
-                $"mod-version:{mod.Id}"));
-        }
-
-        return Card(new Grid
-        {
-            ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-            Children =
-            {
-                Cell(new StackPanel
-                {
-                    Spacing = 3,
-                    Children =
-                    {
-                        new TextBlock { Text = mod.Name, FontWeight = FontWeight.SemiBold, FontSize = 16 },
-                        new TextBlock
-                        {
-                            Text = $"Version {selectedVersion}" + (string.IsNullOrWhiteSpace(mod.Author) ? "" : $" by {mod.Author}"),
-                            Foreground = new SolidColorBrush(Color.Parse("#9AAAC2")),
-                            TextWrapping = TextWrapping.Wrap
-                        },
-                        new TextBlock
-                        {
-                            Text = profileMod?.Enabled == true ? "Enabled in this setup" : "Disabled in this setup",
-                            Foreground = profileMod?.Enabled == true ? new SolidColorBrush(Color.Parse("#4DE1C1")) : new SolidColorBrush(Color.Parse("#9AAAC2")),
-                            TextWrapping = TextWrapping.Wrap
-                        }
-                    }
-                }, 0),
-                Cell(modActions, 1)
-            }
-        });
-    }
-
-    private Control BuildProfiles(ProfileRecord active)
-    {
-        var list = new StackPanel { Spacing = 10 };
-        foreach (var profile in _database.GetProfiles())
-        {
-            var profileMods = _database.GetProfileMods(profile.Id).Where(m => m.Enabled).ToList();
-            var enabled = profileMods.Count;
-            var names = profileMods
-                .Select(m => _database.GetMod(m.ModId)?.Name ?? m.ModId)
-                .Take(5)
-                .ToList();
-            var summary = profileMods.Count == 0
-                ? "No mods turned on"
-                : CountPhrase(enabled, "active mod") + (names.Count == 0 ? "" : $"{Environment.NewLine}{string.Join(", ", names)}");
-
-            var profileNameBox = new TextBox { Text = profile.Name, MinWidth = 220 };
-            var rename = Button("Rename");
-            rename.Click += (_, _) =>
-            {
-                try
-                {
-                    _database.RenameProfile(profile.Id, profileNameBox.Text ?? "");
-                    SetStatus($"Renamed setup to {profileNameBox.Text?.Trim()}.");
-                    ShowDashboard(3);
-                }
-                catch (InvalidOperationException ex)
-                {
-                    SetStatus(ex.Message, error: true);
-                }
-            };
-            var use = Button(profile.Id == active.Id ? "Active" : "Use setup");
-            use.IsEnabled = profile.Id != active.Id;
-            use.Click += (_, _) =>
-            {
-                _database.SetActiveProfile(profile.Id);
-                TryRedeployAfterProfileChange(profile);
-                ShowDashboard(3);
-            };
-            var clone = Button("Duplicate");
-            clone.Click += (_, _) => CreateProfile(profile.Name + " Copy", profile);
-            var delete = Button("Delete");
-            delete.IsEnabled = profile.Id != active.Id;
-            delete.Click += async (_, _) =>
-            {
-                if (!await Confirm("Delete setup", $"Delete setup ‘{profile.Name}’ and its saved mod selections? This cannot be undone.", "Delete setup")) return;
-                try
-                {
-                    _database.DeleteProfile(profile.Id);
-            SetStatus($"Deleted setup {profile.Name}.");
-                    ShowDashboard(3);
-                }
-                catch (InvalidOperationException ex)
-                {
-                    SetStatus(ex.Message, error: true);
-                }
-            };
-            list.Children.Add(Card(new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-                Children =
-                {
-                    Cell(new StackPanel
-                    {
-                        Spacing = 3,
-                        Children =
-                        {
-                            Row(profileNameBox, rename),
-                            MutedText(summary)
-                        }
-                    }, 0),
-                    Cell(Wrap(use, clone, delete), 1)
-                }
-            }));
-        }
-
-        var name = new TextBox { Watermark = "Name this setup", MinWidth = 240 };
-        var create = PrimaryButton("Create setup");
-        create.Click += (_, _) => CreateProfile(name.Text?.Trim() ?? "", null);
-        list.Children.Add(Section("Create another setup", Text("Save a different group of mods for another kind of play session."), Wrap(name, create)));
-        var export = Button("Export setup");
-        export.Click += async (_, _) => await ExportCurrentProfile(active);
-        var import = Button("Import setup");
-        import.Click += async (_, _) => await ImportProfile();
-        list.Children.Add(Section("Share or back up setups", Text("Save this setup to a file, or bring one in from another installation."), Row(export, import)));
-        return new StackPanel
-        {
-            Spacing = 14,
-            Children =
-            {
-                new TextBlock { Text = "Setups", FontSize = 24, FontWeight = FontWeight.SemiBold },
-                Text("Save different groups of mods for different ways to play."),
-                list
-            }
-        };
     }
 
     private async Task ExportCurrentProfile(ProfileRecord profile)
@@ -1398,17 +743,12 @@ public partial class MainWindow : Window
     private async Task ShowDetails(string title, string message, string? sourceUrl = null)
     {
         var dialog = new Window { Title = title, Width = 560, Height = 420, WindowStartupLocation = WindowStartupLocation.CenterOwner };
-        var close = PrimaryButton("Close");
-        close.Click += (_, _) => dialog.Close();
-        var actions = new List<Control>();
-        if (Uri.TryCreate(sourceUrl, UriKind.Absolute, out var sourceUri) && (sourceUri.Scheme == Uri.UriSchemeHttp || sourceUri.Scheme == Uri.UriSchemeHttps))
-        {
-            var openSource = Button("Open source link");
-            openSource.Click += (_, _) => OpenExternalLink(sourceUri.ToString());
-            actions.Add(openSource);
-        }
-        actions.Add(close);
-        dialog.Content = new StackPanel { Margin = new Thickness(18), Spacing = 14, Children = { new TextBlock { Text = title, FontSize = 20, FontWeight = FontWeight.SemiBold }, new ScrollViewer { Content = Text(message) }, Wrap(actions.ToArray()) } };
+        var validSource = Uri.TryCreate(sourceUrl, UriKind.Absolute, out var sourceUri) &&
+                          (sourceUri.Scheme == Uri.UriSchemeHttp || sourceUri.Scheme == Uri.UriSchemeHttps);
+        var model = new DetailsDialogViewModel { Title = title, Message = message, HasSource = validSource };
+        model.OpenSource = new RelayCommand(() => OpenExternalLink(sourceUri!.ToString()));
+        model.Close = new RelayCommand(dialog.Close);
+        dialog.Content = new DetailsDialog { DataContext = model };
         await dialog.ShowDialog(this);
     }
 
@@ -1536,21 +876,10 @@ public partial class MainWindow : Window
             WindowStartupLocation = WindowStartupLocation.CenterOwner
         };
 
-        var confirm = PrimaryButton(confirmText);
-        var cancel = Button("Cancel");
-        confirm.Click += (_, _) => dialog.Close(true);
-        cancel.Click += (_, _) => dialog.Close(false);
-        dialog.Content = new StackPanel
-        {
-            Margin = new Thickness(18),
-            Spacing = 14,
-            Children =
-            {
-                new TextBlock { Text = title, FontSize = 20, FontWeight = FontWeight.SemiBold },
-                new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap },
-                Row(confirm, cancel)
-            }
-        };
+        var model = new ConfirmDialogViewModel { Title = title, Message = message, ConfirmText = confirmText };
+        model.Confirm = new RelayCommand(() => dialog.Close(true));
+        model.Cancel = new RelayCommand(() => dialog.Close(false));
+        dialog.Content = new ConfirmDialog { DataContext = model };
 
         return await dialog.ShowDialog<bool>(this);
     }
@@ -1892,207 +1221,7 @@ public partial class MainWindow : Window
         return string.IsNullOrWhiteSpace(id) ? "profile" : id;
     }
 
-    private static StackPanel Page(string title, params Control[] controls)
-    {
-        var panel = new StackPanel { Spacing = 14 };
-        panel.Children.Add(new TextBlock
-        {
-            Text = title,
-            FontSize = 24,
-            FontWeight = FontWeight.SemiBold,
-            Margin = new Thickness(0, 0, 0, 2)
-        });
-        foreach (var control in controls)
-        {
-            panel.Children.Add(control);
-        }
-
-        return panel;
-    }
-
-    private static Border Section(string title, params Control[] controls)
-    {
-        var panel = new StackPanel { Spacing = 10 };
-        panel.Children.Add(new TextBlock { Text = title, FontSize = 18, FontWeight = FontWeight.SemiBold });
-        foreach (var control in controls)
-        {
-            panel.Children.Add(control);
-        }
-
-        return Card(panel);
-    }
-
-    private static TextBlock Text(string text) => new()
-    {
-        Text = text,
-        TextWrapping = TextWrapping.Wrap
-    };
-
     private static string CountPhrase(int count, string singular) =>
         $"{count} {singular}{(count == 1 ? "" : "s")}";
 
-    private static TextBlock MutedText(string text) => new()
-    {
-        Text = text,
-        Foreground = new SolidColorBrush(Color.Parse("#9AAAC2")),
-        TextWrapping = TextWrapping.Wrap
-    };
-
-    private Control CompactExpander(string header, Control content, double maxHeight = 220, string? stateKey = null)
-    {
-        var key = string.IsNullOrWhiteSpace(stateKey) ? header : stateKey;
-        var expanded = _expandedAccordions.Contains(key);
-        var disclosureState = new TextBlock
-        {
-            Text = expanded ? "Hide" : "Show",
-            Foreground = new SolidColorBrush(Color.Parse("#9AAAC2")),
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        var toggle = new ToggleButton
-        {
-            Tag = header,
-            IsChecked = expanded,
-            Classes = { "disclosure" },
-            Content = new Grid
-            {
-                ColumnDefinitions = new ColumnDefinitions("*,Auto"),
-                ColumnSpacing = 10,
-                Children =
-                    {
-                        Cell(new TextBlock { Text = header, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center }, 0),
-                    Cell(disclosureState, 1)
-                }
-            }
-        };
-        var body = new ScrollViewer
-        {
-            MaxHeight = maxHeight,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            IsVisible = expanded,
-            Content = content
-        };
-        var panel = new StackPanel { Spacing = expanded ? 10 : 0, Children = { toggle, body } };
-        void SetExpanded(bool isExpanded)
-        {
-            expanded = isExpanded;
-            body.IsVisible = expanded;
-            panel.Spacing = expanded ? 10 : 0;
-            disclosureState.Text = expanded ? "Hide" : "Show";
-            if (expanded) _expandedAccordions.Add(key);
-            else _expandedAccordions.Remove(key);
-        }
-        toggle.PropertyChanged += (_, change) =>
-        {
-            if (change.Property == ToggleButton.IsCheckedProperty)
-                SetExpanded(change.GetNewValue<bool?>() == true);
-        };
-        return new Border
-        {
-            Background = new SolidColorBrush(Color.Parse("#17243B")),
-            BorderBrush = new SolidColorBrush(Color.Parse("#2A3A55")),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(14, 11),
-            Child = panel
-        };
-    }
-
-    private static Button Button(string label) => new()
-    {
-        Content = label,
-        Padding = new Thickness(12, 8),
-        HorizontalContentAlignment = HorizontalAlignment.Center
-    };
-
-    private static Button PrimaryButton(string label)
-    {
-        var button = Button(label);
-        button.FontWeight = FontWeight.SemiBold;
-        button.Classes.Add("accent");
-        return button;
-    }
-
-    private static StackPanel Row(params Control[] controls)
-    {
-        var row = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 10,
-            VerticalAlignment = VerticalAlignment.Center
-        };
-        foreach (var control in controls)
-        {
-            row.Children.Add(control);
-        }
-
-        return row;
-    }
-
-    private static WrapPanel Wrap(params Control[] controls)
-    {
-        var panel = new WrapPanel
-        {
-            Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
-            ItemHeight = double.NaN,
-            ItemWidth = double.NaN
-        };
-        foreach (var control in controls)
-        {
-            control.Margin = new Thickness(0, 0, 10, 10);
-            panel.Children.Add(control);
-        }
-
-        return panel;
-    }
-
-    private static Border EmptyState(string title, string message, Control action) => Card(new StackPanel
-    {
-        Spacing = 8,
-        HorizontalAlignment = HorizontalAlignment.Center,
-        Children =
-        {
-            new TextBlock { Text = title, FontSize = 18, FontWeight = FontWeight.SemiBold, HorizontalAlignment = HorizontalAlignment.Center },
-            new TextBlock { Text = message, Foreground = new SolidColorBrush(Color.Parse("#9AAAC2")), TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Center },
-            action
-        }
-    });
-
-    private static Border Card(Control content) => new()
-    {
-        BorderBrush = new SolidColorBrush(Color.Parse("#2A3A55")),
-        BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(12),
-        BoxShadow = BoxShadows.Parse("0 4 12 0 #15000000"),
-        Background = new SolidColorBrush(Color.Parse("#111B2E")),
-        Padding = new Thickness(16),
-        Child = content
-    };
-
-    private static Border MetricCard(string label, string value, string detail) => new()
-    {
-        Background = new SolidColorBrush(Color.Parse("#17243B")),
-        BorderBrush = new SolidColorBrush(Color.Parse("#2A3A55")),
-        BorderThickness = new Thickness(1),
-        CornerRadius = new CornerRadius(10),
-        BoxShadow = BoxShadows.Parse("0 3 10 0 #12000000"),
-        Padding = new Thickness(14),
-        Child = new StackPanel
-        {
-            Spacing = 4,
-            Children =
-            {
-                MutedText(label),
-                new TextBlock { Text = value, FontSize = 18, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap },
-                MutedText(detail)
-            }
-        }
-    };
-
-    private static Control Cell(Control control, int column)
-    {
-        Grid.SetColumn(control, column);
-        return control;
-    }
 }

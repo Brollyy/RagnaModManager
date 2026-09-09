@@ -1,0 +1,21 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:RagnaModManager.Desktop"
+             x:Class="RagnaModManager.Desktop.ProfilesView"
+             x:DataType="local:ProfilesPageViewModel">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <StackPanel Spacing="14">
+      <TextBlock Text="Setups" FontSize="24" FontWeight="SemiBold"/><TextBlock Text="Save different groups of mods for different ways to play." Foreground="#9AAAC2" TextWrapping="Wrap"/>
+      <ListBox ItemsSource="{Binding Items}" Background="Transparent" BorderThickness="0">
+        <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="local:ProfileRowViewModel">
+            <Border Classes="card" Margin="0,0,0,10" Padding="14"><Grid ColumnDefinitions="*,Auto" ColumnSpacing="16"><StackPanel Spacing="8"><WrapPanel Orientation="Horizontal" ItemSpacing="8"><TextBox Text="{Binding Name, Mode=TwoWay}" MinWidth="220"/><Button Content="Rename" Command="{Binding Rename}"/></WrapPanel><TextBlock Text="{Binding Summary}" Foreground="#9AAAC2" TextWrapping="Wrap"/></StackPanel><WrapPanel Grid.Column="1" Orientation="Horizontal" ItemSpacing="6" LineSpacing="6" VerticalAlignment="Center"><Button Content="Active" IsVisible="{Binding IsActive}"/><Button Content="Use setup" IsVisible="{Binding IsInactive}" Command="{Binding Use}"/><Button Content="Duplicate" Command="{Binding Duplicate}"/><Button Content="Delete" IsVisible="{Binding IsInactive}" Command="{Binding Delete}"/></WrapPanel></Grid></Border>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <Border Classes="card" Padding="16"><StackPanel Spacing="10"><TextBlock Text="Create another setup" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="Save a different group of mods for another kind of play session." Foreground="#9AAAC2"/><WrapPanel Orientation="Horizontal" ItemSpacing="8"><TextBox Text="{Binding NewName, Mode=TwoWay}" Watermark="Name this setup" MinWidth="240"/><Button Content="Create setup" Classes="accent" Command="{Binding Create}"/></WrapPanel></StackPanel></Border>
+      <Border Classes="card" Padding="16"><StackPanel Spacing="10"><TextBlock Text="Share or back up setups" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="Save this setup to a file, or bring one in from another installation." Foreground="#9AAAC2"/><WrapPanel Orientation="Horizontal" ItemSpacing="8"><Button Content="Export setup" Command="{Binding Export}"/><Button Content="Import setup" Command="{Binding Import}"/></WrapPanel></StackPanel></Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

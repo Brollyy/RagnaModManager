@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:RagnaModManager.Desktop"
+             x:Class="RagnaModManager.Desktop.ModsView"
+             x:DataType="local:ModsPageViewModel">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <StackPanel Spacing="14">
+      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+        <StackPanel Spacing="5"><TextBlock Text="Your mods" FontSize="24" FontWeight="SemiBold"/><TextBlock Text="{Binding Subtitle}" Foreground="#9AAAC2" TextWrapping="Wrap"/></StackPanel>
+        <Button Grid.Column="1" Content="Add mod file" Classes="accent" Command="{Binding AddMod}" VerticalAlignment="Center"/>
+      </Grid>
+      <Border Classes="card" Padding="12">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+          <TextBox Text="{Binding Search, Mode=TwoWay}" Watermark="Search installed mods…" MinWidth="280" KeyDown="OnSearchKeyDown" />
+          <Button Grid.Column="1" Content="Clear" Command="{Binding ClearSearch}" />
+        </Grid>
+      </Border>
+      <Border Classes="card" Padding="12">
+        <StackPanel Spacing="10">
+          <TextBlock Text="Bulk actions" FontWeight="SemiBold"/>
+          <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
+            <Button Content="Select all" Command="{Binding SelectAll}"/><Button Content="Clear selection" Command="{Binding ClearSelection}"/>
+            <Button Content="Enable all visible" Command="{Binding EnableAll}"/><Button Content="Disable all visible" Command="{Binding DisableAll}"/>
+            <Button Content="Enable selected" Command="{Binding EnableSelected}"/><Button Content="Disable selected" Command="{Binding DisableSelected}"/>
+            <Button Content="Remove selected" Command="{Binding RemoveSelected}"/>
+          </WrapPanel>
+        </StackPanel>
+      </Border>
+      <Border Classes="warning" IsVisible="{Binding HasDependencyNotice}" Padding="14"><TextBlock Text="{Binding DependencyNotice}" TextWrapping="Wrap"/></Border>
+      <ListBox ItemsSource="{Binding Items}" Background="Transparent" BorderThickness="0">
+        <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="local:ModRowViewModel">
+            <Border Classes="card" Margin="0,0,0,10" Padding="14">
+              <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+                <StackPanel Spacing="4"><TextBlock Text="{Binding Name}" FontSize="16" FontWeight="SemiBold"/><TextBlock Text="{Binding Version}" Foreground="#9AAAC2"/><TextBlock Text="{Binding Status}" Foreground="{Binding StatusBrush}"/></StackPanel>
+                <StackPanel Grid.Column="1" Spacing="7" HorizontalAlignment="Right">
+                  <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
+                    <CheckBox Content="Select" IsChecked="{Binding Selected, Mode=TwoWay}" VerticalAlignment="Center"/>
+                    <Button Content="Enabled" IsVisible="{Binding Enabled}" Command="{Binding ToggleEnabled}"/>
+                    <Button Content="Disabled" IsVisible="{Binding IsDisabled}" Command="{Binding ToggleEnabled}"/>
+                    <Button Content="Move up" IsEnabled="{Binding CanMoveUp}" Command="{Binding MoveUp}"/>
+                    <Button Content="Move down" IsEnabled="{Binding CanMoveDown}" Command="{Binding MoveDown}"/>
+                    <Button Content="Details" Command="{Binding Details}"/><Button Content="Source" IsVisible="{Binding HasSource}" Command="{Binding OpenSource}"/><Button Content="Remove" Command="{Binding Remove}"/>
+                  </WrapPanel>
+                  <WrapPanel Orientation="Horizontal" ItemSpacing="6" IsVisible="{Binding HasMultipleVersions}">
+                    <ComboBox ItemsSource="{Binding Versions}" SelectedItem="{Binding SelectedVersion, Mode=TwoWay}" MinWidth="120"/>
+                    <Button Content="Use version" Command="{Binding ChangeVersion}"/>
+                  </WrapPanel>
+                </StackPanel>
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+      <Border Classes="empty" IsVisible="{Binding IsEmpty}" Padding="32"><StackPanel Spacing="8" HorizontalAlignment="Center"><TextBlock Text="No mods installed yet." FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/><TextBlock Text="Add a mod to start building this setup." Opacity="0.6" HorizontalAlignment="Center"/><Button Content="Add your first mod" Classes="accent" Command="{Binding AddMod}" HorizontalAlignment="Center"/></StackPanel></Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
