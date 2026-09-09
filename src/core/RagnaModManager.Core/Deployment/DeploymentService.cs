@@ -118,6 +118,7 @@ public sealed class DeploymentService
             WriteUe4ssEnabledState(gameRoot, plan, deployed);
             _database.ReplaceDeployedFiles(plan.ProfileId, deployed);
             WriteCurrentManifest(plan.ProfileId, deployed);
+            _database.CaptureAppliedProfileSnapshot(plan.ProfileId);
             return Result.Ok();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)

@@ -436,6 +436,45 @@ public sealed class ManagerDatabase
         }
     }
 
+    public bool HasAppliedProfileSnapshot(string profileId) => File.Exists(_paths.AppliedProfilePath(profileId));
+
+    public void CaptureAppliedProfileSnapshot(string profileId)
+    {
+        var profile = GetProfile(profileId) ?? throw new InvalidOperationException($"Profile does not exist: {profileId}");
+        var mods = GetProfileMods(profileId)
+            .Select(m => new ProfileModDocument(m.ModId, m.Enabled, m.Priority, m.Version))
+            .ToList();
+        File.WriteAllText(_paths.AppliedProfilePath(profileId), JsonSerializer.Serialize(new ProfileDocument(profile.Id, profile.Name, mods), JsonOptions));
+    }
+
+    public Result RestoreAppliedProfileSnapshot(string profileId)
+    {
+        var path = _paths.AppliedProfilePath(profileId);
+        if (!File.Exists(path)) return Result.Fail($"No applied setup snapshot exists for profile {profileId}.");
+
+        try
+        {
+            var document = JsonSerializer.Deserialize<ProfileDocument>(File.ReadAllText(path), JsonOptions);
+            if (document is null || document.Mods is null)
+                return Result.Fail("The applied setup snapshot is empty or malformed.");
+
+            var original = document.Mods.ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
+            foreach (var current in GetProfileMods(profileId))
+            {
+                if (!original.ContainsKey(current.ModId)) RemoveProfileMod(profileId, current.ModId);
+            }
+
+            foreach (var mod in document.Mods)
+                SetProfileMod(profileId, mod.Id, mod.Enabled, mod.Priority, mod.Version);
+
+            return Result.Ok();
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            return Result.Fail($"Could not restore the applied setup: {ex.Message}");
+        }
+    }
+
     private SqliteConnection Open() => new(_path);
 
     private ModRecord? GetCurrentMod(string id)

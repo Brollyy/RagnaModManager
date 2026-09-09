@@ -49,6 +49,7 @@ var tests = new (string Name, Action Body)[]
     ("official install downloads catalog dependencies first", OfficialInstallDownloadsDependencies),
     ("semantic versions order prereleases correctly", SemanticVersionsOrderPrereleases),
     ("profiles export and import version pins", ProfilesExportAndImportVersionPins),
+    ("applied profile snapshots restore unapplied changes", AppliedProfileSnapshotsRestoreChanges),
     ("multiple mod versions can be installed and selected by profile", MultipleModVersionsCanBeSelected)
 };
 
@@ -148,6 +149,21 @@ static void ProfilesExportAndImportVersionPins()
     var imported = env.Database.ImportProfile(path, "copy", "Copy");
     Assert(imported.Success, imported.Error ?? "profile import should succeed");
     Assert(env.Database.GetProfileMods("copy").Single().Version == "1.0.0", "profile pin should survive export/import");
+}
+
+static void AppliedProfileSnapshotsRestoreChanges()
+{
+    using var env = TestEnv.Create();
+    env.Database.SetProfileMod("default", "demo", true, 5, "1.0.0");
+    env.Database.CaptureAppliedProfileSnapshot("default");
+    env.Database.SetProfileMod("default", "demo", false, 0, "2.0.0");
+    env.Database.SetProfileMod("default", "new-mod", true, 10, "1.0.0");
+
+    var restored = env.Database.RestoreAppliedProfileSnapshot("default");
+    Assert(restored.Success, restored.Error ?? "snapshot restore should succeed");
+    var mods = env.Database.GetProfileMods("default");
+    Assert(mods.Count == 1, "restore should remove changes that were not applied");
+    Assert(mods[0].ModId == "demo" && mods[0].Enabled && mods[0].Priority == 5 && mods[0].Version == "1.0.0", "restore should recover the applied state");
 }
 
 static void MultipleModVersionsCanBeSelected()

@@ -41,6 +41,13 @@ dotnet run --project src/ui/RagnaModManager.Cli -- profile
 dotnet run --project src/ui/RagnaModManager.Cli -- profile create development "Development"
 dotnet run --project src/ui/RagnaModManager.Cli -- profile switch development
 dotnet run --project src/ui/RagnaModManager.Cli -- enable better-hit-feedback --priority 500
+dotnet run --project src/ui/RagnaModManager.Cli -- version better-hit-feedback 1.0.0
+dotnet run --project src/ui/RagnaModManager.Cli -- catalog list
+dotnet run --project src/ui/RagnaModManager.Cli -- catalog install better-hit-feedback
+dotnet run --project src/ui/RagnaModManager.Cli -- catalog update
+dotnet run --project src/ui/RagnaModManager.Cli -- profile export setup.json
+dotnet run --project src/ui/RagnaModManager.Cli -- profile import setup.json imported "Imported setup"
+dotnet run --project src/ui/RagnaModManager.Cli -- revert
 dotnet run --project src/ui/RagnaModManager.Cli -- preview
 dotnet run --project src/ui/RagnaModManager.Cli -- deploy
 dotnet run --project src/ui/RagnaModManager.Cli -- rollback
