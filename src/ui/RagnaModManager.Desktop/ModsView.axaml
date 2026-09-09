@@ -48,7 +48,6 @@
                   </WrapPanel>
                   <WrapPanel Orientation="Horizontal" ItemSpacing="6" IsVisible="{Binding HasMultipleVersions}">
                     <ComboBox ItemsSource="{Binding Versions}" SelectedItem="{Binding SelectedVersion, Mode=TwoWay}" MinWidth="120"/>
-                    <Button Content="Use version" Command="{Binding ChangeVersion}"/>
                   </WrapPanel>
                 </StackPanel>
               </Grid>

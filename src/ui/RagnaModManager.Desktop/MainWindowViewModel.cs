@@ -158,7 +158,6 @@ public sealed class ModRowViewModel : ObservableObject
     public bool CanMoveUp { get; init; }
     public bool CanMoveDown { get; init; }
     public ICommand? ToggleEnabled { get; set; }
-    public ICommand? ChangeVersion { get; set; }
     public ICommand? MoveUp { get; set; }
     public ICommand? MoveDown { get; set; }
     public ICommand? Details { get; set; }

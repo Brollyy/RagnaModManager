@@ -269,14 +269,6 @@ public partial class MainWindow : Window
                 SetStatus($"{mod.Name} is now {(enabled ? "enabled" : "disabled")} in {active.Name}.");
                 ShowDashboard(2);
             });
-            row.ChangeVersion = new RelayCommand(() =>
-            {
-                if (string.IsNullOrWhiteSpace(row.SelectedVersion)) return;
-                _database.SetProfileMod(active.Id, mod.Id, row.Enabled, profileMod?.Priority ?? 0, row.SelectedVersion);
-                _changesPending = true;
-                SetStatus($"Using {mod.Name} version {row.SelectedVersion} in {active.Name}.");
-                ShowDashboard(2);
-            });
             row.MoveUp = new RelayCommand(() => ChangePriority(active.Id, mod, profileMod?.Priority ?? 0, -1));
             row.MoveDown = new RelayCommand(() => ChangePriority(active.Id, mod, profileMod?.Priority ?? 0, 1));
             row.Details = new AsyncRelayCommand(() => ShowInstalledModDetails(mod));
@@ -288,6 +280,13 @@ public partial class MainWindow : Window
                 {
                     if (row.Selected) _selectedMods.Add(row.Id); else _selectedMods.Remove(row.Id);
                     model.RefreshState();
+                }
+                else if (e.PropertyName == nameof(ModRowViewModel.SelectedVersion) && !string.Equals(row.SelectedVersion, selectedVersion, StringComparison.OrdinalIgnoreCase))
+                {
+                    _database.SetProfileMod(active.Id, mod.Id, row.Enabled, profileMod?.Priority ?? 0, row.SelectedVersion);
+                    _changesPending = true;
+                    SetStatus($"Using {mod.Name} version {row.SelectedVersion} in {active.Name}.");
+                    ShowDashboard(2);
                 }
             };
             model.Items.Add(row);
