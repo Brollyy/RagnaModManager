@@ -8,7 +8,8 @@
     <ScrollViewer Grid.Row="1"><TextBlock Text="{Binding Message}" TextWrapping="Wrap" /></ScrollViewer>
     <WrapPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" ItemSpacing="8">
       <Button Content="Cancel" Command="{Binding Cancel}" />
-      <Button Content="{Binding ConfirmText}" Classes="accent" Command="{Binding Confirm}" />
+      <Button Content="{Binding ConfirmText}" Classes="accent" IsVisible="{Binding IsSafeConfirm}" Command="{Binding Confirm}" />
+      <Button Content="{Binding ConfirmText}" Classes="destructive" IsVisible="{Binding IsDestructive}" Command="{Binding Confirm}" />
     </WrapPanel>
   </Grid>
 </UserControl>

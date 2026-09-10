@@ -164,7 +164,7 @@ public sealed class DeploymentPlanner
                 "same-target",
                 $"Multiple enabled mods deploy to the same target path: {group.Key}",
                 group.ToList(),
-                BlocksDeployment: true));
+                BlocksDeployment: false));
         }
 
         foreach (var group in affects.Where(g => g.Value.Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1))
@@ -199,7 +199,7 @@ public sealed class DeploymentPlanner
                     $"{manifest.Id} declares a conflict with enabled mod {declaredConflict}.",
                     items.Where(i => i.ModId.Equals(manifest.Id, StringComparison.OrdinalIgnoreCase) ||
                                      i.ModId.Equals(declaredConflict, StringComparison.OrdinalIgnoreCase)).ToList(),
-                    BlocksDeployment: true));
+                    BlocksDeployment: false));
             }
         }
 

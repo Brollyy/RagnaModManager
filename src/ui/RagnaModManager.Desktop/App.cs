@@ -20,7 +20,7 @@ public sealed class App : Application
         var muted = new SolidColorBrush(Color.Parse("#9AAAC2"));
         var panel = new SolidColorBrush(Color.Parse("#111B2E"));
         var surface = new SolidColorBrush(Color.Parse("#17243B"));
-        var accent = new SolidColorBrush(Color.Parse("#4DE1C1"));
+        var accent = new SolidColorBrush(Color.Parse("#1F7068"));
         var accentSoft = new SolidColorBrush(Color.Parse("#173D3D"));
         var line = new SolidColorBrush(Color.Parse("#2A3A55"));
 
@@ -36,8 +36,14 @@ public sealed class App : Application
         Resources["SystemAccentColorLight1"] = accent.Color;
 
         Styles.Add(new Style(x => x.OfType<Window>()) { Setters = { new Setter(Window.BackgroundProperty, new SolidColorBrush(Color.Parse("#0B1220"))), new Setter(Window.ForegroundProperty, ink) } });
-        Styles.Add(new Style(x => x.OfType<Button>()) { Setters = { new Setter(Button.BackgroundProperty, surface), new Setter(Button.BorderBrushProperty, line), new Setter(Button.BorderThicknessProperty, new Thickness(1)), new Setter(Button.ForegroundProperty, ink), new Setter(Button.CornerRadiusProperty, new CornerRadius(8)), new Setter(Button.PaddingProperty, new Thickness(13, 9)) } });
-        Styles.Add(new Style(x => x.OfType<Button>().Class("accent")) { Setters = { new Setter(Button.BackgroundProperty, accent), new Setter(Button.ForegroundProperty, new SolidColorBrush(Color.Parse("#08151A"))), new Setter(Button.BorderBrushProperty, accent) } });
+        Styles.Add(new Style(x => x.OfType<Button>()) { Setters = { new Setter(Button.BackgroundProperty, surface), new Setter(Button.BorderBrushProperty, line), new Setter(Button.BorderThicknessProperty, new Thickness(1)), new Setter(Button.ForegroundProperty, ink), new Setter(Button.CornerRadiusProperty, new CornerRadius(8)), new Setter(Button.PaddingProperty, new Thickness(13, 9)), new Setter(Button.HorizontalContentAlignmentProperty, Avalonia.Layout.HorizontalAlignment.Center), new Setter(Button.VerticalContentAlignmentProperty, Avalonia.Layout.VerticalAlignment.Center) } });
+        var accentButton = new SolidColorBrush(Color.Parse("#1F7068"));
+        Styles.Add(new Style(x => x.OfType<Button>().Class("accent")) { Setters = { new Setter(Button.BackgroundProperty, accentButton), new Setter(Button.ForegroundProperty, new SolidColorBrush(Color.Parse("#E8F7F4"))), new Setter(Button.BorderBrushProperty, accentButton) } });
+        var destructiveButton = new SolidColorBrush(Color.Parse("#7D3540"));
+        Styles.Add(new Style(x => x.OfType<Button>().Class("destructive")) { Setters = { new Setter(Button.BackgroundProperty, destructiveButton), new Setter(Button.ForegroundProperty, ink), new Setter(Button.BorderBrushProperty, destructiveButton) } });
+        Styles.Add(new Style(x => x.OfType<Button>().Class("state-enabled")) { Setters = { new Setter(Button.BackgroundProperty, new SolidColorBrush(Color.Parse("#205A55"))), new Setter(Button.ForegroundProperty, new SolidColorBrush(Color.Parse("#E8F7F4"))), new Setter(Button.BorderBrushProperty, new SolidColorBrush(Color.Parse("#2A766E"))) } });
+        Styles.Add(new Style(x => x.OfType<Button>().Class("state-disabled")) { Setters = { new Setter(Button.BackgroundProperty, new SolidColorBrush(Color.Parse("#713640"))), new Setter(Button.ForegroundProperty, new SolidColorBrush(Color.Parse("#F8E9EB"))), new Setter(Button.BorderBrushProperty, new SolidColorBrush(Color.Parse("#98505A"))) } });
+        Styles.Add(new Style(x => x.OfType<Button>().Class("icon-action")) { Setters = { new Setter(Button.BackgroundProperty, Brushes.Transparent), new Setter(Button.BorderBrushProperty, Brushes.Transparent), new Setter(Button.BorderThicknessProperty, new Thickness(0)), new Setter(Button.ForegroundProperty, muted), new Setter(Button.CornerRadiusProperty, new CornerRadius(6)), new Setter(Button.PaddingProperty, new Thickness(0)) } });
         Styles.Add(new Style(x => x.OfType<TextBox>()) { Setters = { new Setter(TextBox.BackgroundProperty, surface), new Setter(TextBox.BorderBrushProperty, line), new Setter(TextBox.ForegroundProperty, ink), new Setter(TextBox.CornerRadiusProperty, new CornerRadius(8)) } });
         Styles.Add(new Style(x => x.OfType<ComboBox>()) { Setters = { new Setter(ComboBox.BackgroundProperty, surface), new Setter(ComboBox.BorderBrushProperty, line), new Setter(ComboBox.ForegroundProperty, ink) } });
         Styles.Add(new Style(x => x.OfType<Border>().Class("card"))

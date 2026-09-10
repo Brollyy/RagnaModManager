@@ -28,7 +28,7 @@ namespace RagnaModManager.Desktop;
 
 public partial class MainWindow : Window
 {
-    private const string Ue4ssZipHelp = "If a mod asks for script support, choose its support ZIP here and the manager will install it for you.";
+    private const string Ue4ssZipHelp = "If a mod requires UE4SS, choose its UE4SS ZIP here and the manager will install it for you.";
 
     private readonly AppPaths _paths;
     private readonly ManagerDatabase _database;
@@ -45,6 +45,7 @@ public partial class MainWindow : Window
     private Button? _launchButton;
     private int _selectedTab;
     private bool _rebuildingTabs;
+    private bool? _compactNavigation;
     private bool _changesPending;
     private string _modSearch = "";
     private string? _catalogLastChecked;
@@ -102,6 +103,8 @@ public partial class MainWindow : Window
         _launchButton.Click += (_, _) => LaunchGame();
         _viewModel.ApplyChanges = new RelayCommand(DeployActiveProfile);
         _viewModel.RevertChanges = new RelayCommand(RevertPendingChanges);
+        SizeChanged += (_, _) => UpdateNavigationLayout();
+        UpdateNavigationLayout();
 
         _tabs.SelectionChanged += (_, _) =>
         {
@@ -113,6 +116,37 @@ public partial class MainWindow : Window
             }
         };
 
+    }
+
+    private void OnNavigationSizeChanged(object? sender, SizeChangedEventArgs e) => UpdateNavigationLayout();
+
+    private void UpdateNavigationLayout()
+    {
+        if (_tabs is null) return;
+
+        // The left rail is comfortable on a desktop canvas, but it steals the
+        // space needed by names and descriptions on compact windows.
+        var compact = Bounds.Width < 1080;
+        if (_compactNavigation == compact) return;
+
+        _compactNavigation = compact;
+        var selectedIndex = _tabs.SelectedIndex >= 0 ? _tabs.SelectedIndex : _selectedTab;
+        _rebuildingTabs = true;
+        try
+        {
+        _tabs.TabStripPlacement = compact ? Dock.Top : Dock.Left;
+        foreach (var item in _tabs.Items.OfType<TabItem>())
+        {
+            item.Margin = compact ? new Thickness(0, 0, 8, 6) : new Thickness(0, 2, 10, 2);
+            item.Padding = compact ? new Thickness(12, 9) : new Thickness(16, 12);
+        }
+            _tabs.SelectedIndex = Math.Clamp(selectedIndex, 0, _tabs.Items.Count - 1);
+        }
+        finally
+        {
+            _rebuildingTabs = false;
+        }
+        ApplyTabVisualState();
     }
 
     private void ApplyTabVisualState()
@@ -154,7 +188,10 @@ public partial class MainWindow : Window
         var canLaunch = game is not null && !_changesPending && planResult is { Success: true, Value: not null } &&
                         !planResult.Value.Conflicts.Any(conflict => conflict.BlocksDeployment);
         _viewModel.CanLaunch = canLaunch;
-        _viewModel.HasPendingChanges = _changesPending;
+        // Profile edits can exist before a game folder is configured, but they
+        // cannot be applied yet. Keep the footer focused on the next actionable
+        // step instead of showing an Apply button that cannot work.
+        _viewModel.HasPendingChanges = game is not null && _changesPending;
         _launchButton?.SetCurrentValue(Avalonia.Controls.Button.IsEnabledProperty, canLaunch);
 
         _rebuildingTabs = true;
@@ -189,29 +226,29 @@ public partial class MainWindow : Window
         var synchronized = game is not null && !_changesPending && planResult is { Success: true, Value: not null } && IsDeploymentSynchronized(planResult.Value);
         var dashboard = _viewModel.Dashboard;
         dashboard.SetupName = active.Name;
-        dashboard.ActiveMods = enabled == 0 ? "None yet" : $"{enabled} active";
+        dashboard.ActiveMods = $"{enabled} active";
         dashboard.InstalledMods = $"{mods.Count} installed";
         dashboard.PlayStatus = game is null ? "Set up first" : !ready ? "Needs setup" : synchronized ? "Ready to play" : "Apply changes";
         dashboard.PlayDetail = game is null ? "Choose your game folder" : "Ragnarock";
         dashboard.ShowSetupAction = game is null;
-        dashboard.QuickActionsTitle = game is null ? "Start here" : "Manage your mods";
+        dashboard.QuickActionsTitle = game is null ? "Get started" : "Your mods";
         dashboard.QuickActionsDescription = game is null
-            ? "One setup step, then you can browse and play."
-            : "Choose a mod, turn it on, or launch Ragnarock.";
+            ? "Connect the game, then pick the mods you want to use."
+            : "Browse, install, and switch mods on or off.";
         dashboard.CanOpenGame = game is not null;
         dashboard.Headline = game is null
-            ? "Welcome! Let’s get Ragnarock ready for mods."
+            ? "Let’s get some mods running."
             : ready
                 ? synchronized
-                    ? enabled == 0 ? "Ragnarock is ready. Add a mod or launch without mods." : "Your setup is ready. Launch Ragnarock or change your mods."
-                    : "Ragnarock is ready, but your setup is not applied."
-                : "One quick setup step remains before you can use mods.";
+                    ? enabled == 0 ? "Ragnarock is ready. Find a mod or play vanilla." : "Your mods are ready to go."
+                    : "Your mod changes are waiting to be applied."
+                : "The game folder still needs a quick check.";
         dashboard.HeadlineBrush = game is null || !ready ? "#FFB15C" : "#4DE1C1";
         dashboard.NextSteps = game is null
             ? "Set up your game folder, then choose your first mod. We’ll keep the rest of the setup out of your way."
             : ready
-                ? synchronized ? "Browse for something new, or launch Ragnarock with this setup." : "Review your active mods, then apply the setup before launching Ragnarock."
-                : "Choose a valid Ragnarock folder to continue.";
+                ? synchronized ? "Find something new, or launch Ragnarock with this setup." : "Apply your changes before launching Ragnarock."
+                : "Choose the Ragnarock game folder to continue.";
         dashboard.ShowDeploymentNotice = false;
         dashboard.DeploymentDetails = "";
         if (game is not null && planResult is { Success: true, Value: not null } plan)
@@ -220,12 +257,16 @@ public partial class MainWindow : Window
             var warnings = plan.Value.Warnings.Where(w => !w.StartsWith("Found ", StringComparison.Ordinal)).ToList();
             var unmanagedWarning = plan.Value.Warnings.FirstOrDefault(w => w.StartsWith("Found ", StringComparison.Ordinal));
             dashboard.ShowDeploymentNotice = !synchronized || conflicts.Count > 0 || warnings.Count > 0 || unmanagedWarning is not null;
-            dashboard.DeploymentMessage = synchronized ? "Your setup is active." : "Your setup is not active.";
-            IEnumerable<string> unmanagedDetail = unmanagedWarning is null ? [] : new[] { unmanagedWarning };
+            dashboard.DeploymentMessage = synchronized ? "Your setup is ready." : "Your setup still needs attention before you play.";
+            IEnumerable<string> unmanagedDetail = unmanagedWarning is null
+                ? []
+                : new[] { "Ragnarock has other files in its mods folder. They will stay untouched unless one of your selected mods needs the same space." };
             dashboard.DeploymentDetails = string.Join(Environment.NewLine, conflicts.Concat(unmanagedDetail).Concat(warnings.Select(w => "Notice: " + w)));
         }
 
+        dashboard.RefreshState();
         dashboard.SetupAutomatically = new RelayCommand(SetupAutomatically);
+        dashboard.DiscoverMods = new RelayCommand(() => ShowDashboard(1));
         dashboard.AddMod = new AsyncRelayCommand(ImportModPackage);
         dashboard.OpenGameFolder = new RelayCommand(() =>
         {
@@ -271,16 +312,21 @@ public partial class MainWindow : Window
             var versions = _database.GetModVersions(mod.Id).Select(v => v.Version).ToList();
             var selectedVersion = profileMod?.Version ?? mod.Version;
             var orderIndex = enabledOrder.FindIndex(item => item.ModId.Equals(mod.Id, StringComparison.OrdinalIgnoreCase));
+            var manifest = ManifestValidator.LoadAndValidate(mod.ManifestPath).Value;
+            var catalogMod = _officialCatalogResult?.Value?.Mods.FirstOrDefault(c => c.Id.Equals(mod.Id, StringComparison.OrdinalIgnoreCase));
             var row = new ModRowViewModel
             {
                 Id = mod.Id,
                 Name = mod.Name,
                 Version = $"Version {selectedVersion}" + (string.IsNullOrWhiteSpace(mod.Author) ? "" : $" by {mod.Author}"),
-                Author = mod.Author ?? "",
-                SourceUrl = _officialCatalogResult?.Value?.Mods.FirstOrDefault(c => c.Id.Equals(mod.Id, StringComparison.OrdinalIgnoreCase))?.SourceUrl ?? "",
+                Author = manifest?.Author ?? mod.Author ?? catalogMod?.Author ?? "Unknown",
+                Description = manifest?.Description ?? catalogMod?.Description ?? "No description provided.",
+                DependenciesText = manifest is null ? "None" : FormatDependencies(manifest.Dependencies),
+                SourceUrl = catalogMod?.SourceUrl ?? "",
                 Enabled = profileMod?.Enabled == true,
                 Selected = _selectedMods.Contains(mod.Id),
                 SelectedVersion = selectedVersion,
+                IsUsingOlderVersion = profileMod is not null && SemanticVersion.IsNewer(mod.Version, selectedVersion),
                 VersionExpanded = _expandedVersionMods.Contains(mod.Id),
                 CanMoveUp = profileMod?.Enabled == true && orderIndex > 0,
                 CanMoveDown = profileMod?.Enabled == true && orderIndex >= 0 && orderIndex < enabledOrder.Count - 1
@@ -296,7 +342,7 @@ public partial class MainWindow : Window
             });
             row.MoveUp = new RelayCommand(() => ChangePriority(active.Id, mod, profileMod?.Priority ?? 0, -1));
             row.MoveDown = new RelayCommand(() => ChangePriority(active.Id, mod, profileMod?.Priority ?? 0, 1));
-            row.Details = new AsyncRelayCommand(() => ShowInstalledModDetails(mod));
+            row.ToggleDetails = new RelayCommand(() => row.DetailsExpanded = !row.DetailsExpanded);
             row.OpenSource = new RelayCommand(() => OpenExternalLink(row.SourceUrl));
             row.Remove = new AsyncRelayCommand(() => RemoveMod(mod));
             row.PropertyChanged += (_, e) =>
@@ -346,14 +392,14 @@ public partial class MainWindow : Window
     {
         var relatedId = conflict.RelatedModId;
         if (relatedId is null)
-            return new DependencyIssueViewModel { Message = conflict.Message };
+            return new DependencyIssueViewModel { Message = FriendlyDeploymentConflict(conflict) };
 
         var dependency = _database.GetMod(relatedId);
         if (dependency is not null && conflict.Kind == "disabled-dependency")
         {
             return new DependencyIssueViewModel
             {
-                Message = conflict.Message,
+                Message = FriendlyDeploymentConflict(conflict),
                 ActionLabel = $"Enable {dependency.Name}",
                 Action = new RelayCommand(() =>
                 {
@@ -372,7 +418,7 @@ public partial class MainWindow : Window
         {
             return new DependencyIssueViewModel
             {
-                Message = conflict.Message,
+                Message = FriendlyDeploymentConflict(conflict),
                 ActionLabel = dependency is null ? $"Install {catalogMod.Name}" : $"Update {dependency.Name}",
                 Action = new AsyncRelayCommand(() => InstallOfficial(catalogMod, catalogMod.Latest!, null))
             };
@@ -380,7 +426,7 @@ public partial class MainWindow : Window
 
         return new DependencyIssueViewModel
         {
-            Message = conflict.Message,
+            Message = FriendlyDeploymentConflict(conflict),
             ActionLabel = "Open Discover",
             Action = new RelayCommand(() => _tabs.SelectedIndex = 1)
         };
@@ -417,10 +463,16 @@ public partial class MainWindow : Window
                     Id = catalogMod.Id,
                     Name = catalogMod.Name,
                     Description = catalogMod.Description ?? "No description provided.",
-                    DetailsText = $"{catalogMod.Description ?? "No description."}{Environment.NewLine}Author: {catalogMod.Author ?? "Unknown"}{Environment.NewLine}License: {catalogMod.License ?? "Not specified"}{Environment.NewLine}Source: {catalogMod.SourceUrl ?? "Not specified"}{Environment.NewLine}{Environment.NewLine}Dependencies:{Environment.NewLine}{FormatDependencies(catalogMod.Dependencies)}{Environment.NewLine}{Environment.NewLine}Releases: {string.Join(", ", releases.Select(r => $"{r.Version}{(r.SizeBytes is null ? "" : $" ({r.SizeBytes / 1024} KB)")}"))}{Environment.NewLine}{Environment.NewLine}{releases[0].Changelog ?? "No release notes provided."}",
-                    InstallLabel = current is null ? "Install" : latest is not null && IsNewerVersion(latest.Version, current.Version) ? "Update" : "Reinstall",
+                    Author = catalogMod.Author ?? "Unknown",
+                    License = catalogMod.License ?? "Not specified",
+                    Source = catalogMod.SourceUrl ?? "Not specified",
+                    DependenciesText = FormatDependencies(catalogMod.Dependencies),
+                    ReleaseNotes = releases.ToDictionary(r => r.Version, r => r.Changelog ?? "No release notes provided.", StringComparer.OrdinalIgnoreCase),
+                    InstallLabel = current is null ? "Install" : latest is not null && IsNewerVersion(latest.Version, current.Version) ? "Update" : "Installed",
+                    CanInstall = current is null || latest is not null && IsNewerVersion(latest.Version, current.Version),
                     Latest = latest?.Version ?? "—",
                     Installed = installedVersions.Count switch { 0 => "Not installed", 1 => installedVersions[0].Version, _ => $"{installedVersions.Count} versions" },
+                    InstalledVersion = current?.Version ?? "",
                     InstalledBrush = current is not null && latest is not null && IsNewerVersion(latest.Version, current.Version) ? "#B8860B" : "#696969",
                     Selected = _selectedCatalogMods.Contains(catalogMod.Id),
                     SelectedRelease = latest?.Version ?? ""
@@ -436,8 +488,7 @@ public partial class MainWindow : Window
                     var release = releases.FirstOrDefault(r => r.Version.Equals(row.SelectedRelease, StringComparison.OrdinalIgnoreCase)) ?? latest;
                     if (release is not null) await InstallOfficial(catalogMod, release, null);
                 });
-                row.Details = new AsyncRelayCommand(() => ShowDetails(catalogMod.Name,
-                    $"{catalogMod.Description ?? "No description."}{Environment.NewLine}Author: {catalogMod.Author ?? "Unknown"}{Environment.NewLine}License: {catalogMod.License ?? "Not specified"}{Environment.NewLine}Source: {catalogMod.SourceUrl ?? "Not specified"}{Environment.NewLine}{Environment.NewLine}Dependencies:{Environment.NewLine}{FormatDependencies(catalogMod.Dependencies)}{Environment.NewLine}{Environment.NewLine}Available releases: {string.Join(", ", releases.Select(r => $"{r.Version}{(r.SizeBytes is null ? "" : $" ({r.SizeBytes / 1024} KB)")}"))}{Environment.NewLine}{Environment.NewLine}{releases[0].Changelog ?? "No release notes provided."}", catalogMod.SourceUrl));
+                row.OpenSource = new RelayCommand(() => OpenExternalLink(catalogMod.SourceUrl ?? ""));
                 row.PropertyChanged += (_, e) =>
                 {
                     if (e.PropertyName == nameof(DiscoverModViewModel.Selected))
@@ -457,7 +508,7 @@ public partial class MainWindow : Window
         var catalogForSelection = _officialCatalogResult?.Value;
         model.SelectAll = new RelayCommand(() =>
         {
-            var select = !model.Mods.All(row => row.Selected);
+            var select = !model.AllSelected;
             foreach (var row in model.Mods)
             {
                 row.Selected = select;
@@ -470,10 +521,11 @@ public partial class MainWindow : Window
             }
             model.RefreshState();
         });
-        model.HasUpdates = _officialCatalogResult?.Success == true;
+        model.HasUpdates = _officialCatalogResult?.Value?.Mods.Any(catalogMod =>
+            catalogMod.Latest is not null &&
+            installed.FirstOrDefault(mod => mod.Id.Equals(catalogMod.Id, StringComparison.OrdinalIgnoreCase)) is { } current &&
+            IsNewerVersion(catalogMod.Latest.Version, current.Version)) == true;
         model.SortByName = new RelayCommand(() => SortCatalogBy("Name"));
-        model.SortByLatest = new RelayCommand(() => SortCatalogBy("Latest"));
-        model.SortByInstalled = new RelayCommand(() => SortCatalogBy("Installed"));
         model.RefreshState();
     }
 
@@ -491,24 +543,34 @@ public partial class MainWindow : Window
         foreach (var profile in _database.GetProfiles())
         {
             var enabled = _database.GetProfileMods(profile.Id).Where(m => m.Enabled).ToList();
-            var names = enabled.Select(m => _database.GetMod(m.ModId)?.Name ?? m.ModId).Take(5).ToList();
+            var included = enabled
+                .Select(m => (_database.GetMod(m.ModId)?.Name ?? m.ModId, m.Version ?? _database.GetMod(m.ModId)?.Version ?? ""))
+                .ToList();
+            var preview = included.Take(3).Select(item => item.Item1).ToList();
+            var summary = enabled.Count == 0
+                ? "No mods turned on"
+                : CountPhrase(enabled.Count, "active mod") + (preview.Count == 0 ? "" : $"{Environment.NewLine}{string.Join(", ", preview)}{(included.Count > preview.Count ? $" … +{included.Count - preview.Count} more" : "")}");
             var row = new ProfileRowViewModel
             {
                 Id = profile.Id,
                 Name = profile.Name,
                 IsActive = profile.Id.Equals(active.Id, StringComparison.OrdinalIgnoreCase),
-                Summary = enabled.Count == 0 ? "No mods turned on" : CountPhrase(enabled.Count, "active mod") + (names.Count == 0 ? "" : $"{Environment.NewLine}{string.Join(", ", names)}")
+                Summary = summary
             };
-            row.Rename = new RelayCommand(() =>
+            foreach (var item in included) row.IncludedMods.Add(string.IsNullOrWhiteSpace(item.Item2) ? item.Item1 : $"{item.Item1}  ·  {item.Item2}");
+            row.ToggleExpanded = new RelayCommand(() => row.IsExpanded = !row.IsExpanded);
+            row.Rename = new RelayCommand(() => row.IsRenaming = true);
+            row.SaveRename = new RelayCommand(() =>
             {
-                try { _database.RenameProfile(profile.Id, row.Name); SetStatus($"Renamed setup to {row.Name.Trim()}."); ShowDashboard(3); }
+                try { _database.RenameProfile(profile.Id, row.Name); SetStatus($"Renamed setup to {row.Name.Trim()}."); row.IsRenaming = false; ShowDashboard(3); }
                 catch (InvalidOperationException ex) { SetStatus(ex.Message, error: true); }
             });
             row.Use = new RelayCommand(() => { _database.SetActiveProfile(profile.Id); TryRedeployAfterProfileChange(profile); ShowDashboard(3); });
             row.Duplicate = new RelayCommand(() => CreateProfile(profile.Name + " Copy", profile));
+            row.Export = new AsyncRelayCommand(() => ExportCurrentProfile(profile));
             row.Delete = new AsyncRelayCommand(async () =>
             {
-                if (!await Confirm("Delete setup", $"Delete setup ‘{profile.Name}’ and its saved mod selections? This cannot be undone.", "Delete setup")) return;
+                if (!await Confirm("Delete setup", $"Delete setup ‘{profile.Name}’ and its saved mod selections? This cannot be undone.", "Delete setup", destructive: true)) return;
                 try { _database.DeleteProfile(profile.Id); SetStatus($"Deleted setup {profile.Name}."); ShowDashboard(3); }
                 catch (InvalidOperationException ex) { SetStatus(ex.Message, error: true); }
             });
@@ -522,8 +584,9 @@ public partial class MainWindow : Window
     private void PopulateSettingsModel(GameRecord? game, Core.Common.Result<DeploymentPlan>? planResult)
     {
         var model = _viewModel.Settings;
-        model.Intro = game is null ? "Choose your game folder, apply your mod setup, and add support only when a mod needs it." : "Your game is connected. Apply your mod setup, and add support only when a mod needs it.";
+        model.Intro = game is null ? "Choose your game folder, apply your mod setup, and install UE4SS only when a mod needs it." : "Your game is connected. Apply your mod setup, and install UE4SS only when a mod needs it.";
         model.GamePath = game?.InstallPath ?? "";
+        model.SavedGamePath = game?.InstallPath ?? "";
         model.HasGame = game is not null;
         model.GameStatus = game is null ? "Choose your Ragnarock folder to get started." : _detector.Validate(game.InstallPath).IsValid ? "Ragnarock is ready." : "This folder needs attention. Choose the correct Ragnarock folder.";
         if (game is null)
@@ -546,17 +609,23 @@ public partial class MainWindow : Window
             model.ApplyStatus = "We can’t check your mod setup yet. Resolve the issue shown here first.";
         }
         model.CanCleanUp = game is not null && CreateDeploymentService().GetUnmanagedFiles(game.InstallPath).Count > 0;
+        model.CanOpenModsFolder = game is not null;
         var scriptMods = planResult?.Success == true && planResult.Value is not null
             ? planResult.Value.Items.Where(i => i.FileType.Equals("ue4ss-lua", StringComparison.OrdinalIgnoreCase) || i.FileType.Equals("ue4ss-dll", StringComparison.OrdinalIgnoreCase)).Select(i => i.ModId).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
             : [];
-        model.SupportStatus = game is null ? "Status: Choose your game folder first." : _ue4ss.Detect(game.InstallPath).Installed ? "Status: Script support is installed." : "Status: Script support is not installed yet.";
-        var scriptNames = scriptMods.Select(id => _database.GetMod(id)?.Name ?? id).ToList();
-        model.SupportNote = scriptNames.Count == 0 ? "Your current mods don’t need anything extra." : $"{CountPhrase(scriptNames.Count, "active mod")} {(scriptNames.Count == 1 ? "needs" : "need")} script support: {string.Join(", ", scriptNames)}.";
-        model.RecoverySummary = planResult is { Success: true, Value: not null } p ? $"This session has {CountPhrase(p.Value.Conflicts.Count(c => c.BlocksDeployment), "issue")} that stop changes from being applied." : "Choose your Ragnarock folder before using recovery tools.";
+        model.SupportStatus = game is null ? "Status: Choose your game folder first." : _ue4ss.Detect(game.InstallPath).Installed ? "Status: UE4SS is installed." : "Status: UE4SS is not installed yet.";
+        model.SupportNote = scriptMods.Count == 0 ? "Your current setup does not require UE4SS." : "UE4SS is required by the current setup.";
+        model.RecoverySummary = planResult is not { Success: true, Value: not null }
+            ? "Choose your Ragnarock folder before using these actions."
+            : planResult.Value.Conflicts.Count(c => c.BlocksDeployment) == 0
+                ? "Nothing is blocking your setup."
+                : $"There are {CountPhrase(planResult.Value.Conflicts.Count(c => c.BlocksDeployment), "thing")} to sort out before this setup can be applied.";
         model.LaunchArguments = _launchArguments;
         model.CachedSupportVersions.Clear();
         foreach (var release in _ue4ssReleases.GetCachedReleases()) model.CachedSupportVersions.Add($"{release.Version} ({release.AssetName})");
         model.HasCachedSupport = model.CachedSupportVersions.Count > 0;
+        if (model.HasCachedSupport && !model.CachedSupportVersions.Contains(model.SelectedCachedSupport, StringComparer.Ordinal))
+            model.SelectedCachedSupport = model.CachedSupportVersions[0];
         model.DetectGame = new RelayCommand(() => { var install = _detector.DetectFirstValid(); if (install is null) SetStatus("No Ragnarock Steam install was found. Choose the folder manually.", error: true); else { SaveGame(install); SetStatus(install.IsValid ? "Ragnarock folder saved." : "Folder saved, but it may need attention.", !install.IsValid); ShowDashboard(); } });
         model.BrowseGame = new AsyncRelayCommand(async () =>
         {
@@ -565,11 +634,17 @@ public partial class MainWindow : Window
         });
         model.SaveGame = new RelayCommand(() => { if (string.IsNullOrWhiteSpace(model.GamePath)) { SetStatus("Choose your Ragnarock folder first.", error: true); return; } var install = _detector.Validate(model.GamePath); SaveGame(install); SetStatus(install.IsValid ? "Ragnarock folder saved." : "Folder saved, but it may need attention.", !install.IsValid); ShowDashboard(); });
         model.ApplySetup = new RelayCommand(DeployActiveProfile);
+        model.OpenModsFolder = new RelayCommand(() =>
+        {
+            if (game is null) return;
+            var modsFolder = Path.GetDirectoryName(_rules.GetUe4ssModsFile(game.InstallPath));
+            if (!string.IsNullOrWhiteSpace(modsFolder)) OpenFolder(modsFolder);
+        });
         model.CleanUp = new AsyncRelayCommand(async () =>
         {
             if (game is null) return;
             var unmanaged = CreateDeploymentService().GetUnmanagedFiles(game.InstallPath);
-            if (unmanaged.Count == 0 || !await Confirm("Clean up extra mod files", $"Remove {CountPhrase(unmanaged.Count, "file")} that are outside this app’s setup? This cannot be undone.", "Clean up files")) return;
+            if (unmanaged.Count == 0 || !await Confirm("Clean up extra mod files", $"Remove {CountPhrase(unmanaged.Count, "file")} that are outside this app’s setup? This cannot be undone.", "Clean up files", destructive: true)) return;
             var result = CreateDeploymentService().RemoveUnmanagedFiles(game.InstallPath); SetStatus(result.Success ? $"Removed {CountPhrase(result.Value, "extra mod file")}." : result.Error ?? "Could not remove extra mod files.", !result.Success); ShowDashboard(4);
         });
         model.CheckSupport = new AsyncRelayCommand(CheckUe4ssUpdates);
@@ -579,10 +654,10 @@ public partial class MainWindow : Window
             var current = _database.GetGame(); var cached = _ue4ssReleases.GetCachedReleases();
             var index = model.CachedSupportVersions.IndexOf(model.SelectedCachedSupport);
             if (current is null || index < 0 || index >= cached.Count) return;
-            var result = _ue4ssReleases.InstallCachedRelease(current.InstallPath, cached[index]); SetStatus(result.Success ? $"Installed saved script support {cached[index].Version}." : result.Error ?? "Script support installation failed.", !result.Success); ShowDashboard(4);
+            var result = _ue4ssReleases.InstallCachedRelease(current.InstallPath, cached[index]); SetStatus(result.Success ? $"Installed saved UE4SS {cached[index].Version}." : result.Error ?? "UE4SS installation failed.", !result.Success); ShowDashboard(4);
         });
         model.Rollback = new RelayCommand(() => { var result = CreateDeploymentService().RollbackLatest(); SetStatus(result.Success ? "The last change was undone." : result.Error ?? "Could not undo the last change.", !result.Success); ShowDashboard(4); });
-        model.ResetDeployment = new AsyncRelayCommand(async () => { if (!await Confirm("Remove applied setup", "Remove the setup currently applied by this app from the game folder? Backups are retained when possible.", "Remove setup")) return; var result = CreateDeploymentService().ResetDeployment(); SetStatus(result.Success ? "The applied setup was removed." : result.Error ?? "Could not remove the applied setup.", !result.Success); ShowDashboard(4); });
+        model.ResetDeployment = new AsyncRelayCommand(async () => { if (!await Confirm("Remove applied files", "Remove the files currently applied by Ragna Mod Manager from the game folder? Backups are retained when possible.", "Remove files", destructive: true)) return; var result = CreateDeploymentService().ResetDeployment(); SetStatus(result.Success ? "The applied files were removed." : result.Error ?? "Could not remove the applied files.", !result.Success); ShowDashboard(4); });
         model.SaveLaunchOptions = new RelayCommand(() => { _launchArguments = model.LaunchArguments ?? ""; File.WriteAllText(_paths.LaunchArgumentsPath, _launchArguments); SetStatus(string.IsNullOrWhiteSpace(_launchArguments) ? "Launch arguments cleared." : "Launch arguments saved."); });
         model.OpenLogs = new RelayCommand(() => OpenFolder(_paths.Logs));
         model.OpenIssues = new RelayCommand(() => OpenExternalLink("https://github.com/Brollyy/RagnaModManager/issues"));
@@ -661,7 +736,7 @@ public partial class MainWindow : Window
     {
         var selected = _database.GetMods().Where(m => _selectedMods.Contains(m.Id)).ToList();
         if (selected.Count == 0) { SetStatus("Select at least one mod first.", error: true); return; }
-        if (!await Confirm("Remove selected mods", $"Remove {CountPhrase(selected.Count, "selected mod")} from the manager and all setups?", "Remove Mods")) return;
+        if (!await Confirm("Remove selected mods", $"Remove {CountPhrase(selected.Count, "selected mod")} from the manager and all setups?", "Remove Mods", destructive: true)) return;
         var game = _database.GetGame();
         var pendingBeforeRemoval = _changesPending;
         foreach (var mod in selected)
@@ -681,7 +756,14 @@ public partial class MainWindow : Window
 
     private bool IsDeploymentSynchronized(DeploymentPlan plan)
     {
-        if (plan.Conflicts.Any(c => c.BlocksDeployment) || !File.Exists(_paths.CurrentDeploymentPath)) return false;
+        if (plan.Conflicts.Any(c => c.BlocksDeployment)) return false;
+
+        // A freshly connected game with an empty setup has nothing to deploy yet.
+        // Treat that as synchronized so choosing the game folder does not create
+        // an "unapplied changes" state before the player has installed a mod.
+        // Once a deployment manifest exists, it must still be checked so removing
+        // previously managed mods continues to produce a pending deployment.
+        if (!File.Exists(_paths.CurrentDeploymentPath)) return plan.Items.Count == 0;
 
         try
         {
@@ -710,32 +792,29 @@ public partial class MainWindow : Window
         }
     }
 
-    private static string FriendlyDeploymentConflict(DeploymentConflict conflict) => conflict.Kind switch
+    private string FriendlyDeploymentConflict(DeploymentConflict conflict)
     {
-        "unmanaged-file" => "A selected mod needs to replace an existing game file. Review and approve this in Settings.",
-        "same-target" => "Two enabled mods try to replace the same game file. Turn one off before applying the setup.",
-        "declared-conflict" => "Two enabled mods are incompatible. Turn one off before applying the setup.",
-        "missing-dependency" => "An enabled mod needs another mod that is not installed. Install it before applying the setup.",
-        "disabled-dependency" => "An enabled mod needs another mod that is turned off. Turn that mod on before applying the setup.",
-        "dependency-version" => "An enabled mod needs a different version of another mod. Choose a compatible version before applying the setup.",
-        "profile-version" => "A selected mod version is not installed. Install it or choose another version in Mods.",
-        "manager-requirement" => "An enabled mod requires a newer version of RagnaModManager.",
-        "ue4ss-requirement" => "An enabled mod needs extra support. Install it from Settings before applying the setup.",
-        _ => "Your setup has an issue that must be resolved before it can be applied."
-    };
+        var source = conflict.Items.FirstOrDefault()?.ModId;
+        var sourceName = source is null ? "An enabled mod" : GetDisplayModName(source);
+        var relatedName = conflict.RelatedModId is null ? "another mod" : GetDisplayModName(conflict.RelatedModId);
+        return conflict.Kind switch
+        {
+            "unmanaged-file" => "A selected mod needs to replace an existing game file. Review and approve this in Settings.",
+            "same-target" => $"{sourceName} and {relatedName} try to replace the same game file. The later one may override the earlier one.",
+            "declared-conflict" => $"{sourceName} and {relatedName} may be incompatible.",
+            "missing-dependency" => $"{sourceName} needs {relatedName}, which is not installed. Install it before applying the setup.",
+            "disabled-dependency" => $"{sourceName} needs {relatedName}, which is turned off. Turn it on before applying the setup.",
+            "dependency-version" => $"{sourceName} needs a different version of {relatedName}. Choose a compatible version before applying the setup.",
+            "profile-version" => $"The selected version of {sourceName} is not installed. Install it or choose another version in Mods.",
+            "manager-requirement" => $"{sourceName} requires a newer version of RagnaModManager.",
+            "ue4ss-requirement" => $"{sourceName} needs UE4SS. Install it from Settings before applying the setup.",
+            _ => "Your setup has an issue that must be resolved before it can be applied."
+        };
+    }
 
     private IEnumerable<CatalogMod> SortCatalog(IEnumerable<CatalogMod> mods)
     {
-        var sorted = _catalogSortColumn switch
-        {
-            "Latest" => _catalogSortDescending
-                ? mods.OrderByDescending(m => m.Latest?.Version, Comparer<string?>.Create((a, b) => SemanticVersion.Compare(a, b)))
-                : mods.OrderBy(m => m.Latest?.Version, Comparer<string?>.Create((a, b) => SemanticVersion.Compare(a, b))),
-            "Installed" => _catalogSortDescending
-                ? mods.OrderByDescending(m => _database.GetMod(m.Id)?.Version, Comparer<string?>.Create((a, b) => SemanticVersion.Compare(a, b)))
-                : mods.OrderBy(m => _database.GetMod(m.Id)?.Version, Comparer<string?>.Create((a, b) => SemanticVersion.Compare(a, b))),
-            _ => _catalogSortDescending ? mods.OrderByDescending(m => m.Name) : mods.OrderBy(m => m.Name)
-        };
+        var sorted = _catalogSortDescending ? mods.OrderByDescending(m => m.Name) : mods.OrderBy(m => m.Name);
         return sorted.ThenBy(m => m.Name, StringComparer.OrdinalIgnoreCase);
     }
 
@@ -783,27 +862,87 @@ public partial class MainWindow : Window
             .Where(x => x.Release is not null && x.Current is not null && SemanticVersion.IsNewer(x.Release!.Version, x.Current!.Version))
             .ToList();
         if (available.Count == 0) { SetStatus("All installed community mods are up to date."); return; }
-        foreach (var item in available)
+
+        var activeProfile = _database.GetActiveProfile();
+        var activeState = _database.GetProfileMods(activeProfile.Id).ToDictionary(item => item.ModId, StringComparer.OrdinalIgnoreCase);
+        var pinned = available.Where(item => activeState.TryGetValue(item.Mod.Id, out var selected) &&
+                                              selected.Version is not null &&
+                                              SemanticVersion.IsNewer(item.Current!.Version, selected.Version)).ToList();
+        var updatePinned = true;
+        if (pinned.Count > 0)
+        {
+            var pinnedNames = string.Join(", ", pinned.Select(item => item.Mod.Name));
+            updatePinned = await Confirm(
+                "Update pinned mods?",
+                $"You selected an older version for {pinnedNames}. Update it to the latest version now, or keep the pinned version?",
+                "Update pinned versions");
+        }
+
+        var updates = updatePinned ? available : available.Where(item => !pinned.Contains(item)).ToList();
+        if (updates.Count == 0)
+        {
+            SetStatus("Kept your pinned mod versions.");
+            return;
+        }
+
+        var activeProfileUpdated = false;
+        foreach (var item in updates)
         {
             SetStatus($"Updating {item.Mod.Name}…");
             var result = await _officialCatalog.DownloadAndImportAsync(item.Mod, item.Release!);
             if (!result.Success) { SetStatus($"Could not update {item.Mod.Name}: {result.Error}", error: true); return; }
+            activeProfileUpdated |= SelectImportedVersionForActiveProfile(result.Value!.Id, result.Value.Version);
         }
-        SetStatus($"Updated {CountPhrase(available.Count, "community mod")}.");
+        _changesPending |= activeProfileUpdated;
+        SetStatus($"Updated {CountPhrase(updates.Count, "community mod")}.");
         ShowDashboard(1);
+    }
+
+    private bool SelectImportedVersionForActiveProfile(string modId, string version)
+    {
+        var profile = _database.GetActiveProfile();
+        var existing = _database.GetProfileMods(profile.Id)
+            .FirstOrDefault(item => item.ModId.Equals(modId, StringComparison.OrdinalIgnoreCase));
+        if (existing is null || string.Equals(existing.Version, version, StringComparison.OrdinalIgnoreCase)) return false;
+
+        _database.SetProfileMod(profile.Id, modId, existing.Enabled, existing.Priority, version);
+        return true;
     }
 
     private Core.Common.Result<OfficialCatalog>? _officialCatalogResult;
     private bool _catalogLoading;
 
-    private static string FormatDependencies(IReadOnlyDictionary<string, string>? dependencies) =>
-        dependencies is null or { Count: 0 } ? "None" : string.Join(Environment.NewLine, dependencies.Select(d => $"- {d.Key} {d.Value}"));
+    private string FormatDependencies(IReadOnlyDictionary<string, string>? dependencies) =>
+        dependencies is null or { Count: 0 } ? "None" : string.Join(Environment.NewLine, dependencies.Select(d => $"- {GetDisplayModName(d.Key)} {d.Value}"));
+
+    private string GetDisplayModName(string id)
+    {
+        var installed = _database.GetMod(id);
+        if (installed is not null) return installed.Name;
+        return _officialCatalogResult?.Value?.Mods.FirstOrDefault(mod => mod.Id.Equals(id, StringComparison.OrdinalIgnoreCase))?.Name ?? id;
+    }
 
     private async Task InstallOfficial(CatalogMod catalogMod, CatalogRelease release, Button? install)
     {
         if (install is not null) install.IsEnabled = false;
         try
         {
+            var activeProfile = _database.GetActiveProfile();
+            var selected = _database.GetProfileMods(activeProfile.Id)
+                .FirstOrDefault(item => item.ModId.Equals(catalogMod.Id, StringComparison.OrdinalIgnoreCase));
+            var installed = _database.GetMod(catalogMod.Id);
+            if (selected?.Version is not null && installed is not null &&
+                SemanticVersion.IsNewer(installed.Version, selected.Version) &&
+                SemanticVersion.IsNewer(release.Version, selected.Version) &&
+                !await Confirm(
+                    "Update pinned mod?",
+                    $"{catalogMod.Name} is pinned to older version {selected.Version}. Update it to {release.Version} now?",
+                    "Update pinned version"))
+            {
+                SetStatus($"Kept {catalogMod.Name} pinned to version {selected.Version}.");
+                return;
+            }
+
             SetStatus($"Downloading {catalogMod.Name} {release.Version}…");
             var result = await _officialCatalog.DownloadAndImportAsync(catalogMod, release);
             if (!result.Success)
@@ -812,6 +951,7 @@ public partial class MainWindow : Window
                 return;
             }
 
+            _changesPending |= SelectImportedVersionForActiveProfile(result.Value!.Id, result.Value.Version);
             SetStatus($"Installed {result.Value!.Name} {result.Value.Version}. Open Mods to turn it on.");
             ShowDashboard();
             var game = _database.GetGame();
@@ -838,7 +978,7 @@ public partial class MainWindow : Window
 
     private void UpdatePendingChangesBar()
     {
-        _viewModel.HasPendingChanges = _changesPending;
+        _viewModel.HasPendingChanges = _database.GetGame() is not null && _changesPending;
     }
 
     private void SetupAutomatically()
@@ -1029,7 +1169,7 @@ public partial class MainWindow : Window
         ShowDashboard();
     }
 
-    private async Task<bool> Confirm(string title, string message, string confirmText)
+    private async Task<bool> Confirm(string title, string message, string confirmText, bool destructive = false)
     {
         var dialog = new Window
         {
@@ -1041,7 +1181,7 @@ public partial class MainWindow : Window
             WindowStartupLocation = WindowStartupLocation.CenterOwner
         };
 
-        var model = new ConfirmDialogViewModel { Title = title, Message = message, ConfirmText = confirmText };
+        var model = new ConfirmDialogViewModel { Title = title, Message = message, ConfirmText = confirmText, IsDestructive = destructive };
         model.Confirm = new RelayCommand(() => dialog.Close(true));
         model.Cancel = new RelayCommand(() => dialog.Close(false));
         dialog.Content = new ConfirmDialog { DataContext = model };
@@ -1053,8 +1193,12 @@ public partial class MainWindow : Window
     {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Choose .rmod package",
-            AllowMultiple = false
+            Title = "Choose a mod package",
+            AllowMultiple = false,
+            FileTypeFilter =
+            [
+                new FilePickerFileType("RagnaModManager packages") { Patterns = ["*.rmod", "*.zip"] }
+            ]
         });
         if (files.Count == 0)
         {
@@ -1133,9 +1277,9 @@ public partial class MainWindow : Window
                 .Select(id => _database.GetMod(id)?.Name ?? id)
                 .ToList();
             var description = enabledScriptMods.Count == 1
-                ? $"{enabledScriptMods[0]} uses script support, but it is not installed. Install it now before applying your changes?"
-                : "The selected mods use script support, but it is not installed. Install it now before applying your changes?";
-            if (await Confirm("Script support needed", description, "Install Script Support"))
+                ? $"{enabledScriptMods[0]} needs UE4SS, but it is not installed. Install it now before applying your changes?"
+                : "The selected mods need UE4SS, but it is not installed. Install it now before applying your changes?";
+            if (await Confirm("UE4SS required", description, "Install UE4SS"))
             {
                 await CheckUe4ssUpdates();
                 if (_ue4ss.Detect(game.InstallPath).Installed)
@@ -1144,18 +1288,36 @@ public partial class MainWindow : Window
                 }
                 else
                 {
-                    SetStatus("Changes were not applied. Install script support before using these mods.", error: true);
+                    SetStatus("Changes were not applied. Install UE4SS before using these mods.", error: true);
                 }
             }
             else
             {
-                SetStatus("Changes were not applied. Install script support before using these mods.", error: true);
+                SetStatus("Changes were not applied. Install UE4SS before using these mods.", error: true);
             }
 
             return;
         }
 
-        var result = CreateDeploymentService().Deploy(game.InstallPath);
+        var deployment = CreateDeploymentService();
+        var allowWarnings = false;
+        var result = deployment.Deploy(game.InstallPath);
+        if (!result.Success && preview.Success && preview.Value is not null)
+        {
+            var advisoryConflicts = preview.Value.Conflicts
+                .Where(c => !c.BlocksDeployment && c.Kind != "unmanaged-file")
+                .Select(FriendlyDeploymentConflict)
+                .Distinct()
+                .ToList();
+            if (advisoryConflicts.Count > 0 && await Confirm(
+                    "Review mod warnings",
+                    $"Some enabled mods overlap or declare incompatibilities. They may override each other or behave unexpectedly.{Environment.NewLine}{Environment.NewLine}{string.Join(Environment.NewLine, advisoryConflicts)}{Environment.NewLine}{Environment.NewLine}Deploy anyway?",
+                    "Deploy anyway"))
+            {
+                allowWarnings = true;
+                result = deployment.Deploy(game.InstallPath, allowWarnings: true);
+            }
+        }
         if (!result.Success && preview.Success && preview.Value is not null)
         {
             var unmanaged = preview.Value.Conflicts
@@ -1169,7 +1331,7 @@ public partial class MainWindow : Window
                     $"{CountPhrase(unmanaged.Count, "existing file")} {(unmanaged.Count == 1 ? "is" : "are")} outside this app’s setup. Applying this setup will overwrite only those listed target files; unrelated files in the game folder will be left untouched. Continue?\n\n{string.Join(Environment.NewLine, unmanaged.Take(5))}{(unmanaged.Count > 5 ? Environment.NewLine + "…" : "")}",
                     "Reconcile and Apply"))
             {
-                result = CreateDeploymentService().Deploy(game.InstallPath, allowUnmanagedFiles: true);
+                result = deployment.Deploy(game.InstallPath, allowWarnings: allowWarnings, allowUnmanagedFiles: true);
             }
         }
         if (result.Success)
@@ -1219,9 +1381,9 @@ public partial class MainWindow : Window
     private async Task OfferScriptSupport(string modName)
     {
         var confirmed = await Confirm(
-            "Script support needed",
-            $"{modName} uses script support, but it is not installed. Install it now?",
-            "Install Script Support");
+            "UE4SS required",
+            $"{modName} needs UE4SS, but it is not installed. Install it now?",
+            "Install UE4SS");
         if (confirmed)
         {
             await CheckUe4ssUpdates();
@@ -1292,7 +1454,8 @@ public partial class MainWindow : Window
         var confirmed = await Confirm(
             "Remove mod",
             $"Remove {mod.Name} {mod.Version} from the manager and all setups? This also removes files managed by this app.",
-            "Remove Mod");
+            "Remove Mod",
+            destructive: true);
         if (!confirmed) return;
 
         var game = _database.GetGame();

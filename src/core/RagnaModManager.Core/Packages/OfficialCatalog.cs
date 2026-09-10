@@ -164,7 +164,7 @@ public sealed class OfficialCatalogService
             if (missingCatalogConflicts.Count > 0)
                 return Result<ModManifest>.Fail($"Downloaded package manifest is missing registry conflicts: {string.Join(", ", missingCatalogConflicts)}.");
 
-            var result = _importer.Import(cache);
+            var result = _importer.Import(cache, enableInProfiles: true);
             if (result.Success) _logger.Info($"Installed community mod {result.Value!.Id} {result.Value.Version}.");
             return result;
         }

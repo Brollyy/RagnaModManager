@@ -22,7 +22,7 @@ public sealed class PackageImporter
 
     public ManagerDatabase Database => _database;
 
-    public Result<ModManifest> Import(string archivePath, bool developerMode = false)
+    public Result<ModManifest> Import(string archivePath, bool developerMode = false, bool enableInProfiles = false)
     {
         var inspection = new PackageInspector().Inspect(archivePath, developerMode);
         if (!inspection.Success)
@@ -88,13 +88,13 @@ public sealed class PackageImporter
             Directory.Move(staging, installRoot);
             var installedManifestPath = Path.Combine(installRoot, "manifest.json");
             _database.UpsertMod(manifest, installRoot, installedManifestPath, archivePath);
-            _database.AddModToDefaultProfile(manifest.Id, enabled: false, priority: 0);
+            _database.AddModToDefaultProfile(manifest.Id, enabled: enableInProfiles, priority: 0);
             _logger.Info($"Imported mod {manifest.Id} {manifest.Version} from {archivePath}");
             return Result<ModManifest>.Ok(manifest);
         }
         catch (InvalidDataException ex)
         {
-            return Result<ModManifest>.Fail($"Package is not a readable zip archive: {ex.Message}");
+            return Result<ModManifest>.Fail("That file could not be opened as a mod package. Download the package again and try once more.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException)
         {

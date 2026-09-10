@@ -24,7 +24,7 @@ public sealed class PackageInspector
         if (!archivePath.EndsWith(".rmod", StringComparison.OrdinalIgnoreCase) &&
             !archivePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase))
         {
-            return Result<PackageInspection>.Fail("Package must be a .rmod zip archive.");
+            return Result<PackageInspection>.Fail("That file is not a mod package. Choose a file ending in .rmod or .zip.");
         }
 
         try
@@ -100,7 +100,7 @@ public sealed class PackageInspector
         }
         catch (InvalidDataException ex)
         {
-            return Result<PackageInspection>.Fail($"Package is not a readable zip archive: {ex.Message}");
+            return Result<PackageInspection>.Fail("That file could not be opened as a mod package. Download the package again and try once more.");
         }
         catch (IOException ex)
         {

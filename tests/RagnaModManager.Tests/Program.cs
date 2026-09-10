@@ -29,7 +29,7 @@ var tests = new (string Name, Action Body)[]
     ("unmanaged target files require reconciliation", UnmanagedTargetFilesRequireReconciliation),
     ("removing a mod clears its installation and profile entries", RemovingModClearsInstallation),
     ("switching profiles redeploys from scratch", SwitchingProfilesRedeploysFromScratch),
-    ("same target conflicts block deployment", SameTargetConflictBlocksDeployment),
+    ("same target conflicts warn before deployment", SameTargetConflictWarnsBeforeDeployment),
     ("identical legacy entries are coalesced", IdenticalLegacyEntriesAreCoalesced),
     ("declared mod conflicts block deployment", DeclaredModConflictsBlockDeployment),
     ("manager version requirements block unsupported mods", ManagerVersionRequirementBlocksUnsupportedMods),
@@ -200,6 +200,7 @@ static void OfficialCatalogVerifiesAndImportsPackage()
     var result = service.DownloadAndImportAsync(mod, release).GetAwaiter().GetResult();
     Assert(result.Success, result.Error ?? "official package import failed");
     Assert(env.Database.GetMod("official-demo") is not null, "verified official package should be installed");
+    Assert(env.Database.GetProfileMods("default").Single(mod => mod.ModId == "official-demo").Enabled, "verified official package should start enabled");
 }
 
 static void OfficialCatalogConflictsMustBeDeclaredByPackage()
@@ -239,6 +240,7 @@ static void OfficialInstallDownloadsDependencies()
     Assert(result.Success, result.Error ?? "dependent official package should install");
     Assert(env.Database.GetMod("catalog-api") is not null, "dependency should be installed automatically");
     Assert(env.Database.GetMod("catalog-vote") is not null, "requested mod should be installed");
+    Assert(env.Database.GetProfileMods("default").Where(mod => mod.ModId is "catalog-api" or "catalog-vote").All(mod => mod.Enabled), "official mods and dependencies should start enabled");
 }
 
 static void ImportDeployDisableCleanupCycle()
@@ -491,7 +493,7 @@ static void SwitchingProfilesRedeploysFromScratch()
     Assert(File.Exists(devTarget), "development profile file should be deployed");
 }
 
-static void SameTargetConflictBlocksDeployment()
+static void SameTargetConflictWarnsBeforeDeployment()
 {
     using var env = TestEnv.Create();
     var game = env.CreateGame();
@@ -510,7 +512,10 @@ static void SameTargetConflictBlocksDeployment()
 
     var preview = env.DeploymentService().Preview(game);
     Assert(preview.Success, preview.Error ?? "preview failed");
-    Assert(!preview.Value!.CanDeploy, "same target conflict should block deployment");
+    Assert(preview.Value!.CanDeploy, "same target conflict should be advisory");
+    Assert(preview.Value.Conflicts.Any(c => c.Kind == "same-target" && !c.BlocksDeployment), "same target conflict should warn");
+    Assert(!env.DeploymentService().Deploy(game).Success, "advisory conflict should require acknowledgement");
+    Assert(env.DeploymentService().Deploy(game, allowWarnings: true).Success, "acknowledged advisory conflict should deploy");
 }
 
 static void IdenticalLegacyEntriesAreCoalesced()
@@ -565,7 +570,8 @@ static void DeclaredModConflictsBlockDeployment()
 
     var preview = env.DeploymentService().Preview(game);
     Assert(preview.Success, preview.Error ?? "preview failed");
-    Assert(preview.Value!.Conflicts.Any(c => c.Kind == "declared-conflict" && c.BlocksDeployment), "declared conflict should block deployment");
+    Assert(preview.Value!.Conflicts.Any(c => c.Kind == "declared-conflict" && !c.BlocksDeployment), "declared conflict should warn instead of blocking");
+    Assert(env.DeploymentService().Deploy(game, allowWarnings: true).Success, "acknowledged declared conflict should deploy");
 }
 
 static void ManagerVersionRequirementBlocksUnsupportedMods()
