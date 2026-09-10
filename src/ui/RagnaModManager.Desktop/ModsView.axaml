@@ -1,41 +1,67 @@
-<UserControl xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             xmlns:local="using:RagnaModManager.Desktop"
-             xmlns:sys="using:System"
-             x:Class="RagnaModManager.Desktop.ModsView"
-             x:DataType="local:ModsPageViewModel">
+<?xml version="1.0"?>
+<UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:RagnaModManager.Desktop" xmlns:sys="using:System" x:Class="RagnaModManager.Desktop.ModsView" x:DataType="local:ModsPageViewModel">
   <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
     <StackPanel Spacing="14">
       <TextBlock Text="Your mods" FontSize="24" FontWeight="SemiBold"/>
       <TextBlock Text="{Binding Subtitle}" TextWrapping="Wrap"/>
       <WrapPanel Margin="0,0,0,4" Orientation="Horizontal" ItemSpacing="0" LineSpacing="8">
-        <TextBox CaretBrush="Transparent" Text="{Binding Search, Mode=TwoWay}" Watermark="Search installed mods…" MinWidth="300" KeyDown="OnSearchKeyDown"/>
+        <TextBox CaretBrush="Transparent" Text="{Binding Search, Mode=TwoWay}" Watermark="Search installed mods&#x2026;" MinWidth="300" KeyDown="OnSearchKeyDown"/>
         <Button Padding="12,8" Content="Clear" IsEnabled="{Binding HasSearch}" Command="{Binding ClearSearch}"/>
         <Button Padding="12,8" Margin="10,0,0,0" Content="Search" Command="{Binding SearchAction}"/>
         <Button Padding="12,8" FontWeight="SemiBold" Margin="10,0,0,0" Content="Add mod file" Classes="accent" Command="{Binding AddMod}"/>
       </WrapPanel>
       <Border Margin="0,6,0,0" Background="#17243B" BorderBrush="#2A3A55" BorderThickness="1" CornerRadius="10" Padding="14,11">
         <StackPanel Spacing="10">
-          <ToggleButton Classes="disclosure" IsChecked="{Binding BulkActionsExpanded, Mode=TwoWay}"><Grid ColumnDefinitions="*,Auto" ColumnSpacing="10"><TextBlock Text="Bulk actions" FontWeight="SemiBold"/><TextBlock Grid.Column="1" Text="{Binding BulkActionsLabel}" Foreground="#9AAAC2"/></Grid></ToggleButton>
-        <ScrollViewer MaxHeight="150" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" IsVisible="{Binding BulkActionsExpanded}">
-          <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
-            <WrapPanel.Styles>
-              <Style Selector="Button"><Setter Property="Margin" Value="0,0,10,10"/><Setter Property="Padding" Value="12,8"/></Style>
-            </WrapPanel.Styles>
-            <Button Content="Select all" IsEnabled="{Binding HasVisibleItems}" Command="{Binding SelectAll}"/><Button Content="Clear selection" Command="{Binding ClearSelection}"/>
-            <Button Content="Enable all visible" IsEnabled="{Binding HasVisibleItems}" Command="{Binding EnableAll}"/><Button Content="Disable all visible" IsEnabled="{Binding HasVisibleItems}" Command="{Binding DisableAll}"/>
-            <Button Content="Enable selected" IsEnabled="{Binding HasSelectedItems}" Command="{Binding EnableSelected}"/><Button Content="Disable selected" IsEnabled="{Binding HasSelectedItems}" Command="{Binding DisableSelected}"/><Button Content="Remove selected" IsEnabled="{Binding HasSelectedItems}" Command="{Binding RemoveSelected}"/>
-          </WrapPanel>
-        </ScrollViewer>
+          <ToggleButton Classes="disclosure" IsChecked="{Binding BulkActionsExpanded, Mode=TwoWay}">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+              <TextBlock Text="Bulk actions" FontWeight="SemiBold"/>
+              <TextBlock Grid.Column="1" Text="{Binding BulkActionsLabel}" Foreground="#9AAAC2"/>
+            </Grid>
+          </ToggleButton>
+          <ScrollViewer MaxHeight="150" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" IsVisible="{Binding BulkActionsExpanded}">
+            <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+              <WrapPanel.Styles>
+                <Style Selector="Button">
+                  <Setter Property="Margin" Value="0,0,10,10"/>
+                  <Setter Property="Padding" Value="12,8"/>
+                </Style>
+              </WrapPanel.Styles>
+              <Button Content="Select all" IsEnabled="{Binding HasVisibleItems}" Command="{Binding SelectAll}"/>
+              <Button Content="Clear selection" Command="{Binding ClearSelection}"/>
+              <Button Content="Enable all visible" IsEnabled="{Binding HasVisibleItems}" Command="{Binding EnableAll}"/>
+              <Button Content="Disable all visible" IsEnabled="{Binding HasVisibleItems}" Command="{Binding DisableAll}"/>
+              <Button Content="Enable selected" IsEnabled="{Binding HasSelectedItems}" Command="{Binding EnableSelected}"/>
+              <Button Content="Disable selected" IsEnabled="{Binding HasSelectedItems}" Command="{Binding DisableSelected}"/>
+              <Button Content="Remove selected" IsEnabled="{Binding HasSelectedItems}" Command="{Binding RemoveSelected}"/>
+            </WrapPanel>
+          </ScrollViewer>
         </StackPanel>
       </Border>
-      <TextBlock Text="You can also drag and drop a mod file anywhere in this page." Foreground="#9AAAC2" TextWrapping="Wrap" />
-      <Border Classes="warning" IsVisible="{Binding HasDependencyNotice}" Padding="14"><StackPanel Spacing="8"><TextBlock Text="Dependencies need attention" FontWeight="SemiBold"/><ItemsControl ItemsSource="{Binding DependencyIssues}"><ItemsControl.ItemTemplate><DataTemplate x:DataType="local:DependencyIssueViewModel"><Grid ColumnDefinitions="*,Auto" ColumnSpacing="8"><TextBlock Text="{Binding Message}" TextWrapping="Wrap"/><Button Grid.Column="1" Content="{Binding ActionLabel}" IsVisible="{Binding HasAction}" Command="{Binding Action}"/></Grid></DataTemplate></ItemsControl.ItemTemplate></ItemsControl></StackPanel></Border>
+      <TextBlock Text="You can also drag and drop a mod file anywhere in this page." Foreground="#9AAAC2" TextWrapping="Wrap"/>
+      <Border Classes="warning" IsVisible="{Binding HasDependencyNotice}" Padding="14">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Dependencies need attention" FontWeight="SemiBold"/>
+          <ItemsControl ItemsSource="{Binding DependencyIssues}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="local:DependencyIssueViewModel">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                  <TextBlock Text="{Binding Message}" TextWrapping="Wrap"/>
+                  <Button Grid.Column="1" Content="{Binding ActionLabel}" IsVisible="{Binding HasAction}" Command="{Binding Action}"/>
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </StackPanel>
+      </Border>
       <Border Classes="card" Padding="16">
         <StackPanel Spacing="10">
           <TextBlock Text="{Binding SectionTitle}" FontSize="18" FontWeight="SemiBold"/>
-      <ItemsControl ItemsSource="{Binding Items}" Margin="0,0,0,-10" IsVisible="{Binding HasItems}" ClipToBounds="False">
-        <ItemsControl.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel ClipToBounds="False"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+          <ItemsControl ItemsSource="{Binding Items}" Margin="0,0,0,-10" IsVisible="{Binding HasItems}" ClipToBounds="False">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel ClipToBounds="False"/>
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="local:ModRowViewModel">
                 <Border Classes="card" Margin="0,0,0,10" Padding="16">
@@ -48,8 +74,13 @@
                     <StackPanel Grid.Column="1" Spacing="6" HorizontalAlignment="Right">
                       <WrapPanel Orientation="Horizontal" ItemSpacing="0" LineSpacing="0">
                         <WrapPanel.Styles>
-                          <Style Selector="Button"><Setter Property="Margin" Value="0,0,10,10"/><Setter Property="Padding" Value="12,8"/></Style>
-                          <Style Selector="CheckBox"><Setter Property="Margin" Value="0,0,10,10"/></Style>
+                          <Style Selector="Button">
+                            <Setter Property="Margin" Value="0,0,10,10"/>
+                            <Setter Property="Padding" Value="12,8"/>
+                          </Style>
+                          <Style Selector="CheckBox">
+                            <Setter Property="Margin" Value="0,0,10,10"/>
+                          </Style>
                         </WrapPanel.Styles>
                         <CheckBox Content="Select" IsVisible="{Binding IsInstalled}" IsChecked="{Binding Selected, Mode=TwoWay}"/>
                         <Button Content="Remove from setup" IsVisible="{Binding IsMissing}" Command="{Binding RemoveFromSetup}"/>
@@ -70,25 +101,38 @@
                             </Grid>
                           </ToggleButton>
                           <ScrollViewer MaxHeight="120" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" IsVisible="{Binding VersionExpanded}">
-                          <WrapPanel Orientation="Horizontal" ItemSpacing="0" VerticalAlignment="Center">
+                            <WrapPanel Orientation="Horizontal" ItemSpacing="0" VerticalAlignment="Center">
                               <WrapPanel.Styles>
-                                <Style Selector="ComboBox"><Setter Property="Margin" Value="0,0,10,10"/></Style>
+                                <Style Selector="ComboBox">
+                                  <Setter Property="Margin" Value="0,0,10,10"/>
+                                </Style>
                               </WrapPanel.Styles>
                               <TextBlock Text="Most players should leave this on the latest version." Foreground="#9AAAC2" VerticalAlignment="Center" Margin="0,-4,10,14"/>
                               <Border Height="39" Margin="0,7,10,3">
-                              <ComboBox ItemsSource="{Binding Versions}" SelectedIndex="{Binding SelectedVersionIndex, Mode=TwoWay}" MinWidth="110" Height="32" Margin="0">
-                                <ComboBox.Styles>
-                                  <Style Selector="PathIcon#DropDownGlyph">
-                                    <Setter Property="RenderTransformOrigin" Value="1,0.5"/>
-                                    <Setter Property="RenderTransform"><Setter.Value><TransformGroup><ScaleTransform ScaleX="0.90"/><TranslateTransform X="0.5" Y="-4"/></TransformGroup></Setter.Value></Setter>
-                                  </Style>
-                                </ComboBox.Styles>
-                                <ComboBox.SelectionBoxItemTemplate>
-                                  <DataTemplate x:DataType="sys:String">
-                                    <TextBlock Text="{Binding}" Margin="0,0,10,10" ClipToBounds="False"><TextBlock.RenderTransform><TranslateTransform Y="2"/></TextBlock.RenderTransform></TextBlock>
-                                  </DataTemplate>
-                                </ComboBox.SelectionBoxItemTemplate>
-                              </ComboBox>
+                                <ComboBox ItemsSource="{Binding Versions}" SelectedIndex="{Binding SelectedVersionIndex, Mode=TwoWay}" MinWidth="110" Height="32" Margin="0">
+                                  <ComboBox.Styles>
+                                    <Style Selector="PathIcon#DropDownGlyph">
+                                      <Setter Property="RenderTransformOrigin" Value="1,0.5"/>
+                                      <Setter Property="RenderTransform">
+                                        <Setter.Value>
+                                          <TransformGroup>
+                                            <ScaleTransform ScaleX="0.90"/>
+                                            <TranslateTransform X="0.5" Y="-4"/>
+                                          </TransformGroup>
+                                        </Setter.Value>
+                                      </Setter>
+                                    </Style>
+                                  </ComboBox.Styles>
+                                  <ComboBox.SelectionBoxItemTemplate>
+                                    <DataTemplate x:DataType="sys:String">
+                                      <TextBlock Text="{Binding}" Margin="0,0,10,10" ClipToBounds="False">
+                                        <TextBlock.RenderTransform>
+                                          <TranslateTransform Y="2"/>
+                                        </TextBlock.RenderTransform>
+                                      </TextBlock>
+                                    </DataTemplate>
+                                  </ComboBox.SelectionBoxItemTemplate>
+                                </ComboBox>
                               </Border>
                             </WrapPanel>
                           </ScrollViewer>
@@ -100,7 +144,14 @@
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
-          <Border Classes="empty" CornerRadius="12" IsVisible="{Binding IsEmpty}" Padding="16"><StackPanel Spacing="8" HorizontalAlignment="Center"><TextBlock Text="{Binding EmptyTitle}" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/><TextBlock Text="{Binding EmptyMessage}" Foreground="#9AAAC2" TextWrapping="Wrap" HorizontalAlignment="Center"/><Button Padding="12,8" FontWeight="SemiBold" Content="Add your first mod" IsVisible="{Binding ShowAddFirstMod}" Classes="accent" Command="{Binding AddMod}"/><Button Padding="12,8" Content="Clear search" IsVisible="{Binding HasSearch}" Command="{Binding ClearSearch}"/></StackPanel></Border>
+          <Border Classes="empty" CornerRadius="12" IsVisible="{Binding IsEmpty}" Padding="16">
+            <StackPanel Spacing="8" HorizontalAlignment="Center">
+              <TextBlock Text="{Binding EmptyTitle}" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/>
+              <TextBlock Text="{Binding EmptyMessage}" Foreground="#9AAAC2" TextWrapping="Wrap" HorizontalAlignment="Center"/>
+              <Button Padding="12,8" FontWeight="SemiBold" Content="Add your first mod" IsVisible="{Binding ShowAddFirstMod}" Classes="accent" Command="{Binding AddMod}"/>
+              <Button Padding="12,8" Content="Clear search" IsVisible="{Binding HasSearch}" Command="{Binding ClearSearch}"/>
+            </StackPanel>
+          </Border>
         </StackPanel>
       </Border>
     </StackPanel>
