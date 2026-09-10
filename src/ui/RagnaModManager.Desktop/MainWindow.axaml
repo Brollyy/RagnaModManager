@@ -16,6 +16,10 @@
     <DataTemplate x:DataType="local:SettingsPageViewModel"><local:SettingsView /></DataTemplate>
   </Window.DataTemplates>
   <Window.Styles>
+    <Style Selector="TabItem.active-tab">
+      <Setter Property="Background" Value="#173D3D" />
+      <Setter Property="Foreground" Value="#4DE1C1" />
+    </Style>
     <Style Selector="Button:pointerover">
       <Setter Property="RenderTransform" Value="scale(1.02)" />
     </Style>
@@ -46,12 +50,12 @@
                 VerticalAlignment="Center" />
       </Grid>
     </Border>
-    <Border x:Name="PendingChangesBar" DockPanel.Dock="Bottom" IsVisible="{Binding HasPendingChanges}" Background="#3B2D1B" BorderBrush="#FFB15C" BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="0,12,0,0">
-      <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+    <Border x:Name="PendingChangesBar" DockPanel.Dock="Bottom" IsVisible="{Binding HasPendingChanges}" Background="#3B2D1B" BorderBrush="#FFB15C" BorderThickness="1" CornerRadius="6" Padding="12,8">
+      <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
         <TextBlock Text="This setup has unapplied changes." FontWeight="SemiBold" VerticalAlignment="Center" />
-        <Button x:Name="ApplyChangesButton" Grid.Column="1" Content="Apply changes" Classes="accent" Command="{Binding ApplyChanges}" />
-        <Button x:Name="RevertChangesButton" Grid.Column="2" Content="Revert changes" Command="{Binding RevertChanges}" />
-      </Grid>
+        <Button x:Name="ApplyChangesButton" Padding="12,8" FontWeight="SemiBold" Content="Apply changes" Classes="accent" Command="{Binding ApplyChanges}" />
+        <Button x:Name="RevertChangesButton" Padding="12,8" Content="Revert changes" Command="{Binding RevertChanges}" />
+      </StackPanel>
     </Border>
     <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Margin="4,12,4,0" Foreground="#9AAAC2" TextWrapping="Wrap" />
     <TabControl x:Name="NavigationTabs"

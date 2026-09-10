@@ -17,7 +17,9 @@ public partial class ModsView : UserControl
     private void OnSearchKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter && DataContext is ModsPageViewModel model && model.SearchCommand?.CanExecute(null) == true)
+        {
             model.SearchCommand.Execute(null);
+        }
     }
 
     private async void OnDrop(object? sender, DragEventArgs e)

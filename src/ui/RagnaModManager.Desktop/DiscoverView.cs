@@ -10,6 +10,8 @@ public partial class DiscoverView : UserControl
     private void OnSearchKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter && DataContext is DiscoverPageViewModel model && model.SearchCommand?.CanExecute(null) == true)
+        {
             model.SearchCommand.Execute(null);
+        }
     }
 }

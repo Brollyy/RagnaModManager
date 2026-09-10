@@ -28,6 +28,10 @@ public sealed class App : Application
         Resources["SystemControlForegroundBaseMediumLowBrush"] = muted;
         Resources["SystemControlBackgroundAltHighBrush"] = panel;
         Resources["SystemControlBackgroundBaseLowBrush"] = surface;
+        Resources["TextControlBackgroundFocused"] = surface;
+        Resources["TextControlBorderBrushFocused"] = line;
+        Resources["TextControlBorderThemeThicknessFocused"] = new Thickness(1);
+        Resources["TextControlForegroundFocused"] = ink;
         Resources["SystemAccentColor"] = accent.Color;
         Resources["SystemAccentColorLight1"] = accent.Color;
 
@@ -36,6 +40,49 @@ public sealed class App : Application
         Styles.Add(new Style(x => x.OfType<Button>().Class("accent")) { Setters = { new Setter(Button.BackgroundProperty, accent), new Setter(Button.ForegroundProperty, new SolidColorBrush(Color.Parse("#08151A"))), new Setter(Button.BorderBrushProperty, accent) } });
         Styles.Add(new Style(x => x.OfType<TextBox>()) { Setters = { new Setter(TextBox.BackgroundProperty, surface), new Setter(TextBox.BorderBrushProperty, line), new Setter(TextBox.ForegroundProperty, ink), new Setter(TextBox.CornerRadiusProperty, new CornerRadius(8)) } });
         Styles.Add(new Style(x => x.OfType<ComboBox>()) { Setters = { new Setter(ComboBox.BackgroundProperty, surface), new Setter(ComboBox.BorderBrushProperty, line), new Setter(ComboBox.ForegroundProperty, ink) } });
+        Styles.Add(new Style(x => x.OfType<Border>().Class("card"))
+        {
+            Setters =
+            {
+                new Setter(Border.BackgroundProperty, panel),
+                new Setter(Border.BorderBrushProperty, line),
+                new Setter(Border.BorderThicknessProperty, new Thickness(1)),
+                new Setter(Border.CornerRadiusProperty, new CornerRadius(12)),
+                new Setter(Border.BoxShadowProperty, BoxShadows.Parse("0 4 12 0 #15000000"))
+            }
+        });
+        Styles.Add(new Style(x => x.OfType<Border>().Class("metric"))
+        {
+            Setters =
+            {
+                new Setter(Border.BackgroundProperty, surface),
+                new Setter(Border.BorderBrushProperty, line),
+                new Setter(Border.BorderThicknessProperty, new Thickness(1)),
+                new Setter(Border.CornerRadiusProperty, new CornerRadius(10)),
+                new Setter(Border.BoxShadowProperty, BoxShadows.Parse("0 3 10 0 #12000000"))
+            }
+        });
+        Styles.Add(new Style(x => x.OfType<Border>().Class("empty"))
+        {
+            Setters =
+            {
+                new Setter(Border.BackgroundProperty, panel),
+                new Setter(Border.BorderBrushProperty, line),
+                new Setter(Border.BorderThicknessProperty, new Thickness(1)),
+                new Setter(Border.CornerRadiusProperty, new CornerRadius(10)),
+                new Setter(Border.BoxShadowProperty, BoxShadows.Parse("0 4 12 0 #15000000"))
+            }
+        });
+        Styles.Add(new Style(x => x.OfType<Border>().Class("warning"))
+        {
+            Setters =
+            {
+                new Setter(Border.BackgroundProperty, new SolidColorBrush(Color.Parse("#3B2D1B"))),
+                new Setter(Border.BorderBrushProperty, new SolidColorBrush(Color.Parse("#FFB15C"))),
+                new Setter(Border.BorderThicknessProperty, new Thickness(1)),
+                new Setter(Border.CornerRadiusProperty, new CornerRadius(10))
+            }
+        });
         Styles.Add(new Style(x => x.OfType<ToggleButton>().Class("disclosure"))
         {
             Setters =

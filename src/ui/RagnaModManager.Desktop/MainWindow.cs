@@ -6,6 +6,7 @@ using Avalonia.Layout;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using System.Diagnostics;
 using System.Text.Json;
 using RagnaModManager.Core.Checksums;
@@ -53,6 +54,7 @@ public partial class MainWindow : Window
     private bool _catalogSortDescending;
     private string _launchArguments = "";
     private readonly HashSet<string> _selectedMods = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _expandedVersionMods = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<ProfileModRecord>> _appliedProfileSnapshots = new(StringComparer.OrdinalIgnoreCase);
     private readonly MainWindowViewModel _viewModel = new();
 
@@ -106,10 +108,26 @@ public partial class MainWindow : Window
             if (!_rebuildingTabs)
             {
                 _selectedTab = Math.Max(0, _tabs.SelectedIndex);
+                Dispatcher.UIThread.Post(ApplyTabVisualState, DispatcherPriority.Render);
                 _status.Text = "";
             }
         };
 
+    }
+
+    private void ApplyTabVisualState()
+    {
+        var selectedIndex = _tabs.SelectedIndex;
+        for (var index = 0; index < _tabs.Items.Count; index++)
+        {
+            if (_tabs.Items[index] is not TabItem tab) continue;
+            tab.Classes.Remove("active-tab");
+            tab.Classes.Remove("discover-tab");
+            if (index == selectedIndex)
+            {
+                tab.Classes.Add("active-tab");
+            }
+        }
     }
 
     private void ShowDashboard()
@@ -148,6 +166,7 @@ public partial class MainWindow : Window
         finally
         {
             _rebuildingTabs = false;
+            ApplyTabVisualState();
         }
         UpdatePendingChangesBar();
     }
@@ -175,6 +194,10 @@ public partial class MainWindow : Window
         dashboard.PlayStatus = game is null ? "Set up first" : !ready ? "Needs setup" : synchronized ? "Ready to play" : "Apply changes";
         dashboard.PlayDetail = game is null ? "Choose your game folder" : "Ragnarock";
         dashboard.ShowSetupAction = game is null;
+        dashboard.QuickActionsTitle = game is null ? "Start here" : "Manage your mods";
+        dashboard.QuickActionsDescription = game is null
+            ? "One setup step, then you can browse and play."
+            : "Choose a mod, turn it on, or launch Ragnarock.";
         dashboard.CanOpenGame = game is not null;
         dashboard.Headline = game is null
             ? "Welcome! Let’s get Ragnarock ready for mods."
@@ -216,6 +239,7 @@ public partial class MainWindow : Window
     private void PopulateModsModel(ProfileRecord active, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
     {
         var model = _viewModel.Mods;
+        model.SetupName = active.Name;
         model.Search = _modSearch;
         model.Items.Clear();
         model.DependencyIssues.Clear();
@@ -257,6 +281,7 @@ public partial class MainWindow : Window
                 Enabled = profileMod?.Enabled == true,
                 Selected = _selectedMods.Contains(mod.Id),
                 SelectedVersion = selectedVersion,
+                VersionExpanded = _expandedVersionMods.Contains(mod.Id),
                 CanMoveUp = profileMod?.Enabled == true && orderIndex > 0,
                 CanMoveDown = profileMod?.Enabled == true && orderIndex >= 0 && orderIndex < enabledOrder.Count - 1
             };
@@ -280,6 +305,10 @@ public partial class MainWindow : Window
                 {
                     if (row.Selected) _selectedMods.Add(row.Id); else _selectedMods.Remove(row.Id);
                     model.RefreshState();
+                }
+                else if (e.PropertyName == nameof(ModRowViewModel.VersionExpanded))
+                {
+                    if (row.VersionExpanded) _expandedVersionMods.Add(row.Id); else _expandedVersionMods.Remove(row.Id);
                 }
                 else if (e.PropertyName == nameof(ModRowViewModel.SelectedVersion) && !string.Equals(row.SelectedVersion, selectedVersion, StringComparison.OrdinalIgnoreCase))
                 {
@@ -309,6 +338,7 @@ public partial class MainWindow : Window
         model.EnableSelected = new RelayCommand(() => SetSelectedMods(active, true));
         model.DisableSelected = new RelayCommand(() => SetSelectedMods(active, false));
         model.RemoveSelected = new AsyncRelayCommand(RemoveSelectedMods);
+        model.ToggleBulkActions = new RelayCommand(() => model.BulkActionsExpanded = !model.BulkActionsExpanded);
         model.RefreshState();
     }
 
@@ -363,13 +393,15 @@ public partial class MainWindow : Window
         model.Mods.Clear();
         model.IsLoading = _catalogLoading;
         model.HasCatalog = _officialCatalogResult?.Success == true;
-        model.Status = _catalogLoading
-            ? "Loading community catalog…"
-            : _officialCatalogResult is null
-                ? "Community catalog has not been loaded yet."
-                : _officialCatalogResult.Success
-                    ? $"Community catalog loaded: {CountPhrase(_officialCatalogResult.Value!.Mods.Count, "mod")}. Last checked {_catalogLastChecked ?? "not yet"}."
-                    : _officialCatalogResult.Error ?? "Could not load the community catalog.";
+        model.Status = string.IsNullOrWhiteSpace(_librarySearch)
+            ? _catalogLoading
+                ? "Loading community catalog…"
+                : _officialCatalogResult is null
+                    ? "Community catalog has not been loaded yet."
+                    : _officialCatalogResult.Success
+                        ? $"Community catalog loaded: {CountPhrase(_officialCatalogResult.Value!.Mods.Count, "mod")}. Last checked {_catalogLastChecked ?? "not yet"}."
+                        : _officialCatalogResult.Error ?? "Could not load the community catalog."
+            : "";
 
         if (_officialCatalogResult?.Value is { } catalog)
         {
@@ -385,9 +417,11 @@ public partial class MainWindow : Window
                     Id = catalogMod.Id,
                     Name = catalogMod.Name,
                     Description = catalogMod.Description ?? "No description provided.",
+                    DetailsText = $"{catalogMod.Description ?? "No description."}{Environment.NewLine}Author: {catalogMod.Author ?? "Unknown"}{Environment.NewLine}License: {catalogMod.License ?? "Not specified"}{Environment.NewLine}Source: {catalogMod.SourceUrl ?? "Not specified"}{Environment.NewLine}{Environment.NewLine}Dependencies:{Environment.NewLine}{FormatDependencies(catalogMod.Dependencies)}{Environment.NewLine}{Environment.NewLine}Releases: {string.Join(", ", releases.Select(r => $"{r.Version}{(r.SizeBytes is null ? "" : $" ({r.SizeBytes / 1024} KB)")}"))}{Environment.NewLine}{Environment.NewLine}{releases[0].Changelog ?? "No release notes provided."}",
+                    InstallLabel = current is null ? "Install" : latest is not null && IsNewerVersion(latest.Version, current.Version) ? "Update" : "Reinstall",
                     Latest = latest?.Version ?? "—",
                     Installed = installedVersions.Count switch { 0 => "Not installed", 1 => installedVersions[0].Version, _ => $"{installedVersions.Count} versions" },
-                    InstalledBrush = current is not null && latest is not null && IsNewerVersion(latest.Version, current.Version) ? "#FFB15C" : "#9AAAC2",
+                    InstalledBrush = current is not null && latest is not null && IsNewerVersion(latest.Version, current.Version) ? "#B8860B" : "#696969",
                     Selected = _selectedCatalogMods.Contains(catalogMod.Id),
                     SelectedRelease = latest?.Version ?? ""
                 };
@@ -396,13 +430,14 @@ public partial class MainWindow : Window
                 {
                     if (row.Selected) AddCatalogSelectionWithDependencies(catalogMod); else _selectedCatalogMods.Remove(catalogMod.Id);
                 });
+                row.ToggleExpanded = new RelayCommand(() => row.IsExpanded = !row.IsExpanded);
                 row.Install = new AsyncRelayCommand(async () =>
                 {
                     var release = releases.FirstOrDefault(r => r.Version.Equals(row.SelectedRelease, StringComparison.OrdinalIgnoreCase)) ?? latest;
                     if (release is not null) await InstallOfficial(catalogMod, release, null);
                 });
                 row.Details = new AsyncRelayCommand(() => ShowDetails(catalogMod.Name,
-                    $"{catalogMod.Description ?? "No description."}{Environment.NewLine}Author: {catalogMod.Author ?? "Unknown"}{Environment.NewLine}License: {catalogMod.License ?? "Not specified"}{Environment.NewLine}Source: {catalogMod.SourceUrl ?? "Not specified"}{Environment.NewLine}{Environment.NewLine}Dependencies:{Environment.NewLine}{FormatDependencies(catalogMod.Dependencies)}{Environment.NewLine}{Environment.NewLine}Releases: {string.Join(", ", releases.Select(r => r.Version))}{Environment.NewLine}{Environment.NewLine}{latest?.Changelog ?? "No release notes provided."}", catalogMod.SourceUrl));
+                    $"{catalogMod.Description ?? "No description."}{Environment.NewLine}Author: {catalogMod.Author ?? "Unknown"}{Environment.NewLine}License: {catalogMod.License ?? "Not specified"}{Environment.NewLine}Source: {catalogMod.SourceUrl ?? "Not specified"}{Environment.NewLine}{Environment.NewLine}Dependencies:{Environment.NewLine}{FormatDependencies(catalogMod.Dependencies)}{Environment.NewLine}{Environment.NewLine}Available releases: {string.Join(", ", releases.Select(r => $"{r.Version}{(r.SizeBytes is null ? "" : $" ({r.SizeBytes / 1024} KB)")}"))}{Environment.NewLine}{Environment.NewLine}{releases[0].Changelog ?? "No release notes provided."}", catalogMod.SourceUrl));
                 row.PropertyChanged += (_, e) =>
                 {
                     if (e.PropertyName == nameof(DiscoverModViewModel.Selected))
@@ -514,7 +549,7 @@ public partial class MainWindow : Window
         var scriptMods = planResult?.Success == true && planResult.Value is not null
             ? planResult.Value.Items.Where(i => i.FileType.Equals("ue4ss-lua", StringComparison.OrdinalIgnoreCase) || i.FileType.Equals("ue4ss-dll", StringComparison.OrdinalIgnoreCase)).Select(i => i.ModId).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
             : [];
-        model.SupportStatus = game is null ? "Choose your game folder first." : _ue4ss.Detect(game.InstallPath).Installed ? "Script support is installed." : "Script support is not installed yet.";
+        model.SupportStatus = game is null ? "Status: Choose your game folder first." : _ue4ss.Detect(game.InstallPath).Installed ? "Status: Script support is installed." : "Status: Script support is not installed yet.";
         var scriptNames = scriptMods.Select(id => _database.GetMod(id)?.Name ?? id).ToList();
         model.SupportNote = scriptNames.Count == 0 ? "Your current mods don’t need anything extra." : $"{CountPhrase(scriptNames.Count, "active mod")} {(scriptNames.Count == 1 ? "needs" : "need")} script support: {string.Join(", ", scriptNames)}.";
         model.RecoverySummary = planResult is { Success: true, Value: not null } p ? $"This session has {CountPhrase(p.Value.Conflicts.Count(c => c.BlocksDeployment), "issue")} that stop changes from being applied." : "Choose your Ragnarock folder before using recovery tools.";
@@ -551,6 +586,9 @@ public partial class MainWindow : Window
         model.SaveLaunchOptions = new RelayCommand(() => { _launchArguments = model.LaunchArguments ?? ""; File.WriteAllText(_paths.LaunchArgumentsPath, _launchArguments); SetStatus(string.IsNullOrWhiteSpace(_launchArguments) ? "Launch arguments cleared." : "Launch arguments saved."); });
         model.OpenLogs = new RelayCommand(() => OpenFolder(_paths.Logs));
         model.OpenIssues = new RelayCommand(() => OpenExternalLink("https://github.com/Brollyy/RagnaModManager/issues"));
+        model.ToggleRecovery = new RelayCommand(() => model.RecoveryExpanded = !model.RecoveryExpanded);
+        model.ToggleLaunchOptions = new RelayCommand(() => model.LaunchOptionsExpanded = !model.LaunchOptionsExpanded);
+        model.ToggleTroubleshooting = new RelayCommand(() => model.TroubleshootingExpanded = !model.TroubleshootingExpanded);
     }
 
     private void SetAllVisibleMods(ProfileRecord profile, IReadOnlyList<ModRecord> mods, bool enabled)

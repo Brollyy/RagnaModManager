@@ -5,33 +5,62 @@
              x:DataType="local:DiscoverPageViewModel">
   <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
     <StackPanel Spacing="14">
-      <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12"><StackPanel Spacing="5"><TextBlock Text="Discover" FontSize="24" FontWeight="SemiBold"/><TextBlock Text="Find community mods for Ragnarock and install them with one click." Foreground="#9AAAC2" TextWrapping="Wrap"/></StackPanel><Button Grid.Column="1" Content="Refresh mod list" Classes="accent" Command="{Binding Refresh}" VerticalAlignment="Center"/></Grid>
-      <Border Classes="card" Padding="12">
-        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8"><TextBox Text="{Binding Search, Mode=TwoWay}" Watermark="Search community mods…" MinWidth="280" KeyDown="OnSearchKeyDown"/><WrapPanel Grid.Column="1" Orientation="Horizontal" ItemSpacing="6"><Button Content="Search" Command="{Binding SearchCommand}"/><Button Content="Clear" IsEnabled="{Binding HasSearch}" Command="{Binding ClearSearch}"/></WrapPanel></Grid>
+      <TextBlock Text="Discover" FontSize="24" FontWeight="SemiBold"/>
+      <Border Classes="card" Padding="16">
+        <StackPanel Spacing="10">
+          <TextBlock Text="Discover mods" FontSize="18" FontWeight="SemiBold"/>
+          <TextBlock Text="Find community mods for Ragnarock and install them with one click." TextWrapping="Wrap"/>
+          <TextBlock Text="Community content is maintained by mod authors and players." Foreground="#9AAAC2" TextWrapping="Wrap"/>
+          <WrapPanel Margin="0,0,0,2" Orientation="Horizontal" ItemSpacing="0" LineSpacing="10">
+            <TextBox CaretBrush="Transparent" Height="35" Text="{Binding Search, Mode=TwoWay}" Watermark="Search community mods…" MinWidth="300" KeyDown="OnSearchKeyDown"/>
+            <Button Height="35" Padding="12,8" Content="Clear" Command="{Binding ClearSearch}"/>
+            <Button Height="35" Padding="12,8" Margin="10,0,0,0" Content="Search" Command="{Binding SearchCommand}"/>
+            <Button Height="35" Padding="12,8" FontWeight="SemiBold" Margin="10,0,0,0" Content="Refresh mod list" Classes="accent" Command="{Binding Refresh}"/>
+            <Button Height="35" Padding="12,8" Content="Install selected" IsEnabled="{Binding CanInstallSelected}" Command="{Binding InstallSelected}"/>
+            <Button Height="35" Padding="12,8" Margin="10,0,0,0" Content="Update all" IsEnabled="{Binding HasUpdates}" Command="{Binding UpdateAll}"/>
+          </WrapPanel>
+          <TextBlock Margin="0,8,0,0" IsVisible="{Binding HasStatus}" Text="{Binding Status}" Foreground="#4DE1C1" TextWrapping="Wrap"/>
+          <Border IsVisible="{Binding HasResults}" Background="#17243B" BorderBrush="#2A3A55" BorderThickness="0,0,0,1">
+            <Grid ColumnDefinitions="28,Auto,*,*,120,120,220" ColumnSpacing="8" Margin="8,4">
+              <CheckBox Grid.Column="1" Content="All" Command="{Binding SelectAll}"/>
+              <Button Padding="12,8" Grid.Column="2" Content="Mod" Command="{Binding SortByName}"/>
+              <TextBlock Grid.Column="3" Text="Description" Foreground="#9AAAC2" TextWrapping="Wrap"/>
+              <Button Padding="12,8" Grid.Column="4" Content="Latest" Command="{Binding SortByLatest}"/>
+              <Button Padding="12,8" Grid.Column="5" Content="Installed" Command="{Binding SortByInstalled}"/>
+              <TextBlock Grid.Column="6" Text="Actions" Foreground="#9AAAC2" TextWrapping="Wrap"/>
+            </Grid>
+          </Border>
+          <ItemsControl IsVisible="{Binding HasResults}" ItemsSource="{Binding Mods}" Margin="0,-10,0,0">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="local:DiscoverModViewModel">
+                <Border MinHeight="55" BorderBrush="#D3D3D3" BorderThickness="0,0,0,1">
+                  <StackPanel>
+                  <Grid ColumnDefinitions="28,Auto,*,*,120,120,220" ColumnSpacing="8" Margin="8,15,8,-5">
+                    <ToggleButton Grid.Column="0" Content="{Binding DisclosureGlyph}" Command="{Binding ToggleExpanded}" Width="24" Height="24" Padding="0" HorizontalContentAlignment="Center"/>
+                    <CheckBox Grid.Column="1" IsChecked="{Binding Selected, Mode=TwoWay}" Command="{Binding ToggleSelected}" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="2" Text="{Binding Name}" FontWeight="SemiBold"/>
+                    <TextBlock Grid.Column="3" Text="{Binding Description}" Foreground="#696969" TextWrapping="Wrap" MaxHeight="38"/>
+                    <TextBlock Grid.Column="4" Text="{Binding Latest}"/>
+                    <TextBlock Grid.Column="5" Text="{Binding Installed}" Foreground="{Binding InstalledBrush}"/>
+                    <TextBlock Grid.Column="6" Text="Select a release below" Foreground="#696969"/>
+                  </Grid>
+                  <StackPanel Margin="36,10,8,8" Spacing="8" IsVisible="{Binding IsExpanded}">
+                    <TextBlock Text="{Binding DetailsText}" TextWrapping="Wrap"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                      <ComboBox ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease, Mode=TwoWay}" MinWidth="130"/>
+                      <Button Padding="12,8" Content="{Binding InstallLabel}" Command="{Binding Install}"/>
+                      <Button Padding="12,8" Content="Details" Command="{Binding Details}"/>
+                    </StackPanel>
+                  </StackPanel>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Border Classes="empty" CornerRadius="12" Margin="{Binding EmptyMargin}" IsVisible="{Binding IsEmpty}" Padding="16"><StackPanel Spacing="8" HorizontalAlignment="Center"><TextBlock Text="No mods match that search." FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/><TextBlock Text="Try a different mod name." Foreground="#9AAAC2" TextWrapping="Wrap" HorizontalAlignment="Center"/><Button Padding="12,8" Content="Clear search" IsVisible="{Binding HasSearch}" Command="{Binding ClearSearch}"/></StackPanel></Border>
+        </StackPanel>
       </Border>
-      <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8"><Button Content="Install selected" Classes="accent" IsEnabled="{Binding CanInstallSelected}" Command="{Binding InstallSelected}"/><Button Content="Update all" IsEnabled="{Binding HasUpdates}" Command="{Binding UpdateAll}"/></WrapPanel>
-      <TextBlock Text="{Binding Status}" Foreground="#9AAAC2" TextWrapping="Wrap"/>
-      <Border Classes="card" Padding="10">
-        <Grid ColumnDefinitions="28,Auto,2*,3*,120,140,220" ColumnSpacing="8"><Button Grid.Column="1" Content="All" Command="{Binding SelectAll}"/><Button Grid.Column="2" Content="Mod" Command="{Binding SortByName}"/><TextBlock Grid.Column="3" Text="Description" FontWeight="SemiBold"/><Button Grid.Column="4" Content="Latest" Command="{Binding SortByLatest}"/><Button Grid.Column="5" Content="Installed" Command="{Binding SortByInstalled}"/><TextBlock Grid.Column="6" Text="Actions" FontWeight="SemiBold"/></Grid>
-      </Border>
-      <ListBox ItemsSource="{Binding Mods}" Background="Transparent" BorderThickness="0">
-        <ListBox.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ListBox.ItemsPanel>
-        <ListBox.ItemTemplate>
-          <DataTemplate x:DataType="local:DiscoverModViewModel">
-            <Border Classes="card" Margin="0,0,0,8" Padding="10">
-              <Grid ColumnDefinitions="28,Auto,2*,3*,120,140,220" ColumnSpacing="8">
-                <CheckBox Grid.Column="1" IsChecked="{Binding Selected, Mode=TwoWay}" Command="{Binding ToggleSelected}" VerticalAlignment="Center"/>
-                <TextBlock Grid.Column="2" Text="{Binding Name}" FontWeight="SemiBold" VerticalAlignment="Top"/>
-                <TextBlock Grid.Column="3" Text="{Binding Description}" Foreground="#9AAAC2" TextWrapping="Wrap" MaxHeight="48"/>
-                <TextBlock Grid.Column="4" Text="{Binding Latest}" VerticalAlignment="Top"/>
-                <TextBlock Grid.Column="5" Text="{Binding Installed}" Foreground="{Binding InstalledBrush}" VerticalAlignment="Top"/>
-                <WrapPanel Grid.Column="6" Orientation="Horizontal" ItemSpacing="6" LineSpacing="6"><ComboBox ItemsSource="{Binding Releases}" SelectedItem="{Binding SelectedRelease, Mode=TwoWay}" MinWidth="100"/><Button Content="Install" Command="{Binding Install}"/><Button Content="Details" Command="{Binding Details}"/></WrapPanel>
-              </Grid>
-            </Border>
-          </DataTemplate>
-        </ListBox.ItemTemplate>
-      </ListBox>
-      <Border Classes="empty" IsVisible="{Binding IsEmpty}" Padding="32"><StackPanel Spacing="8" HorizontalAlignment="Center"><TextBlock Text="No community mods match this search." FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center"/><TextBlock Text="Try another name or refresh the catalog." Opacity="0.6" HorizontalAlignment="Center"/></StackPanel></Border>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

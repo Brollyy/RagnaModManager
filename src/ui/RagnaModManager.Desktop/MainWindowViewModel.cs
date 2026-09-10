@@ -2,6 +2,8 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using Avalonia;
+using Avalonia.Media;
 
 namespace RagnaModManager.Desktop;
 
@@ -119,6 +121,8 @@ public sealed class DashboardViewModel : ObservableObject
     public string PlayStatus { get; set; } = "Set up first";
     public string PlayDetail { get; set; } = "Choose your game folder";
     public bool ShowSetupAction { get; set; }
+    public string QuickActionsTitle { get; set; } = "Start here";
+    public string QuickActionsDescription { get; set; } = "One setup step, then you can browse and play.";
     public bool CanOpenGame { get; set; }
     public bool ShowDeploymentNotice { get; set; }
     public string DeploymentMessage { get; set; } = "Your setup is not active.";
@@ -133,6 +137,7 @@ public sealed class ModRowViewModel : ObservableObject
 {
     private bool _selected;
     private bool _enabled;
+    private bool _versionExpanded;
     private string _selectedVersion = "";
 
     public string Id { get; init; } = "";
@@ -147,14 +152,38 @@ public sealed class ModRowViewModel : ObservableObject
     public string StatusBrush => Enabled ? "#4DE1C1" : "#9AAAC2";
     public bool IsDisabled => !Enabled;
     public bool HasMultipleVersions => Versions.Count > 1;
+    public ITransform? LeftContentTransform => !Enabled ? new TranslateTransform(2, 0) : null;
+    public bool VersionExpanded
+    {
+        get => _versionExpanded;
+        set { if (!SetField(ref _versionExpanded, value)) return; OnPropertyChanged(nameof(VersionLabel)); OnPropertyChanged(nameof(LeftContentTransform)); }
+    }
+    public string VersionLabel => VersionExpanded ? "Hide" : "Show";
     public bool Selected { get => _selected; set => SetField(ref _selected, value); }
     public bool Enabled
     {
         get => _enabled;
-        set { if (!SetField(ref _enabled, value)) return; OnPropertyChanged(nameof(Status)); OnPropertyChanged(nameof(StatusBrush)); OnPropertyChanged(nameof(IsDisabled)); }
+        set { if (!SetField(ref _enabled, value)) return; OnPropertyChanged(nameof(Status)); OnPropertyChanged(nameof(StatusBrush)); OnPropertyChanged(nameof(IsDisabled)); OnPropertyChanged(nameof(LeftContentTransform)); }
     }
     public ObservableCollection<string> Versions { get; } = [];
-    public string SelectedVersion { get => _selectedVersion; set => SetField(ref _selectedVersion, value); }
+    public string SelectedVersion
+    {
+        get => _selectedVersion;
+        set
+        {
+            if (!SetField(ref _selectedVersion, value)) return;
+            OnPropertyChanged(nameof(SelectedVersionIndex));
+        }
+    }
+    public int SelectedVersionIndex
+    {
+        get => Versions.IndexOf(SelectedVersion);
+        set
+        {
+            if (value < 0 || value >= Versions.Count) return;
+            SelectedVersion = Versions[value];
+        }
+    }
     public bool CanMoveUp { get; init; }
     public bool CanMoveDown { get; init; }
     public ICommand? ToggleEnabled { get; set; }
@@ -169,7 +198,12 @@ public sealed class ModRowViewModel : ObservableObject
 public sealed class ModsPageViewModel : ObservableObject
 {
     private string _search = "";
+    private bool _bulkActionsExpanded;
     public string Search { get => _search; set => SetField(ref _search, value); }
+    public bool BulkActionsExpanded { get => _bulkActionsExpanded; set { if (!SetField(ref _bulkActionsExpanded, value)) return; OnPropertyChanged(nameof(BulkActionsLabel)); } }
+    public string BulkActionsLabel => BulkActionsExpanded ? "Hide" : "Show";
+    public string SetupName { get; set; } = "Default";
+    public string SectionTitle => $"Mods in {SetupName}";
     public string Subtitle { get; set; } = "These are the mods you have installed. Enable one to use it in your current setup.";
     public ObservableCollection<ModRowViewModel> Items { get; } = [];
     public ObservableCollection<DependencyIssueViewModel> DependencyIssues { get; } = [];
@@ -191,6 +225,7 @@ public sealed class ModsPageViewModel : ObservableObject
     public ICommand? EnableSelected { get; set; }
     public ICommand? DisableSelected { get; set; }
     public ICommand? RemoveSelected { get; set; }
+    public ICommand? ToggleBulkActions { get; set; }
     public ICommand? SearchAction { get; set; }
     public Func<string, Task>? ImportDropped { get; set; }
     public string DependencyNotice { get; set; } = "";
@@ -209,16 +244,22 @@ public sealed class DependencyIssueViewModel
 public sealed class DiscoverModViewModel : ObservableObject
 {
     private bool _selected;
+    private bool _isExpanded;
     public string Id { get; init; } = "";
     public string Name { get; init; } = "";
     public string Description { get; init; } = "No description provided.";
+    public string DetailsText { get; init; } = "";
+    public string InstallLabel { get; init; } = "Install";
     public string Latest { get; init; } = "—";
     public string Installed { get; init; } = "Not installed";
-    public string InstalledBrush { get; init; } = "#9AAAC2";
+    public string InstalledBrush { get; init; } = "#696969";
     public bool Selected { get => _selected; set => SetField(ref _selected, value); }
+    public bool IsExpanded { get => _isExpanded; set { if (!SetField(ref _isExpanded, value)) return; OnPropertyChanged(nameof(DisclosureGlyph)); } }
+    public string DisclosureGlyph => IsExpanded ? "⌄" : "›";
     public ObservableCollection<string> Releases { get; } = [];
     public string SelectedRelease { get; set; } = "";
     public ICommand? ToggleSelected { get; set; }
+    public ICommand? ToggleExpanded { get; set; }
     public ICommand? Install { get; set; }
     public ICommand? Details { get; set; }
 }
@@ -232,6 +273,9 @@ public sealed class DiscoverPageViewModel : ObservableObject
     public bool IsLoading { get; set; }
     public bool HasCatalog { get; set; }
     public bool IsEmpty => Mods.Count == 0;
+    public bool HasResults => Mods.Count > 0;
+    public bool HasStatus => !string.IsNullOrWhiteSpace(Status);
+    public Thickness EmptyMargin => HasSearch ? new Thickness(0, 35, 0, 0) : new Thickness(0);
     public ObservableCollection<DiscoverModViewModel> Mods { get; } = [];
     public bool CanInstallSelected => Mods.Any(mod => mod.Selected);
     public bool HasUpdates { get; set; }
@@ -244,7 +288,7 @@ public sealed class DiscoverPageViewModel : ObservableObject
     public ICommand? SortByName { get; set; }
     public ICommand? SortByLatest { get; set; }
     public ICommand? SortByInstalled { get; set; }
-    public void RefreshState() { OnPropertyChanged(nameof(IsEmpty)); OnPropertyChanged(nameof(HasSearch)); OnPropertyChanged(nameof(CanInstallSelected)); OnPropertyChanged(nameof(HasUpdates)); }
+    public void RefreshState() { OnPropertyChanged(nameof(IsEmpty)); OnPropertyChanged(nameof(HasResults)); OnPropertyChanged(nameof(HasSearch)); OnPropertyChanged(nameof(EmptyMargin)); OnPropertyChanged(nameof(HasStatus)); OnPropertyChanged(nameof(CanInstallSelected)); OnPropertyChanged(nameof(HasUpdates)); }
 }
 
 public sealed class ProfileRowViewModel : ObservableObject
@@ -274,6 +318,9 @@ public sealed class SettingsPageViewModel : ObservableObject
     private string _gamePath = "";
     private string _launchArguments = "";
     private string _selectedCachedSupport = "";
+    private bool _recoveryExpanded;
+    private bool _launchOptionsExpanded;
+    private bool _troubleshootingExpanded;
     public string Intro { get; set; } = "Choose your game folder, apply your mod setup, and add support only when a mod needs it.";
     public string GamePath { get => _gamePath; set => SetField(ref _gamePath, value); }
     public string GameStatus { get; set; } = "Choose your Ragnarock folder to get started.";
@@ -290,6 +337,12 @@ public sealed class SettingsPageViewModel : ObservableObject
     public bool HasCachedSupport { get; set; }
     public ObservableCollection<string> CachedSupportVersions { get; } = [];
     public string SelectedCachedSupport { get => _selectedCachedSupport; set => SetField(ref _selectedCachedSupport, value); }
+    public bool RecoveryExpanded { get => _recoveryExpanded; set { if (!SetField(ref _recoveryExpanded, value)) return; OnPropertyChanged(nameof(RecoveryLabel)); } }
+    public bool LaunchOptionsExpanded { get => _launchOptionsExpanded; set { if (!SetField(ref _launchOptionsExpanded, value)) return; OnPropertyChanged(nameof(LaunchOptionsLabel)); } }
+    public bool TroubleshootingExpanded { get => _troubleshootingExpanded; set { if (!SetField(ref _troubleshootingExpanded, value)) return; OnPropertyChanged(nameof(TroubleshootingLabel)); } }
+    public string RecoveryLabel => RecoveryExpanded ? "Hide" : "Show";
+    public string LaunchOptionsLabel => LaunchOptionsExpanded ? "Hide" : "Show";
+    public string TroubleshootingLabel => TroubleshootingExpanded ? "Hide" : "Show";
     public ICommand? DetectGame { get; set; }
     public ICommand? BrowseGame { get; set; }
     public ICommand? SaveGame { get; set; }
@@ -303,6 +356,9 @@ public sealed class SettingsPageViewModel : ObservableObject
     public ICommand? SaveLaunchOptions { get; set; }
     public ICommand? OpenLogs { get; set; }
     public ICommand? OpenIssues { get; set; }
+    public ICommand? ToggleRecovery { get; set; }
+    public ICommand? ToggleLaunchOptions { get; set; }
+    public ICommand? ToggleTroubleshooting { get; set; }
 }
 
 public sealed class DetailsDialogViewModel : ObservableObject
