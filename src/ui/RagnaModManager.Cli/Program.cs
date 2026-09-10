@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RagnaModManager.Core.Compatibility;
 using RagnaModManager.Core.Database;
 using RagnaModManager.Core.Deployment;
 using RagnaModManager.Core.Diagnostics;
@@ -20,6 +21,7 @@ internal sealed class AppBootstrap
     private readonly AppPaths _paths;
     private readonly ManagerDatabase _database;
     private readonly AppLogger _logger;
+    private readonly OfficialCatalogService _officialCatalog;
     private readonly RagnarockDetector _detector = new();
     private readonly Ue4ssService _ue4ss = new();
     private readonly RagnarockDeploymentRules _rules = new();
@@ -29,6 +31,7 @@ internal sealed class AppBootstrap
         _paths = paths;
         _database = database;
         _logger = logger;
+        _officialCatalog = new OfficialCatalogService(paths, database, logger);
     }
 
     public static AppBootstrap Create()
@@ -38,6 +41,9 @@ internal sealed class AppBootstrap
         var logger = new AppLogger(paths.Logs);
         var database = new ManagerDatabase(paths);
         database.Initialize();
+        var active = database.GetActiveProfile();
+        if (!database.HasAppliedProfileSnapshot(active.Id))
+            database.CaptureAppliedProfileSnapshot(active.Id);
         logger.Info("RagnaModManager CLI started.");
         return new AppBootstrap(paths, database, logger);
     }
@@ -63,6 +69,9 @@ internal sealed class AppBootstrap
                 "enable" => Require(args, 2, () => SetEnabled(args[1], enabled: true, ParsePriority(args))),
                 "disable" => Require(args, 2, () => SetEnabled(args[1], enabled: false, ParsePriority(args))),
                 "profile" => Profile(args),
+                "catalog" or "registry" => Catalog(args),
+                "version" => Require(args, 3, () => SetVersion(args[1], args[2])),
+                "revert" => Revert(),
                 "preview" => WithGame(root => Preview(root)),
                 "deploy" => WithGame(root => Deploy(root, args.Contains("--allow-warnings"))),
                 "rollback" => Rollback(),
@@ -296,7 +305,7 @@ internal sealed class AppBootstrap
         foreach (var mod in _database.GetMods())
         {
             profileMods.TryGetValue(mod.Id, out var state);
-            Console.WriteLine($"{mod.Id}\t{mod.Version}\t{(state?.Enabled == true ? "enabled" : "disabled")}\tpriority={state?.Priority ?? 0}\t{mod.Name}");
+            Console.WriteLine($"{mod.Id}\t{state?.Version ?? mod.Version}\t{(state?.Enabled == true ? "enabled" : "disabled")}\tpriority={state?.Priority ?? 0}\t{mod.Name}");
         }
 
         return 0;
@@ -312,13 +321,156 @@ internal sealed class AppBootstrap
         }
 
         var profile = _database.GetActiveProfile();
-        _database.SetProfileMod(profile.Id, modId, enabled, priority);
+        var existing = _database.GetProfileMods(profile.Id).FirstOrDefault(m => m.ModId.Equals(modId, StringComparison.OrdinalIgnoreCase));
+        _database.SetProfileMod(profile.Id, modId, enabled, priority, existing?.Version ?? mod.Version);
         Console.WriteLine($"{(enabled ? "Enabled" : "Disabled")} {modId} in profile {profile.Id} with priority {priority}");
+        return 0;
+    }
+
+    private int SetVersion(string modId, string version)
+    {
+        var mod = _database.GetMod(modId, version);
+        if (mod is null)
+        {
+            Console.Error.WriteLine($"Version {version} of mod {modId} is not installed.");
+            return 1;
+        }
+
+        var profile = _database.GetActiveProfile();
+        var existing = _database.GetProfileMods(profile.Id).FirstOrDefault(m => m.ModId.Equals(modId, StringComparison.OrdinalIgnoreCase));
+        _database.SetProfileMod(profile.Id, modId, existing?.Enabled == true, existing?.Priority ?? 0, mod.Version);
+        Console.WriteLine($"Pinned {modId} to version {mod.Version} in profile {profile.Id}.");
+        return 0;
+    }
+
+    private int Catalog(string[] args)
+    {
+        var loaded = _officialCatalog.LoadAsync().GetAwaiter().GetResult();
+        if (!loaded.Success)
+        {
+            Console.Error.WriteLine(loaded.Error);
+            return 1;
+        }
+
+        var catalog = loaded.Value!;
+        if (args.Length == 1 || args[1] is "list" or "refresh")
+        {
+            foreach (var mod in catalog.Mods.OrderBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase))
+                Console.WriteLine($"{mod.Id}\t{mod.Latest?.Version ?? "—"}\t{mod.Name}");
+            return 0;
+        }
+
+        if (args[1] == "install" && args.Length >= 3)
+        {
+            var mod = catalog.Mods.FirstOrDefault(item => item.Id.Equals(args[2], StringComparison.OrdinalIgnoreCase));
+            if (mod is null)
+            {
+                Console.Error.WriteLine($"Community catalog does not contain mod: {args[2]}");
+                return 1;
+            }
+
+            var requestedVersion = GetOption(args, "--version");
+            var release = string.IsNullOrWhiteSpace(requestedVersion)
+                ? mod.Latest
+                : mod.Releases.FirstOrDefault(item => item.Version.Equals(requestedVersion, StringComparison.OrdinalIgnoreCase));
+            if (release is null)
+            {
+                Console.Error.WriteLine($"Version {requestedVersion} of {mod.Name} is not in the community catalog.");
+                return 1;
+            }
+
+            var result = _officialCatalog.DownloadAndImportAsync(mod, release).GetAwaiter().GetResult();
+            if (!result.Success)
+            {
+                Console.Error.WriteLine(result.Error);
+                return 1;
+            }
+
+            Console.WriteLine($"Installed {result.Value!.Name} {result.Value.Version} and any required dependencies.");
+            return 0;
+        }
+
+        if (args[1] is "update" or "upgrade")
+        {
+            var installed = _database.GetMods();
+            var updates = catalog.Mods
+                .Select(mod => (Mod: mod, Current: installed.FirstOrDefault(item => item.Id.Equals(mod.Id, StringComparison.OrdinalIgnoreCase))))
+                .Where(item => item.Current is not null && item.Mod.Latest is not null && SemanticVersion.IsNewer(item.Mod.Latest!.Version, item.Current!.Version))
+                .ToList();
+            foreach (var update in updates)
+            {
+                var latest = update.Mod.Latest!;
+                var result = _officialCatalog.DownloadAndImportAsync(update.Mod, latest).GetAwaiter().GetResult();
+                if (!result.Success)
+                {
+                    Console.Error.WriteLine(result.Error);
+                    return 1;
+                }
+                Console.WriteLine($"Updated {update.Mod.Name} to {latest.Version}.");
+            }
+            if (updates.Count == 0) Console.WriteLine("All community mods are up to date.");
+            return 0;
+        }
+
+        Console.Error.WriteLine("Usage: catalog [list|refresh] | catalog install <mod-id> [--version <version>] | catalog update");
+        return 1;
+    }
+
+    private int Revert()
+    {
+        var profile = _database.GetActiveProfile();
+        var result = _database.RestoreAppliedProfileSnapshot(profile.Id);
+        if (!result.Success)
+        {
+            Console.Error.WriteLine(result.Error);
+            return 1;
+        }
+
+        Console.WriteLine($"Reverted unapplied changes in profile {profile.Id}. Run deploy to apply a different saved setup.");
         return 0;
     }
 
     private int Profile(string[] args)
     {
+        if (args.Length >= 2 && args[1] == "export")
+        {
+            if (args.Length < 3)
+            {
+                Console.Error.WriteLine("Usage: profile export <path> [profile-id]");
+                return 1;
+            }
+
+            var exportProfile = args.Length >= 4 ? _database.GetProfile(args[3]) : _database.GetActiveProfile();
+            if (exportProfile is null)
+            {
+                Console.Error.WriteLine($"Unknown profile: {args[3]}");
+                return 1;
+            }
+
+            var result = _database.ExportProfile(exportProfile.Id, args[2]);
+            Console.WriteLine(result.Success ? $"Exported profile {exportProfile.Id} to {args[2]}." : result.Error);
+            return result.Success ? 0 : 1;
+        }
+
+        if (args.Length >= 2 && args[1] == "import")
+        {
+            if (args.Length < 5)
+            {
+                Console.Error.WriteLine("Usage: profile import <path> <id> <name>");
+                return 1;
+            }
+
+            var result = _database.ImportProfile(args[2], args[3], args[4]);
+            if (!result.Success)
+            {
+                Console.Error.WriteLine(result.Error);
+                return 1;
+            }
+            _database.CaptureAppliedProfileSnapshot(result.Value!.Id);
+            Console.WriteLine($"Imported profile {result.Value.Id} from {args[2]}.");
+            return 0;
+        }
+
         if (args.Length >= 2 && args[1] == "create")
         {
             if (args.Length < 4)
@@ -328,6 +480,7 @@ internal sealed class AppBootstrap
             }
 
             _database.CreateProfile(args[2], args[3]);
+            _database.CaptureAppliedProfileSnapshot(args[2]);
             Console.WriteLine($"Created profile {args[2]}.");
             return 0;
         }
@@ -353,7 +506,7 @@ internal sealed class AppBootstrap
         Console.WriteLine($"Active profile mods: {profile.Id}");
         foreach (var mod in _database.GetProfileMods(profile.Id))
         {
-            Console.WriteLine($"{mod.ModId}\tenabled={mod.Enabled}\tpriority={mod.Priority}");
+            Console.WriteLine($"{mod.ModId}\tenabled={mod.Enabled}\tversion={mod.Version ?? "latest"}\tpriority={mod.Priority}");
         }
 
         return 0;
@@ -651,6 +804,12 @@ internal sealed class AppBootstrap
         return index >= 0 && args.Length > index + 1 && int.TryParse(args[index + 1], out var priority) ? priority : 0;
     }
 
+    private static string? GetOption(string[] args, string option)
+    {
+        var index = Array.IndexOf(args, option);
+        return index >= 0 && args.Length > index + 1 ? args[index + 1] : null;
+    }
+
     private static int Require(string[] args, int count, Func<int> action)
     {
         if (args.Length < count)
@@ -690,9 +849,18 @@ internal sealed class AppBootstrap
               mods                         List installed mods
               enable <mod-id> [--priority n]
               disable <mod-id> [--priority n]
+              version <mod-id> <version>   Pin a mod version in the active profile
               profile                      Show profiles and active profile state
               profile create <id> <name>   Create a profile
               profile switch <id>          Switch active profile
+              profile export <path> [id]   Export a profile with version pins
+              profile import <path> <id> <name>
+                                           Import a profile with version pins
+              catalog [list|refresh]       List community catalog mods
+              catalog install <id> [--version <version>]
+                                           Install a catalog mod and dependencies
+              catalog update               Update installed catalog mods
+              revert                       Revert unapplied active-profile changes
               preview                      Show deployment plan and conflicts
               deploy [--allow-warnings]    Copy enabled files and cleanup stale files
               rollback                      Restore the latest deployment backup

@@ -4,8 +4,6 @@
     <ProjectReference Include="..\..\src\core\RagnaModManager.Core\RagnaModManager.Core.csproj" />
     <ProjectReference Include="..\..\src\ragnarock\RagnaModManager.Ragnarock\RagnaModManager.Ragnarock.csproj" />
     <ProjectReference Include="..\..\src\platform\RagnaModManager.Platform\RagnaModManager.Platform.csproj" />
-    <ProjectReference Include="..\..\src\ui\RagnaModManager.Desktop\RagnaModManager.Desktop.csproj" />
-    <PackageReference Include="Avalonia.Headless" Version="11.*" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -1,0 +1,38 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:RagnaModManager.Desktop"
+             x:Class="RagnaModManager.Desktop.DashboardView"
+             x:DataType="local:DashboardViewModel">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <StackPanel Spacing="14">
+      <Border Classes="card" Padding="16">
+        <StackPanel Spacing="10">
+          <TextBlock Text="Your session" FontSize="18" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding Headline}" Foreground="{Binding HeadlineBrush}" FontSize="18" FontWeight="SemiBold" TextWrapping="Wrap" />
+          <Grid ColumnDefinitions="*,*,*" ColumnSpacing="10">
+            <Border Grid.Column="0" Classes="metric" Padding="14"><StackPanel Spacing="4"><TextBlock Text="SETUP" Foreground="#9AAAC2"/><TextBlock Text="{Binding SetupName}" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="Your current setup" Foreground="#9AAAC2"/></StackPanel></Border>
+            <Border Grid.Column="1" Classes="metric" Padding="14"><StackPanel Spacing="4"><TextBlock Text="ACTIVE MODS" Foreground="#9AAAC2"/><TextBlock Text="{Binding ActiveMods}" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="{Binding InstalledMods}" Foreground="#9AAAC2"/></StackPanel></Border>
+            <Border Grid.Column="2" Classes="metric" Padding="14"><StackPanel Spacing="4"><TextBlock Text="PLAY STATUS" Foreground="#9AAAC2"/><TextBlock Text="{Binding PlayStatus}" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="{Binding PlayDetail}" Foreground="#9AAAC2" TextWrapping="Wrap"/></StackPanel></Border>
+          </Grid>
+          <Border Classes="card" Padding="16">
+            <StackPanel Spacing="10"><TextBlock Text="What to do next" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="{Binding NextSteps}" TextWrapping="Wrap"/></StackPanel>
+          </Border>
+        </StackPanel>
+      </Border>
+      <Border Classes="card" Padding="16">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+          <StackPanel Spacing="6"><TextBlock Text="{Binding QuickActionsTitle}" FontSize="20" FontWeight="SemiBold"/><TextBlock Text="{Binding QuickActionsDescription}" Foreground="#9AAAC2" TextWrapping="Wrap"/></StackPanel>
+          <StackPanel Grid.Column="1" Margin="-16,0,0,0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+            <Button Padding="12,8" FontWeight="SemiBold" Content="Set up automatically" Classes="accent" IsVisible="{Binding ShowSetupAction}" Command="{Binding SetupAutomatically}" />
+            <Button Padding="12,8" FontWeight="SemiBold" Content="Add a mod" Classes="accent" Command="{Binding AddMod}" />
+            <Button Padding="12,8" Content="Open game folder" IsEnabled="{Binding CanOpenGame}" Command="{Binding OpenGameFolder}" />
+            <Button Padding="12,8" Content="Open mod library" Command="{Binding OpenModLibrary}" />
+          </StackPanel>
+        </Grid>
+      </Border>
+      <Border Classes="card" IsVisible="{Binding ShowDeploymentNotice}" Padding="16">
+        <StackPanel Spacing="6"><TextBlock Text="Before you play" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="{Binding DeploymentMessage}" TextWrapping="Wrap"/><TextBlock Text="{Binding DeploymentDetails}" Foreground="#9AAAC2" TextWrapping="Wrap"/></StackPanel>
+      </Border>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

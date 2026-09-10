@@ -1,0 +1,72 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="using:RagnaModManager.Desktop"
+        x:Class="RagnaModManager.Desktop.MainWindow"
+        x:DataType="local:MainWindowViewModel"
+        Title="{Binding WindowTitle}"
+        Width="1240"
+        Height="820"
+        MinWidth="900"
+        MinHeight="640">
+  <Window.DataTemplates>
+    <DataTemplate x:DataType="local:DashboardViewModel"><local:DashboardView /></DataTemplate>
+    <DataTemplate x:DataType="local:DiscoverPageViewModel"><local:DiscoverView /></DataTemplate>
+    <DataTemplate x:DataType="local:ModsPageViewModel"><local:ModsView /></DataTemplate>
+    <DataTemplate x:DataType="local:ProfilesPageViewModel"><local:ProfilesView /></DataTemplate>
+    <DataTemplate x:DataType="local:SettingsPageViewModel"><local:SettingsView /></DataTemplate>
+  </Window.DataTemplates>
+  <Window.Styles>
+    <Style Selector="TabItem.active-tab">
+      <Setter Property="Background" Value="#173D3D" />
+      <Setter Property="Foreground" Value="#4DE1C1" />
+    </Style>
+    <Style Selector="Button:pointerover">
+      <Setter Property="RenderTransform" Value="scale(1.02)" />
+    </Style>
+    <Style Selector="Button:pressed">
+      <Setter Property="RenderTransform" Value="scale(0.99)" />
+    </Style>
+  </Window.Styles>
+  <DockPanel x:Name="ShellRoot" Margin="24">
+    <Border DockPanel.Dock="Top"
+            Background="#111B2E"
+            BorderBrush="#2A3A55"
+            BorderThickness="1"
+            CornerRadius="14"
+            BoxShadow="0 4 12 0 #15000000"
+            Padding="22"
+            Margin="0,0,0,18">
+      <Grid ColumnDefinitions="*,Auto">
+        <StackPanel Spacing="5">
+          <TextBlock Text="RMM  //  RAGNAROCK" FontSize="12" FontWeight="Bold" Foreground="#4DE1C1" />
+          <TextBlock Text="Ragnarock, your way." FontSize="28" FontWeight="SemiBold" />
+          <TextBlock Text="Choose mods, enable them, and play." Foreground="#9AAAC2" TextWrapping="Wrap" />
+          <TextBlock Text="{Binding CurrentSetupLabel}" Foreground="#4DE1C1" FontSize="12" />
+        </StackPanel>
+        <Button x:Name="LaunchButton"
+                Grid.Column="1"
+                Content="Launch Ragnarock"
+                Classes="accent"
+                VerticalAlignment="Center" />
+      </Grid>
+    </Border>
+    <Border x:Name="PendingChangesBar" DockPanel.Dock="Bottom" IsVisible="{Binding HasPendingChanges}" Background="#3B2D1B" BorderBrush="#FFB15C" BorderThickness="1" CornerRadius="6" Padding="12,8">
+      <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+        <TextBlock Text="This setup has unapplied changes." FontWeight="SemiBold" VerticalAlignment="Center" />
+        <Button x:Name="ApplyChangesButton" Padding="12,8" FontWeight="SemiBold" Content="Apply changes" Classes="accent" Command="{Binding ApplyChanges}" />
+        <Button x:Name="RevertChangesButton" Padding="12,8" Content="Revert changes" Command="{Binding RevertChanges}" />
+      </StackPanel>
+    </Border>
+    <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Margin="4,12,4,0" Foreground="#9AAAC2" TextWrapping="Wrap" />
+    <TabControl x:Name="NavigationTabs"
+                TabStripPlacement="Left"
+                HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch">
+      <TabItem Header="HOME"><ContentControl Content="{Binding Dashboard}" /></TabItem>
+      <TabItem Header="DISCOVER"><ContentControl Content="{Binding Discover}" /></TabItem>
+      <TabItem Header="MODS"><ContentControl Content="{Binding Mods}" /></TabItem>
+      <TabItem Header="SETUPS"><ContentControl Content="{Binding Profiles}" /></TabItem>
+      <TabItem Header="SETTINGS"><ContentControl Content="{Binding Settings}" /></TabItem>
+    </TabControl>
+  </DockPanel>
+</Window>

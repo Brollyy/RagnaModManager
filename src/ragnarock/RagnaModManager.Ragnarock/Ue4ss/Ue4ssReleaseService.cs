@@ -48,7 +48,8 @@ public sealed class Ue4ssReleaseService
 
         var latest = releases.Value!.FirstOrDefault();
         MergeReleaseMetadata(releases.Value!);
-        var updateAvailable = latest is not null && (!installed.Installed || IsNewer(latest.Version, installed.Version));
+        var updateAvailable = latest is not null &&
+                              (!installed.Installed || (!string.IsNullOrWhiteSpace(installed.Version) && IsNewer(latest.Version, installed.Version)));
         return Result<Ue4ssUpdateCheck>.Ok(new Ue4ssUpdateCheck(installed, latest, updateAvailable));
     }
 

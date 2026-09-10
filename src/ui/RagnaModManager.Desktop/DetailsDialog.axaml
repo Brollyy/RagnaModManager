@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:RagnaModManager.Desktop"
+             x:Class="RagnaModManager.Desktop.DetailsDialog"
+             x:DataType="local:DetailsDialogViewModel">
+  <StackPanel Margin="18" Spacing="14">
+    <TextBlock Text="{Binding Title}" FontSize="20" FontWeight="SemiBold" />
+    <ScrollViewer><TextBlock Text="{Binding Message}" TextWrapping="Wrap" /></ScrollViewer>
+    <WrapPanel Orientation="Horizontal" HorizontalAlignment="Left" ItemSpacing="0">
+      <Button Content="Open source link" Padding="12,8" HorizontalContentAlignment="Center" Margin="0,0,10,10" IsVisible="{Binding HasSource}" Command="{Binding OpenSource}" />
+      <Button Content="Close" Padding="12,8" FontWeight="SemiBold" HorizontalContentAlignment="Center" Margin="0,0,10,10" Classes="accent" Command="{Binding Close}" />
+    </WrapPanel>
+  </StackPanel>
+</UserControl>

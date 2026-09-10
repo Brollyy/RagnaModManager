@@ -32,6 +32,11 @@ public sealed record AppPaths(
     }
 
     public string CurrentDeploymentPath => Path.Combine(Deployment, "current.json");
+    public string LaunchArgumentsPath => Path.Combine(Root, "launch-arguments.txt");
+    public string CatalogLastCheckedPath => Path.Combine(Root, "official-registry-checked.txt");
+    public string AppliedProfiles => Path.Combine(Root, "applied-profiles");
+
+    public string AppliedProfilePath(string profileId) => Path.Combine(AppliedProfiles, profileId + ".json");
 
     public string Ue4ssDownloads => Path.Combine(Downloads, "ue4ss");
 
@@ -44,6 +49,7 @@ public sealed record AppPaths(
         Directory.CreateDirectory(Deployment);
         Directory.CreateDirectory(Backups);
         Directory.CreateDirectory(Logs);
+        Directory.CreateDirectory(AppliedProfiles);
         Directory.CreateDirectory(Ue4ssDownloads);
     }
 

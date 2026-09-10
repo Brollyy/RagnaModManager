@@ -3,7 +3,8 @@
 Cross-platform Ragnarock mod manager built with .NET 9 and Avalonia.
 
 The desktop app helps you locate Ragnarock, install `.rmod` packages, manage
-playsets, deploy mods safely, configure RE-UE4SS, and launch the game.
+setups, deploy mods safely, configure RE-UE4SS, and launch the game.
+
 
 ## Build
 
@@ -40,6 +41,13 @@ dotnet run --project src/ui/RagnaModManager.Cli -- profile
 dotnet run --project src/ui/RagnaModManager.Cli -- profile create development "Development"
 dotnet run --project src/ui/RagnaModManager.Cli -- profile switch development
 dotnet run --project src/ui/RagnaModManager.Cli -- enable better-hit-feedback --priority 500
+dotnet run --project src/ui/RagnaModManager.Cli -- version better-hit-feedback 1.0.0
+dotnet run --project src/ui/RagnaModManager.Cli -- catalog list
+dotnet run --project src/ui/RagnaModManager.Cli -- catalog install better-hit-feedback
+dotnet run --project src/ui/RagnaModManager.Cli -- catalog update
+dotnet run --project src/ui/RagnaModManager.Cli -- profile export setup.json
+dotnet run --project src/ui/RagnaModManager.Cli -- profile import setup.json imported "Imported setup"
+dotnet run --project src/ui/RagnaModManager.Cli -- revert
 dotnet run --project src/ui/RagnaModManager.Cli -- preview
 dotnet run --project src/ui/RagnaModManager.Cli -- deploy
 dotnet run --project src/ui/RagnaModManager.Cli -- rollback
@@ -58,41 +66,12 @@ dotnet publish src/ui/RagnaModManager.Desktop/RagnaModManager.Desktop.csproj -c 
 Zip the matching `artifacts/RagnaModManager-*` folder for distribution. Users
 can run `RagnaModManager` on Linux or `RagnaModManager.exe` on Windows.
 
-## Official mod registry
+## Community mod catalog
 
-The desktop app includes an Official Mod Library backed by the separate
-[`Brollyy/RagnaModManager-ModRegistry`](https://github.com/Brollyy/RagnaModManager-ModRegistry)
-repository. It can browse releases, download packages over HTTPS, verify their
-SHA-256 checksums, cache them, and install updates.
+The desktop app includes a Community Mod Library backed by the separate
+[RagnaModManager-ModRegistry repository](https://github.com/Brollyy/RagnaModManager-ModRegistry).
+That repository contains the catalog format, package rules, submission process,
+and maintainer guidance.
 
-For development or testing, set `RMM_OFFICIAL_REGISTRY_URL` to another HTTPS
-catalog. Manual imports remain available for packages outside the official
-registry and should be treated as untrusted.
-
-The catalog uses schema version `1`:
-
-```json
-{
-  "schemaVersion": "1",
-  "repository": "official",
-  "mods": [
-    {
-      "id": "better-hit-feedback",
-      "name": "Better Hit Feedback",
-      "author": "Author",
-      "description": "Improves hit feedback.",
-      "releases": [
-        {
-          "version": "1.0.0",
-          "packageUrl": "https://example.com/better-hit-feedback-1.0.0.rmod",
-          "sha256": "64 hexadecimal characters"
-        }
-      ]
-    }
-  ]
-}
-```
-
-See the [registry README](https://github.com/Brollyy/RagnaModManager-ModRegistry#readme)
-for package structure, submission rules, maintainer review, and Ragnarock mod
-development resources.
+Manual imports remain available for packages outside the community registry and
+should be treated as untrusted.

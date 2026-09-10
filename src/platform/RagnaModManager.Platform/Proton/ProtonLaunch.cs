@@ -23,7 +23,7 @@ public sealed class ProtonLaunch
         return new LaunchPlan(executablePath, false, executablePath);
     }
 
-    public Result Launch(LaunchPlan plan)
+    public Result Launch(LaunchPlan plan, string? arguments = null)
     {
         try
         {
@@ -45,6 +45,7 @@ public sealed class ProtonLaunch
             Process.Start(new ProcessStartInfo
             {
                 FileName = plan.ExecutablePath,
+                Arguments = arguments ?? "",
                 WorkingDirectory = Path.GetDirectoryName(plan.ExecutablePath)!,
                 UseShellExecute = true
             });

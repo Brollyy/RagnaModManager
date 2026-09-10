@@ -19,7 +19,8 @@ public sealed class DeploymentPlanner
     public Result<DeploymentPlan> BuildPlan(string gameRoot)
     {
         var profile = _database.GetActiveProfile();
-        var profileMods = _database.GetProfileMods(profile.Id).Where(m => m.Enabled).OrderBy(m => m.Priority).ThenBy(m => m.ModId).ToList();
+        var allProfileMods = _database.GetProfileMods(profile.Id);
+        var profileMods = allProfileMods.Where(m => m.Enabled).OrderBy(m => m.Priority).ThenBy(m => m.ModId).ToList();
         var mods = _database.GetMods().ToDictionary(m => m.Id, StringComparer.OrdinalIgnoreCase);
         var items = new List<DeploymentItem>();
         var warnings = new List<string>();
@@ -30,12 +31,22 @@ public sealed class DeploymentPlanner
 
         foreach (var profileMod in profileMods)
         {
-            if (!mods.TryGetValue(profileMod.ModId, out var mod))
+            if (!mods.TryGetValue(profileMod.ModId, out var currentMod))
             {
                 warnings.Add($"Profile references missing mod '{profileMod.ModId}'.");
                 continue;
             }
 
+            var mod = string.IsNullOrWhiteSpace(profileMod.Version) ? currentMod : _database.GetMod(profileMod.ModId, profileMod.Version);
+            if (mod is null)
+            {
+                warnings.Add($"Profile pins missing version '{profileMod.ModId} {profileMod.Version}'.");
+                requirementConflicts.Add(new DeploymentConflict(
+                    "profile-version",
+                    $"Profile pins {profileMod.ModId} to version {profileMod.Version}, but that version is not installed.",
+                    [], BlocksDeployment: true, RelatedModId: profileMod.ModId));
+                continue;
+            }
             var manifestResult = ManifestValidator.LoadAndValidate(mod.ManifestPath);
             if (!manifestResult.Success)
             {
@@ -82,7 +93,7 @@ public sealed class DeploymentPlanner
                         return Result<DeploymentPlan>.Fail($"Manifest entry for {manifest.Id} maps outside approved Ragnarock targets: {target}");
                     }
 
-                    var item = new DeploymentItem(manifest.Id, expandedSource, target, "copy", file.Type);
+                    var item = new DeploymentItem(manifest.Id, expandedSource, target, "copy", file.Type, file.EffectiveModFolder);
                     items.Add(item);
                     manifestItems.Add(item);
                 }
@@ -103,7 +114,11 @@ public sealed class DeploymentPlanner
             warnings.Add($"Coalesced {expandedItemCount - items.Count} identical legacy deployment entries.");
         }
 
-        var dependencyConflicts = DetectDependencyConflicts(profileMods, mods, enabledManifests);
+        var selectedMods = allProfileMods
+            .Select(p => (Profile: p, Mod: mods.TryGetValue(p.ModId, out var current) ? (string.IsNullOrWhiteSpace(p.Version) ? current : _database.GetMod(p.ModId, p.Version)) : null))
+            .Where(x => x.Mod is not null)
+            .ToDictionary(x => x.Profile.ModId, x => x.Mod!, StringComparer.OrdinalIgnoreCase);
+        var dependencyConflicts = DetectDependencyConflicts(profileMods, selectedMods, enabledManifests);
         var (loadOrder, cycle) = BuildDependencyOrder(profileMods, enabledManifests);
         if (cycle is not null)
         {
@@ -208,7 +223,8 @@ public sealed class DeploymentPlanner
                         "missing-dependency",
                         $"{manifest.Id} requires {dependency.Key} {dependency.Value}, but it is not installed.",
                         [],
-                        BlocksDeployment: true));
+                        BlocksDeployment: true,
+                        RelatedModId: dependency.Key));
                 }
                 else if (!enabled.Contains(dependency.Key))
                 {
@@ -216,7 +232,8 @@ public sealed class DeploymentPlanner
                         "disabled-dependency",
                         $"{manifest.Id} requires {dependency.Key} {dependency.Value}, but it is disabled in this profile.",
                         [],
-                        BlocksDeployment: true));
+                        BlocksDeployment: true,
+                        RelatedModId: dependency.Key));
                 }
                 else if (!VersionRequirement.IsSatisfied(dependency.Value, installed.Version))
                 {
@@ -224,7 +241,8 @@ public sealed class DeploymentPlanner
                         "dependency-version",
                         $"{manifest.Id} requires {dependency.Key} {dependency.Value}, installed version is {installed.Version}.",
                         [],
-                        BlocksDeployment: true));
+                        BlocksDeployment: true,
+                        RelatedModId: dependency.Key));
                 }
             }
         }

@@ -1,4 +1,4 @@
-# Contributing to the official registry
+# Contributing to the RagnaModManager community catalog
 
 Please use the Mod request Issue template for a new mod. Maintainers will
 convert an approved request into a catalog pull request. Authors may also open
