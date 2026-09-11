@@ -122,6 +122,8 @@ public sealed class DashboardViewModel : ObservableObject
     public string PlayStatus { get; set; } = "Set up first";
     public string PlayDetail { get; set; } = "Choose your game folder";
     public bool ShowSetupAction { get; set; }
+    public bool ShowSecondaryDiscoverAction => ShowSetupAction;
+    public bool ShowPrimaryDiscoverAction => !ShowSetupAction;
     public string QuickActionsTitle { get; set; } = "Get started";
     public string QuickActionsDescription { get; set; } = "Connect the game, then pick the mods you want to use.";
     public bool CanOpenGame { get; set; }
@@ -145,6 +147,8 @@ public sealed class DashboardViewModel : ObservableObject
         OnPropertyChanged(nameof(PlayStatus));
         OnPropertyChanged(nameof(PlayDetail));
         OnPropertyChanged(nameof(ShowSetupAction));
+        OnPropertyChanged(nameof(ShowSecondaryDiscoverAction));
+        OnPropertyChanged(nameof(ShowPrimaryDiscoverAction));
         OnPropertyChanged(nameof(QuickActionsTitle));
         OnPropertyChanged(nameof(QuickActionsDescription));
         OnPropertyChanged(nameof(CanOpenGame));
@@ -158,7 +162,6 @@ public sealed class ModRowViewModel : ObservableObject
 {
     private bool _selected;
     private bool _enabled;
-    private bool _versionExpanded;
     private bool _detailsExpanded;
     private string _selectedVersion = "";
 
@@ -184,12 +187,6 @@ public sealed class ModRowViewModel : ObservableObject
         set { if (!SetField(ref _detailsExpanded, value)) return; OnPropertyChanged(nameof(DetailsGlyph)); }
     }
     public string DetailsGlyph => DetailsExpanded ? "⌄" : "›";
-    public bool VersionExpanded
-    {
-        get => _versionExpanded;
-        set { if (!SetField(ref _versionExpanded, value)) return; OnPropertyChanged(nameof(VersionLabel)); }
-    }
-    public string VersionLabel => VersionExpanded ? "Hide" : "Show";
     public bool Selected { get => _selected; set => SetField(ref _selected, value); }
     public bool Enabled
     {
@@ -397,6 +394,11 @@ public sealed class SettingsPageViewModel : ObservableObject
     public string SupportNote { get; set; } = "Your current mods don’t need anything extra.";
     public string RecoverySummary { get; set; } = "Choose your Ragnarock folder before using recovery tools.";
     public string LaunchArguments { get => _launchArguments; set => SetField(ref _launchArguments, value); }
+    public string LaunchSetupStatus { get; set; } = "Choose your Ragnarock folder first.";
+    public string RequiredLaunchArguments { get; set; } = "-nohmd";
+    public string SteamLaunchOptions { get; set; } = "";
+    public bool ShowSteamLaunchOptions { get; set; }
+    public bool CanConfigureSteamLaunch { get; set; }
     public bool HasGame { get; set; }
     public bool CanSaveGame => !string.IsNullOrWhiteSpace(GamePath) && !string.Equals(GamePath.Trim(), SavedGamePath.Trim(), StringComparison.OrdinalIgnoreCase);
     public bool CanApplySetup => HasGame;
@@ -425,6 +427,7 @@ public sealed class SettingsPageViewModel : ObservableObject
     public ICommand? Rollback { get; set; }
     public ICommand? ResetDeployment { get; set; }
     public ICommand? SaveLaunchOptions { get; set; }
+    public ICommand? ConfigureSteamLaunch { get; set; }
     public ICommand? OpenLogs { get; set; }
     public ICommand? OpenIssues { get; set; }
     public ICommand? ToggleRecovery { get; set; }

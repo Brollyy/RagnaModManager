@@ -27,7 +27,8 @@
           </StackPanel>
           <WrapPanel Orientation="Horizontal" ItemSpacing="8" LineSpacing="8">
             <Button MinWidth="150" MinHeight="40" Padding="12,8" FontWeight="SemiBold" Content="Set up automatically" Classes="accent" IsVisible="{Binding ShowSetupAction}" Command="{Binding SetupAutomatically}" />
-            <Button MinWidth="150" MinHeight="40" Padding="12,8" FontWeight="SemiBold" Content="Discover mods" Classes="accent" Command="{Binding DiscoverMods}" />
+            <Button MinWidth="150" MinHeight="40" Padding="12,8" FontWeight="SemiBold" Content="Discover mods" IsVisible="{Binding ShowSecondaryDiscoverAction}" Command="{Binding DiscoverMods}" />
+            <Button MinWidth="150" MinHeight="40" Padding="12,8" FontWeight="SemiBold" Content="Discover mods" Classes="accent" IsVisible="{Binding ShowPrimaryDiscoverAction}" Command="{Binding DiscoverMods}" />
             <Button MinWidth="150" MinHeight="40" Padding="12,8" Content="Add a mod" Command="{Binding AddMod}" />
             <Button MinWidth="150" MinHeight="40" Padding="12,8" Content="Open game folder" IsEnabled="{Binding CanOpenGame}" Command="{Binding OpenGameFolder}" />
             <Button MinWidth="150" MinHeight="40" Padding="12,8" Content="Open mod library" Command="{Binding OpenModLibrary}" />

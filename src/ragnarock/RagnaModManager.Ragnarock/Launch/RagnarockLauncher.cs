@@ -19,11 +19,11 @@ public sealed class RagnarockLauncher
         _protonLaunch = protonLaunch;
     }
 
-    public LaunchPlan BuildLaunchPlan(string gameRoot)
+    public LaunchPlan BuildLaunchPlan(string gameRoot, string? extraArguments = null)
     {
         var executable = RagnarockDetector.FindExecutable(gameRoot);
         var preferSteam = !OperatingSystem.IsWindows() && _detector.IsLikelySteamInstall(gameRoot);
-        return _protonLaunch.BuildPlan(executable, preferSteam);
+        return _protonLaunch.BuildPlan(executable, preferSteam, extraArguments);
     }
 
     public Result Launch(string gameRoot, string? arguments = null)

@@ -1,6 +1,7 @@
 using RagnaModManager.Ragnarock.DeploymentRules;
 using RagnaModManager.Ragnarock.Detection;
 using RagnaModManager.Ragnarock.Ue4ss;
+using RagnaModManager.Platform.Steam;
 
 namespace RagnaModManager.Ragnarock.Compatibility;
 
@@ -47,6 +48,14 @@ public sealed class RagnarockCompatibilityChecker
         else
         {
             warnings.Add("The path is not in a discovered Steam library. Manual paths are supported, but launch may need direct executable access.");
+        }
+
+        var steamLaunch = _ue4ss.Detect(gameRoot).Installed
+            ? new SteamLaunchOptionsService().Inspect(gameRoot)
+            : null;
+        if (steamLaunch?.Applicable == true && !steamLaunch.Configured)
+        {
+            warnings.Add($"{steamLaunch.Message} Required option: {steamLaunch.RequiredOptions}");
         }
 
         var ue4ss = _ue4ss.Detect(gameRoot);

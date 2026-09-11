@@ -55,12 +55,18 @@
       </Border>
       <Border Classes="card" Padding="16">
         <StackPanel Spacing="10">
-          <TextBlock Text="Launch options" FontSize="18" FontWeight="SemiBold"/>
-          <TextBlock Text="Most players can leave this empty. These options are only used when launching Ragnarock directly; Steam launches ignore them." Foreground="#9AAAC2" TextWrapping="Wrap"/>
+          <TextBlock Text="Launch Ragnarock" FontSize="18" FontWeight="SemiBold"/>
+          <TextBlock Text="{Binding LaunchSetupStatus}" TextWrapping="Wrap"/>
+          <TextBlock Text="Required game argument" Foreground="#9AAAC2"/>
+          <TextBlock Text="{Binding RequiredLaunchArguments}" FontFamily="monospace" TextWrapping="Wrap"/>
+          <TextBlock Text="Steam launch option" Foreground="#9AAAC2" IsVisible="{Binding ShowSteamLaunchOptions}"/>
+          <TextBlock Text="{Binding SteamLaunchOptions}" FontFamily="monospace" TextWrapping="Wrap" IsVisible="{Binding ShowSteamLaunchOptions}"/>
           <WrapPanel Orientation="Horizontal" ItemSpacing="8">
             <TextBox Text="{Binding LaunchArguments, Mode=TwoWay}" Watermark="Optional launch arguments" MinWidth="420"/>
             <Button Content="Save launch options" Command="{Binding SaveLaunchOptions}"/>
+            <Button Content="Configure Steam launch" IsVisible="{Binding CanConfigureSteamLaunch}" Command="{Binding ConfigureSteamLaunch}"/>
           </WrapPanel>
+          <TextBlock Text="Optional arguments are added after the required argument when launching directly. Steam uses the option shown above." Foreground="#9AAAC2" TextWrapping="Wrap"/>
         </StackPanel>
       </Border>
       <Border Classes="card" Padding="16">

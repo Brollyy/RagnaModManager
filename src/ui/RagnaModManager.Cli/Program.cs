@@ -657,6 +657,8 @@ internal sealed class AppBootstrap
         Console.WriteLine($"Command: {plan.DisplayCommand}");
         Console.WriteLine($"Steam protocol: {plan.UsesSteamProtocol}");
         Console.WriteLine($"Executable: {plan.ExecutablePath ?? "not found"}");
+        Console.WriteLine($"Game arguments: {plan.GameArguments}");
+        Console.WriteLine($"Steam launch options: {plan.SteamLaunchOptions}");
         return 0;
     }
 

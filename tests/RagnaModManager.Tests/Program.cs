@@ -9,6 +9,7 @@ using RagnaModManager.Core.Manifests;
 using RagnaModManager.Core.Packages;
 using RagnaModManager.Core.Platform;
 using RagnaModManager.Platform.Folders;
+using RagnaModManager.Platform.Proton;
 using RagnaModManager.Platform.Steam;
 using RagnaModManager.Ragnarock.Compatibility;
 using RagnaModManager.Ragnarock.DeploymentRules;
@@ -40,6 +41,7 @@ var tests = new (string Name, Action Body)[]
     ("active root ue4ss layout is preferred", ActiveRootUe4ssLayoutIsPreferred),
     ("steam libraryfolders vdf parser finds library paths", SteamLibraryVdfParserFindsLibraryPaths),
     ("folder opener builds platform command", FolderOpenerBuildsPlatformCommand),
+    ("launch plan includes required UE4SS arguments", LaunchPlanIncludesRequiredArguments),
     ("compatibility checker reports usable test install", CompatibilityCheckerReportsUsableInstall),
     ("ue4ss zip install validates and maps layout", Ue4ssInstallMapsLayout),
     ("ue4ss release service caches installs and rolls back versions", Ue4ssReleaseServiceCachesInstallsAndRollsBackVersions),
@@ -741,7 +743,11 @@ static void Ue4ssInstallMapsLayout()
     Assert(result.Success, result.Error ?? "ue4ss install failed");
     var status = service.Detect(game);
     Assert(status.Installed, "ue4ss status should be installed");
-    Assert(File.Exists(Path.Combine(game, "Ragnarock", "Binaries", "Win64", "ue4ss", "UE4SS.dll")), "UE4SS.dll should be in modern layout");
+    var exeFolder = Path.Combine(game, "Ragnarock", "Binaries", "Win64");
+    var expectedDll = OperatingSystem.IsLinux()
+        ? Path.Combine(exeFolder, "UE4SS.dll")
+        : Path.Combine(exeFolder, "ue4ss", "UE4SS.dll");
+    Assert(File.Exists(expectedDll), "UE4SS.dll should be in the platform-compatible layout");
 }
 
 static void Ue4ssReleaseServiceCachesInstallsAndRollsBackVersions()
@@ -838,6 +844,14 @@ static void SteamLibraryVdfParserFindsLibraryPaths()
         """);
     Assert(paths.Count == 2, "expected two parsed library paths");
     Assert(paths[1] == "/mnt/games/SteamLibrary", "second library path should parse");
+}
+
+static void LaunchPlanIncludesRequiredArguments()
+{
+    var plan = new ProtonLaunch().BuildPlan("/games/Ragnarock.exe", preferSteamProtocol: false, "--custom");
+    Assert(plan.GameArguments == "-nohmd --custom", "direct launch should include the required and custom arguments");
+    Assert(plan.DisplayCommand.EndsWith("/games/Ragnarock.exe -nohmd --custom", StringComparison.Ordinal), "display command should show direct arguments");
+    Assert(plan.SteamLaunchOptions == ProtonLaunch.RequiredSteamLaunchOptions, "Steam launch options should include the UE4SS override and -nohmd");
 }
 
 static void CompatibilityCheckerReportsUsableInstall()
