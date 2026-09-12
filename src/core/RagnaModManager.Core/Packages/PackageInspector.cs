@@ -98,7 +98,7 @@ public sealed class PackageInspector
         {
             return Result<PackageInspection>.Fail($"manifest.json is not valid JSON: {ex.Message}");
         }
-        catch (InvalidDataException ex)
+        catch (InvalidDataException)
         {
             return Result<PackageInspection>.Fail("That file could not be opened as a mod package. Download the package again and try once more.");
         }

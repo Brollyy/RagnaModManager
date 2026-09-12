@@ -92,7 +92,7 @@ public sealed class PackageImporter
             _logger.Info($"Imported mod {manifest.Id} {manifest.Version} from {archivePath}");
             return Result<ModManifest>.Ok(manifest);
         }
-        catch (InvalidDataException ex)
+        catch (InvalidDataException)
         {
             return Result<ModManifest>.Fail("That file could not be opened as a mod package. Download the package again and try once more.");
         }
