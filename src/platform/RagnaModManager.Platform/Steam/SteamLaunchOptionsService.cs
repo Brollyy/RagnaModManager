@@ -10,6 +10,7 @@ public sealed record SteamLaunchOptionsStatus(
     bool Configured,
     string? ConfigPath,
     string CurrentOptions,
+    string CurrentArguments,
     string RequiredOptions,
     string Message);
 
@@ -34,18 +35,19 @@ public sealed class SteamLaunchOptionsService
         var requiredOptions = ProtonLaunch.BuildSteamLaunchOptions(extraArguments);
         if (OperatingSystem.IsWindows() || !_steam.IsLikelySteamInstall(gameRoot))
         {
-            return new SteamLaunchOptionsStatus(false, true, null, "", requiredOptions, "Steam launch options are not needed for this launch.");
+            return new SteamLaunchOptionsStatus(false, true, null, "", "", requiredOptions, "Steam launch options are not needed for this launch.");
         }
 
         var config = FindConfig();
         if (config is null)
         {
-            return new SteamLaunchOptionsStatus(true, false, null, "", requiredOptions, "Could not find your Steam launch-options file.");
+            return new SteamLaunchOptionsStatus(true, false, null, "", "", requiredOptions, "Could not find your Steam launch-options file.");
         }
 
         var current = ReadOptions(config);
+        var currentArguments = ExtractArguments(current);
         var configured = HasRequiredOptions(current, extraArguments);
-        return new SteamLaunchOptionsStatus(true, configured, config, current, requiredOptions,
+        return new SteamLaunchOptionsStatus(true, configured, config, current, currentArguments, requiredOptions,
             configured ? "Steam launch options are configured." : "Steam needs an updated launch option for UE4SS and the manager's optional arguments.");
     }
 
@@ -116,6 +118,15 @@ public sealed class SteamLaunchOptionsService
         options.Contains("WINEDLLOVERRIDES=\"dwmapi=n,b\"", StringComparison.Ordinal) &&
         options.Contains("%command%", StringComparison.Ordinal) &&
         (string.IsNullOrWhiteSpace(extraArguments) || options.Contains(extraArguments.Trim(), StringComparison.Ordinal));
+
+    private static string ExtractArguments(string options)
+    {
+        var withoutOverride = Regex.Replace(options, "WINEDLLOVERRIDES=\\\"[^\\\"]*\\\"\\s*", "", RegexOptions.IgnoreCase);
+        var commandIndex = withoutOverride.IndexOf("%command%", StringComparison.Ordinal);
+        return commandIndex >= 0
+            ? withoutOverride[(commandIndex + "%command%".Length)..].Trim()
+            : withoutOverride.Trim();
+    }
 
     private static string EnsureRequiredOptions(string current, string? extraArguments)
     {
