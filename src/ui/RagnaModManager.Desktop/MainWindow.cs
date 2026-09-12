@@ -455,6 +455,7 @@ public partial class MainWindow : Window
                 var latest = releases.FirstOrDefault();
                 var installedVersions = _database.GetModVersions(catalogMod.Id);
                 var current = installedVersions.FirstOrDefault() ?? installed.FirstOrDefault(m => m.Id.Equals(catalogMod.Id, StringComparison.OrdinalIgnoreCase));
+                var latestInstalled = installedVersions.OrderByDescending(v => v.Version, Comparer<string>.Create(SemanticVersion.Compare)).FirstOrDefault();
                 var row = new DiscoverModViewModel
                 {
                     Id = catalogMod.Id,
@@ -468,7 +469,7 @@ public partial class MainWindow : Window
                     InstallLabel = current is null ? "Install" : latest is not null && IsNewerVersion(latest.Version, current.Version) ? "Update" : "Installed",
                     CanInstall = current is null || latest is not null && IsNewerVersion(latest.Version, current.Version),
                     Latest = latest?.Version ?? "—",
-                    Installed = installedVersions.Count switch { 0 => "Not installed", 1 => installedVersions[0].Version, _ => $"{installedVersions.Count} versions" },
+                    Installed = latestInstalled?.Version ?? current?.Version ?? "Not installed",
                     InstalledVersion = current?.Version ?? "",
                     InstalledBrush = current is not null && latest is not null && IsNewerVersion(latest.Version, current.Version) ? "#B8860B" : "#696969",
                     Selected = _selectedCatalogMods.Contains(catalogMod.Id),
