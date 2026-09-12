@@ -395,7 +395,6 @@ public sealed class SettingsPageViewModel : ObservableObject
     public string RecoverySummary { get; set; } = "Choose your Ragnarock folder before using recovery tools.";
     public string LaunchArguments { get => _launchArguments; set => SetField(ref _launchArguments, value); }
     public string LaunchSetupStatus { get; set; } = "Choose your Ragnarock folder first.";
-    public string RequiredLaunchArguments { get; set; } = "-nohmd";
     public string SteamLaunchOptions { get; set; } = "";
     public bool ShowSteamLaunchOptions { get; set; }
     public bool CanConfigureSteamLaunch { get; set; }

@@ -41,7 +41,7 @@ var tests = new (string Name, Action Body)[]
     ("active root ue4ss layout is preferred", ActiveRootUe4ssLayoutIsPreferred),
     ("steam libraryfolders vdf parser finds library paths", SteamLibraryVdfParserFindsLibraryPaths),
     ("folder opener builds platform command", FolderOpenerBuildsPlatformCommand),
-    ("launch plan includes required UE4SS arguments", LaunchPlanIncludesRequiredArguments),
+    ("launch plan uses optional arguments", LaunchPlanUsesOptionalArguments),
     ("compatibility checker reports usable test install", CompatibilityCheckerReportsUsableInstall),
     ("ue4ss zip install validates and maps layout", Ue4ssInstallMapsLayout),
     ("ue4ss release service caches installs and rolls back versions", Ue4ssReleaseServiceCachesInstallsAndRollsBackVersions),
@@ -846,12 +846,12 @@ static void SteamLibraryVdfParserFindsLibraryPaths()
     Assert(paths[1] == "/mnt/games/SteamLibrary", "second library path should parse");
 }
 
-static void LaunchPlanIncludesRequiredArguments()
+static void LaunchPlanUsesOptionalArguments()
 {
     var plan = new ProtonLaunch().BuildPlan("/games/Ragnarock.exe", preferSteamProtocol: false, "--custom");
-    Assert(plan.GameArguments == "-nohmd --custom", "direct launch should include the required and custom arguments");
-    Assert(plan.DisplayCommand.EndsWith("/games/Ragnarock.exe -nohmd --custom", StringComparison.Ordinal), "display command should show direct arguments");
-    Assert(plan.SteamLaunchOptions == ProtonLaunch.RequiredSteamLaunchOptions, "Steam launch options should include the UE4SS override and -nohmd");
+    Assert(plan.GameArguments == "--custom", "direct launch should include the custom arguments without adding defaults");
+    Assert(plan.DisplayCommand.EndsWith("/games/Ragnarock.exe --custom", StringComparison.Ordinal), "display command should show direct arguments");
+    Assert(plan.SteamLaunchOptions == $"{ProtonLaunch.RequiredSteamLaunchOptions} --custom", "Steam launch options should include the custom arguments");
 }
 
 static void CompatibilityCheckerReportsUsableInstall()
