@@ -136,12 +136,12 @@ public partial class MainWindow : Window
         _rebuildingTabs = true;
         try
         {
-        _tabs.TabStripPlacement = compact ? Dock.Top : Dock.Left;
-        foreach (var item in _tabs.Items.OfType<TabItem>())
-        {
-            item.Margin = compact ? new Thickness(0, 0, 8, 6) : new Thickness(0, 2, 10, 2);
-            item.Padding = compact ? new Thickness(12, 9) : new Thickness(16, 12);
-        }
+            _tabs.TabStripPlacement = compact ? Dock.Top : Dock.Left;
+            foreach (var item in _tabs.Items.OfType<TabItem>())
+            {
+                item.Margin = compact ? new Thickness(0, 0, 8, 6) : new Thickness(0, 2, 10, 2);
+                item.Padding = compact ? new Thickness(12, 9) : new Thickness(16, 12);
+            }
             _tabs.SelectedIndex = Math.Clamp(selectedIndex, 0, _tabs.Items.Count - 1);
         }
         finally

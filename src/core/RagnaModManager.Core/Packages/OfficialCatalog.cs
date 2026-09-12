@@ -116,7 +116,7 @@ public sealed class OfficialCatalogService
         if (string.IsNullOrWhiteSpace(release.Sha256) || release.Sha256.Length != 64)
             return Result<ModManifest>.Fail("The catalog release is missing a valid SHA-256 checksum.");
 
-            var cache = Path.Combine(_paths.Downloads, "community-catalog", release.Sha256.ToLowerInvariant() + ".rmod");
+        var cache = Path.Combine(_paths.Downloads, "community-catalog", release.Sha256.ToLowerInvariant() + ".rmod");
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(cache)!);
