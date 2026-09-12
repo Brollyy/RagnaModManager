@@ -620,7 +620,7 @@ public partial class MainWindow : Window
                 : $"There are {CountPhrase(planResult.Value.Conflicts.Count(c => c.BlocksDeployment), "thing")} to sort out before this setup can be applied.";
         model.LaunchArguments = _launchArguments;
         var launchPlan = game is null ? null : new RagnarockLauncher().BuildLaunchPlan(game.InstallPath, _launchArguments);
-        model.SteamLaunchOptions = launchPlan?.SteamLaunchOptions ?? ProtonLaunch.RequiredSteamLaunchOptions;
+        model.SteamLaunchOptions = launchPlan?.SteamLaunchOptions ?? ProtonLaunch.BuildSteamLaunchOptions(_launchArguments);
         var ue4ssInstalled = game is not null && _ue4ss.Detect(game.InstallPath).Installed;
         var steamOptions = ue4ssInstalled && game is not null
             ? _steamLaunchOptions.Inspect(game.InstallPath, _launchArguments)

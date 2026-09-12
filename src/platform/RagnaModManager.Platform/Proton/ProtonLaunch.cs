@@ -16,7 +16,9 @@ public sealed class ProtonLaunch
     public const string RequiredSteamLaunchOptions = "WINEDLLOVERRIDES=\"dwmapi=n,b\" %command%";
 
     public static string BuildSteamLaunchOptions(string? extraArguments) =>
-        CombineArguments(RequiredSteamLaunchOptions, extraArguments);
+        OperatingSystem.IsWindows()
+            ? CombineArguments(extraArguments)
+            : CombineArguments(RequiredSteamLaunchOptions, extraArguments);
 
     public LaunchPlan BuildPlan(string? executablePath, bool preferSteamProtocol, string? extraArguments = null)
     {
