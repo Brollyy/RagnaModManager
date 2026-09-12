@@ -2,108 +2,81 @@
 <UserControl xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:local="using:RagnaModManager.Desktop" x:Class="RagnaModManager.Desktop.SettingsView" x:DataType="local:SettingsPageViewModel">
   <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
     <StackPanel Spacing="14">
-      <TextBlock Text="Get Ragnarock ready" FontSize="24" FontWeight="SemiBold"/>
-      <TextBlock Text="{Binding Intro}" TextWrapping="Wrap"/>
       <Border Classes="card" Padding="16">
         <StackPanel Spacing="10">
-          <TextBlock Text="Connect Ragnarock" FontSize="18" FontWeight="SemiBold"/>
+          <TextBlock Text="Game folder" FontSize="18" FontWeight="SemiBold"/>
           <TextBlock Text="{Binding GameStatus}" TextWrapping="Wrap"/>
           <WrapPanel Orientation="Horizontal" ItemSpacing="0" LineSpacing="0">
             <TextBox Margin="0,0,10,10" Text="{Binding GamePath, Mode=TwoWay}" Watermark="/path/to/steamapps/common/Ragnarock" MinWidth="420"/>
             <Button Margin="0,0,10,10" Padding="12,8" Content="Choose Folder" Command="{Binding BrowseGame}"/>
             <Button Margin="0,0,10,10" Padding="12,8" Content="Find Automatically" Command="{Binding DetectGame}"/>
-            <Button Margin="0,0,10,10" Padding="12,8" FontWeight="SemiBold" Content="Save Folder" Classes="accent" Command="{Binding SaveGame}"/>
+            <Button Margin="0,0,10,10" Padding="12,8" FontWeight="SemiBold" Content="Save Folder" Classes="accent" IsEnabled="{Binding CanSaveGame}" Command="{Binding SaveGame}"/>
           </WrapPanel>
         </StackPanel>
       </Border>
       <Border Classes="card" Padding="16">
         <StackPanel Spacing="10">
-          <TextBlock Text="Apply your mod setup" FontSize="18" FontWeight="SemiBold"/>
+          <TextBlock Text="Apply changes" FontSize="18" FontWeight="SemiBold"/>
           <TextBlock Text="{Binding ApplyStatus}" TextWrapping="Wrap"/>
           <TextBlock Text="Applying updates the files this app manages. Other game files are left alone." Foreground="#9AAAC2" TextWrapping="Wrap"/>
           <WrapPanel Margin="0,0,0,10" Orientation="Horizontal" ItemSpacing="10">
             <Button Height="35" Padding="12,8" FontWeight="SemiBold" Content="Apply setup" Classes="accent" IsEnabled="{Binding CanApplySetup}" Command="{Binding ApplySetup}"/>
-            <Button Height="35" Padding="12,8" Content="Clean up extra files" IsEnabled="{Binding CanCleanUp}" Command="{Binding CleanUp}"/>
+            <Button MinHeight="35" Padding="12,8" Content="Open mods folder" IsEnabled="{Binding CanOpenModsFolder}" Command="{Binding OpenModsFolder}"/>
+            <Button MinHeight="35" Padding="12,8" Content="🗑  Clean up extra files" Classes="destructive" IsEnabled="{Binding CanCleanUp}" Command="{Binding CleanUp}"/>
           </WrapPanel>
         </StackPanel>
       </Border>
       <Border Classes="card" Padding="16">
         <StackPanel Spacing="10">
-          <TextBlock Text="Support for script-based mods" FontSize="18" FontWeight="SemiBold"/>
+          <TextBlock Text="UE4SS" FontSize="18" FontWeight="SemiBold"/>
           <TextBlock Text="{Binding SupportStatus}" TextWrapping="Wrap"/>
           <TextBlock Text="{Binding SupportNote}" Foreground="#9AAAC2" TextWrapping="Wrap"/>
-          <TextBlock Text="Only needed by mods that use scripts." Foreground="#9AAAC2" TextWrapping="Wrap"/>
+          <TextBlock Text="Only needed by mods that require UE4SS." Foreground="#9AAAC2" TextWrapping="Wrap"/>
           <WrapPanel Margin="0,0,0,10" Orientation="Horizontal" ItemSpacing="10">
-            <Button Height="35" Padding="12,8" FontWeight="SemiBold" Content="Check for support updates" Classes="accent" IsEnabled="{Binding CanUseSupport}" Command="{Binding CheckSupport}"/>
-            <Button Height="35" Padding="12,8" Content="Install support from file" IsEnabled="{Binding CanUseSupport}" Command="{Binding InstallSupport}"/>
+            <Button Height="35" Padding="12,8" FontWeight="SemiBold" Content="Check for UE4SS updates" Classes="accent" IsEnabled="{Binding CanUseSupport}" Command="{Binding CheckSupport}"/>
+            <Button Height="35" Padding="12,8" Content="Install UE4SS from file" IsEnabled="{Binding CanUseSupport}" Command="{Binding InstallSupport}"/>
           </WrapPanel>
           <WrapPanel Orientation="Horizontal" ItemSpacing="8" IsVisible="{Binding HasCachedSupport}">
             <ComboBox ItemsSource="{Binding CachedSupportVersions}" SelectedItem="{Binding SelectedCachedSupport, Mode=TwoWay}" MinWidth="280"/>
-            <Button Padding="12,9" Content="Use saved support version" IsEnabled="{Binding CanUseSupport}" Command="{Binding UseCachedSupport}"/>
+            <Button Padding="12,9" Content="Use saved UE4SS version" IsEnabled="{Binding CanUseSupport}" Command="{Binding UseCachedSupport}"/>
           </WrapPanel>
         </StackPanel>
       </Border>
-      <Border Background="#17243B" BorderBrush="#2A3A55" BorderThickness="1" CornerRadius="10" Padding="14,11">
+      <Border Classes="card" Padding="16">
         <StackPanel Spacing="10">
-          <ToggleButton Classes="disclosure" IsChecked="{Binding RecoveryExpanded, Mode=TwoWay}">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-              <TextBlock Text="If something goes wrong" FontWeight="SemiBold"/>
-              <TextBlock Grid.Column="1" Text="{Binding RecoveryLabel}" Foreground="#9AAAC2"/>
-            </Grid>
-          </ToggleButton>
-          <ScrollViewer MaxHeight="220" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" IsVisible="{Binding RecoveryExpanded}">
-            <Border Classes="card" Padding="16">
-              <StackPanel Spacing="10">
-                <TextBlock Text="Undo or repair changes" FontSize="18" FontWeight="SemiBold"/>
-                <TextBlock Text="{Binding RecoverySummary}" TextWrapping="Wrap"/>
-                <TextBlock Text="These actions affect files applied by this app. They do not touch unrelated game files." Foreground="#9AAAC2" TextWrapping="Wrap"/>
-                <WrapPanel Orientation="Horizontal" ItemSpacing="8">
-                  <Button Content="Undo last change" IsEnabled="{Binding CanRecover}" Command="{Binding Rollback}"/>
-                  <Button Content="Remove applied setup" IsEnabled="{Binding CanRecover}" Command="{Binding ResetDeployment}"/>
-                </WrapPanel>
-              </StackPanel>
-            </Border>
-          </ScrollViewer>
+          <TextBlock Text="Need to undo something?" FontSize="18" FontWeight="SemiBold"/>
+          <TextBlock Text="{Binding RecoverySummary}" TextWrapping="Wrap"/>
+          <TextBlock Text="Undo the last change, or remove the files Ragna Mod Manager added to the game. Other game files stay untouched." Foreground="#9AAAC2" TextWrapping="Wrap"/>
+          <WrapPanel Orientation="Horizontal" ItemSpacing="8">
+            <Button Content="Undo last change" IsEnabled="{Binding CanRecover}" Command="{Binding Rollback}"/>
+                  <Button MinHeight="35" Content="🗑  Remove applied files" Classes="destructive" IsEnabled="{Binding CanRecover}" Command="{Binding ResetDeployment}"/>
+          </WrapPanel>
         </StackPanel>
       </Border>
-      <Border Background="#17243B" BorderBrush="#2A3A55" BorderThickness="1" CornerRadius="10" Padding="14,11">
+      <Border Classes="card" Padding="16">
         <StackPanel Spacing="10">
-          <ToggleButton Classes="disclosure" IsChecked="{Binding LaunchOptionsExpanded, Mode=TwoWay}">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-              <TextBlock Text="Advanced launch options" FontWeight="SemiBold"/>
-              <TextBlock Grid.Column="1" Text="{Binding LaunchOptionsLabel}" Foreground="#9AAAC2"/>
-            </Grid>
-          </ToggleButton>
-          <Border IsVisible="{Binding LaunchOptionsExpanded}" Classes="card" Padding="16">
-            <StackPanel Spacing="10">
-              <TextBlock Text="Launch options" FontSize="18" FontWeight="SemiBold"/>
-              <TextBlock Text="Most players can leave this empty. These options are only used when launching Ragnarock directly; Steam launches ignore them." Foreground="#9AAAC2" TextWrapping="Wrap"/>
-              <WrapPanel Orientation="Horizontal" ItemSpacing="8">
-                <TextBox Text="{Binding LaunchArguments, Mode=TwoWay}" Watermark="Optional launch arguments" MinWidth="420"/>
-                <Button Content="Save launch options" Command="{Binding SaveLaunchOptions}"/>
-              </WrapPanel>
-            </StackPanel>
-          </Border>
+          <TextBlock Text="Launch Ragnarock" FontSize="18" FontWeight="SemiBold"/>
+          <TextBlock Text="{Binding LaunchSetupStatus}" TextWrapping="Wrap"/>
+          <TextBlock Text="Required game argument" Foreground="#9AAAC2"/>
+          <TextBlock Text="{Binding RequiredLaunchArguments}" FontFamily="monospace" TextWrapping="Wrap"/>
+          <TextBlock Text="Steam launch option" Foreground="#9AAAC2" IsVisible="{Binding ShowSteamLaunchOptions}"/>
+          <TextBlock Text="{Binding SteamLaunchOptions}" FontFamily="monospace" TextWrapping="Wrap" IsVisible="{Binding ShowSteamLaunchOptions}"/>
+          <WrapPanel Orientation="Horizontal" ItemSpacing="8">
+            <TextBox Text="{Binding LaunchArguments, Mode=TwoWay}" Watermark="Optional launch arguments" MinWidth="420"/>
+            <Button Content="Save launch options" Command="{Binding SaveLaunchOptions}"/>
+            <Button Content="Configure Steam launch" IsVisible="{Binding CanConfigureSteamLaunch}" Command="{Binding ConfigureSteamLaunch}"/>
+          </WrapPanel>
+          <TextBlock Text="Optional arguments are added after the required argument when launching directly. Steam uses the option shown above." Foreground="#9AAAC2" TextWrapping="Wrap"/>
         </StackPanel>
       </Border>
-      <Border Background="#17243B" BorderBrush="#2A3A55" BorderThickness="1" CornerRadius="10" Padding="14,11">
+      <Border Classes="card" Padding="16">
         <StackPanel Spacing="10">
-          <ToggleButton Classes="disclosure" IsChecked="{Binding TroubleshootingExpanded, Mode=TwoWay}">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
-              <TextBlock Text="Troubleshooting" FontWeight="SemiBold"/>
-              <TextBlock Grid.Column="1" Text="{Binding TroubleshootingLabel}" Foreground="#9AAAC2"/>
-            </Grid>
-          </ToggleButton>
-          <Border IsVisible="{Binding TroubleshootingExpanded}" Classes="card" Padding="16">
-            <StackPanel Spacing="10">
-              <TextBlock Text="Get help" FontSize="18" FontWeight="SemiBold"/>
-              <TextBlock Text="Open the logs when support asks for them, or report a problem on GitHub." Foreground="#9AAAC2" TextWrapping="Wrap"/>
-              <WrapPanel Orientation="Horizontal" ItemSpacing="8">
-                <Button Content="Open app logs" Command="{Binding OpenLogs}"/>
-                <Button Content="Report a problem on GitHub" Classes="accent" Command="{Binding OpenIssues}"/>
-              </WrapPanel>
-            </StackPanel>
-          </Border>
+          <TextBlock Text="Need a hand?" FontSize="18" FontWeight="SemiBold"/>
+          <TextBlock Text="Open the logs when support asks for them, or report a problem on GitHub." Foreground="#9AAAC2" TextWrapping="Wrap"/>
+          <WrapPanel Orientation="Horizontal" ItemSpacing="8">
+            <Button Content="Open app logs" Command="{Binding OpenLogs}"/>
+            <Button Content="Report a problem on GitHub" Classes="accent" Command="{Binding OpenIssues}"/>
+          </WrapPanel>
         </StackPanel>
       </Border>
     </StackPanel>

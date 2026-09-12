@@ -26,6 +26,22 @@
     <Style Selector="Button:pressed">
       <Setter Property="RenderTransform" Value="scale(0.99)" />
     </Style>
+    <Style Selector="Button.accent">
+      <Setter Property="Background" Value="#205A55" />
+      <Setter Property="BorderBrush" Value="#2A766E" />
+      <Setter Property="Foreground" Value="#E8F7F4" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.accent:pointerover">
+      <Setter Property="Background" Value="#286A63" />
+      <Setter Property="BorderBrush" Value="#3A887E" />
+      <Setter Property="Foreground" Value="#F2FBF9" />
+    </Style>
+    <Style Selector="Button.accent:pressed">
+      <Setter Property="Background" Value="#194B47" />
+      <Setter Property="BorderBrush" Value="#286A63" />
+    </Style>
   </Window.Styles>
   <DockPanel x:Name="ShellRoot" Margin="24">
     <Border DockPanel.Dock="Top"
@@ -38,10 +54,10 @@
             Margin="0,0,0,18">
       <Grid ColumnDefinitions="*,Auto">
         <StackPanel Spacing="5">
-          <TextBlock Text="RMM  //  RAGNAROCK" FontSize="12" FontWeight="Bold" Foreground="#4DE1C1" />
-          <TextBlock Text="Ragnarock, your way." FontSize="28" FontWeight="SemiBold" />
-          <TextBlock Text="Choose mods, enable them, and play." Foreground="#9AAAC2" TextWrapping="Wrap" />
+          <TextBlock Text="Ragna Mod Manager" FontSize="28" FontWeight="SemiBold" />
+          <TextBlock Text="Pick a setup, switch mods on, and play." Foreground="#9AAAC2" TextWrapping="Wrap" />
           <TextBlock Text="{Binding CurrentSetupLabel}" Foreground="#4DE1C1" FontSize="12" />
+          <TextBlock Text="{Binding VersionLabel}" Foreground="#71829D" FontSize="11" />
         </StackPanel>
         <Button x:Name="LaunchButton"
                 Grid.Column="1"
@@ -61,7 +77,8 @@
     <TabControl x:Name="NavigationTabs"
                 TabStripPlacement="Left"
                 HorizontalContentAlignment="Stretch"
-                VerticalContentAlignment="Stretch">
+                VerticalContentAlignment="Stretch"
+                SizeChanged="OnNavigationSizeChanged">
       <TabItem Header="HOME"><ContentControl Content="{Binding Dashboard}" /></TabItem>
       <TabItem Header="DISCOVER"><ContentControl Content="{Binding Discover}" /></TabItem>
       <TabItem Header="MODS"><ContentControl Content="{Binding Mods}" /></TabItem>

@@ -9,6 +9,23 @@ namespace RagnaModManager.Core.Deployment;
 
 public sealed class DeploymentService
 {
+    // These folders ship with UE4SS itself. They are part of the runtime's
+    // baseline, not files the player added outside the manager.
+    private static readonly HashSet<string> Ue4ssDefaultModFolders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ActorDumperMod",
+        "BPML_GenericFunctions",
+        "BPModLoaderMod",
+        "CheatManagerEnablerMod",
+        "ConsoleCommandsMod",
+        "ConsoleEnablerMod",
+        "jsbLuaProfilerMod",
+        "Keybinds",
+        "LineTraceMod",
+        "SplitScreenMod",
+        "shared"
+    };
+
     private readonly AppPaths _paths;
     private readonly ManagerDatabase _database;
     private readonly DeploymentPlanner _planner;
@@ -91,6 +108,7 @@ public sealed class DeploymentService
             }
 
             var deployed = new List<DeployedFileRecord>(retained);
+            var plannedTargets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var item in plan.Items)
             {
@@ -100,6 +118,7 @@ public sealed class DeploymentService
                 }
 
                 if (File.Exists(item.TargetPath) &&
+                    !plannedTargets.Contains(item.TargetPath) &&
                     !CanOverwriteOwnedFile(plan.ProfileId, item.TargetPath) &&
                     !CanOverwriteManagedModFile(gameRoot, item) &&
                     !reconciledTargets.Contains(item.TargetPath))
@@ -112,6 +131,7 @@ public sealed class DeploymentService
                 var checksum = Sha256.FileChecksum(item.TargetPath);
                 deployed.RemoveAll(file => string.Equals(file.TargetPath, item.TargetPath, StringComparison.OrdinalIgnoreCase));
                 deployed.Add(new DeployedFileRecord(plan.ProfileId, item.ModId, item.SourcePath, item.TargetPath, item.Method, checksum));
+                plannedTargets.Add(item.TargetPath);
                 _logger.Deployment($"Copied {item.SourcePath} -> {item.TargetPath}");
             }
 
@@ -368,8 +388,17 @@ public sealed class DeploymentService
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         return Directory.EnumerateFiles(modsRoot, "*", SearchOption.AllDirectories)
             .Where(path => !Path.GetFileName(path).Equals("mods.txt", StringComparison.OrdinalIgnoreCase))
+            .Where(path => !IsUe4ssDefaultModFile(modsRoot, path))
             .Where(path => !managedTargets.Contains(path))
             .ToList();
+    }
+
+    private static bool IsUe4ssDefaultModFile(string modsRoot, string path)
+    {
+        var relative = Path.GetRelativePath(modsRoot, path);
+        var separator = relative.IndexOf(Path.DirectorySeparatorChar);
+        var folder = separator < 0 ? relative : relative[..separator];
+        return Ue4ssDefaultModFolders.Contains(folder);
     }
 
     public Result<int> RemoveUnmanagedFiles(string gameRoot)

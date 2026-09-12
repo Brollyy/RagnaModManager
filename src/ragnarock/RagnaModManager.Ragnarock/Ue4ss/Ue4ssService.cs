@@ -13,6 +13,12 @@ public sealed record Ue4ssStatus(
 
 public sealed class Ue4ssService
 {
+    // The current UE4SS layout is the preferred layout on Windows. Wine/Proton
+    // loads the proxy DLL, but the proxy cannot reliably resolve UE4SS.dll from
+    // the sibling ue4ss directory, so Linux installs must use the legacy
+    // same-directory layout.
+    private static bool UseProtonCompatibleLayout => OperatingSystem.IsLinux();
+
     public Ue4ssStatus Detect(string gameRoot)
     {
         var exeFolder = DeploymentRules.RagnarockDeploymentRules.GetExecutableFolder(gameRoot);
@@ -63,6 +69,7 @@ public sealed class Ue4ssService
         }
 
         var exeFolder = DeploymentRules.RagnarockDeploymentRules.GetExecutableFolder(gameRoot);
+        var installRoot = UseProtonCompatibleLayout ? exeFolder : Path.Combine(exeFolder, "ue4ss");
         Directory.CreateDirectory(exeFolder);
 
         try
@@ -86,15 +93,15 @@ public sealed class Ue4ssService
                     return Result.Fail($"UE4SS zip contains unsafe path: {entry.FullName}");
                 }
 
-                var target = MapUe4ssZipEntry(exeFolder, normalized);
+                var target = MapUe4ssZipEntry(exeFolder, installRoot, normalized);
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 entry.ExtractToFile(target, overwrite: true);
             }
 
-            Directory.CreateDirectory(Path.Combine(exeFolder, "ue4ss", "Mods"));
+            Directory.CreateDirectory(Path.Combine(installRoot, "Mods"));
             if (!string.IsNullOrWhiteSpace(installedVersion))
             {
-                File.WriteAllText(Path.Combine(exeFolder, "ue4ss", "UE4SS-version.txt"), installedVersion.Trim());
+                File.WriteAllText(Path.Combine(installRoot, "UE4SS-version.txt"), installedVersion.Trim());
             }
 
             return Result.Ok();
@@ -105,20 +112,20 @@ public sealed class Ue4ssService
         }
     }
 
-    private static string MapUe4ssZipEntry(string exeFolder, string entry)
+    private static string MapUe4ssZipEntry(string exeFolder, string installRoot, string entry)
     {
         var fileName = Path.GetFileName(entry);
         if (fileName.Equals("UE4SS.dll", StringComparison.OrdinalIgnoreCase) ||
             fileName.Equals("UE4SS-settings.ini", StringComparison.OrdinalIgnoreCase))
         {
-            return Path.Combine(exeFolder, "ue4ss", fileName);
+            return Path.Combine(installRoot, fileName);
         }
 
         if (entry.StartsWith("Mods/", StringComparison.OrdinalIgnoreCase) ||
             entry.StartsWith("ue4ss/Mods/", StringComparison.OrdinalIgnoreCase))
         {
             var relative = entry.StartsWith("ue4ss/", StringComparison.OrdinalIgnoreCase) ? entry["ue4ss/".Length..] : entry;
-            return Path.Combine(exeFolder, "ue4ss", relative.Replace('/', Path.DirectorySeparatorChar));
+            return Path.Combine(installRoot, relative.Replace('/', Path.DirectorySeparatorChar));
         }
 
         return Path.Combine(exeFolder, fileName);

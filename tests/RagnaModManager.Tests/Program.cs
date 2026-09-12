@@ -9,6 +9,7 @@ using RagnaModManager.Core.Manifests;
 using RagnaModManager.Core.Packages;
 using RagnaModManager.Core.Platform;
 using RagnaModManager.Platform.Folders;
+using RagnaModManager.Platform.Proton;
 using RagnaModManager.Platform.Steam;
 using RagnaModManager.Ragnarock.Compatibility;
 using RagnaModManager.Ragnarock.DeploymentRules;
@@ -29,7 +30,7 @@ var tests = new (string Name, Action Body)[]
     ("unmanaged target files require reconciliation", UnmanagedTargetFilesRequireReconciliation),
     ("removing a mod clears its installation and profile entries", RemovingModClearsInstallation),
     ("switching profiles redeploys from scratch", SwitchingProfilesRedeploysFromScratch),
-    ("same target conflicts block deployment", SameTargetConflictBlocksDeployment),
+    ("same target conflicts warn before deployment", SameTargetConflictWarnsBeforeDeployment),
     ("identical legacy entries are coalesced", IdenticalLegacyEntriesAreCoalesced),
     ("declared mod conflicts block deployment", DeclaredModConflictsBlockDeployment),
     ("manager version requirements block unsupported mods", ManagerVersionRequirementBlocksUnsupportedMods),
@@ -40,6 +41,7 @@ var tests = new (string Name, Action Body)[]
     ("active root ue4ss layout is preferred", ActiveRootUe4ssLayoutIsPreferred),
     ("steam libraryfolders vdf parser finds library paths", SteamLibraryVdfParserFindsLibraryPaths),
     ("folder opener builds platform command", FolderOpenerBuildsPlatformCommand),
+    ("launch plan includes required UE4SS arguments", LaunchPlanIncludesRequiredArguments),
     ("compatibility checker reports usable test install", CompatibilityCheckerReportsUsableInstall),
     ("ue4ss zip install validates and maps layout", Ue4ssInstallMapsLayout),
     ("ue4ss release service caches installs and rolls back versions", Ue4ssReleaseServiceCachesInstallsAndRollsBackVersions),
@@ -200,6 +202,7 @@ static void OfficialCatalogVerifiesAndImportsPackage()
     var result = service.DownloadAndImportAsync(mod, release).GetAwaiter().GetResult();
     Assert(result.Success, result.Error ?? "official package import failed");
     Assert(env.Database.GetMod("official-demo") is not null, "verified official package should be installed");
+    Assert(env.Database.GetProfileMods("default").Single(mod => mod.ModId == "official-demo").Enabled, "verified official package should start enabled");
 }
 
 static void OfficialCatalogConflictsMustBeDeclaredByPackage()
@@ -239,6 +242,7 @@ static void OfficialInstallDownloadsDependencies()
     Assert(result.Success, result.Error ?? "dependent official package should install");
     Assert(env.Database.GetMod("catalog-api") is not null, "dependency should be installed automatically");
     Assert(env.Database.GetMod("catalog-vote") is not null, "requested mod should be installed");
+    Assert(env.Database.GetProfileMods("default").Where(mod => mod.ModId is "catalog-api" or "catalog-vote").All(mod => mod.Enabled), "official mods and dependencies should start enabled");
 }
 
 static void ImportDeployDisableCleanupCycle()
@@ -491,7 +495,7 @@ static void SwitchingProfilesRedeploysFromScratch()
     Assert(File.Exists(devTarget), "development profile file should be deployed");
 }
 
-static void SameTargetConflictBlocksDeployment()
+static void SameTargetConflictWarnsBeforeDeployment()
 {
     using var env = TestEnv.Create();
     var game = env.CreateGame();
@@ -510,7 +514,10 @@ static void SameTargetConflictBlocksDeployment()
 
     var preview = env.DeploymentService().Preview(game);
     Assert(preview.Success, preview.Error ?? "preview failed");
-    Assert(!preview.Value!.CanDeploy, "same target conflict should block deployment");
+    Assert(preview.Value!.CanDeploy, "same target conflict should be advisory");
+    Assert(preview.Value.Conflicts.Any(c => c.Kind == "same-target" && !c.BlocksDeployment), "same target conflict should warn");
+    Assert(!env.DeploymentService().Deploy(game).Success, "advisory conflict should require acknowledgement");
+    Assert(env.DeploymentService().Deploy(game, allowWarnings: true).Success, "acknowledged advisory conflict should deploy");
 }
 
 static void IdenticalLegacyEntriesAreCoalesced()
@@ -565,7 +572,8 @@ static void DeclaredModConflictsBlockDeployment()
 
     var preview = env.DeploymentService().Preview(game);
     Assert(preview.Success, preview.Error ?? "preview failed");
-    Assert(preview.Value!.Conflicts.Any(c => c.Kind == "declared-conflict" && c.BlocksDeployment), "declared conflict should block deployment");
+    Assert(preview.Value!.Conflicts.Any(c => c.Kind == "declared-conflict" && !c.BlocksDeployment), "declared conflict should warn instead of blocking");
+    Assert(env.DeploymentService().Deploy(game, allowWarnings: true).Success, "acknowledged declared conflict should deploy");
 }
 
 static void ManagerVersionRequirementBlocksUnsupportedMods()
@@ -735,7 +743,11 @@ static void Ue4ssInstallMapsLayout()
     Assert(result.Success, result.Error ?? "ue4ss install failed");
     var status = service.Detect(game);
     Assert(status.Installed, "ue4ss status should be installed");
-    Assert(File.Exists(Path.Combine(game, "Ragnarock", "Binaries", "Win64", "ue4ss", "UE4SS.dll")), "UE4SS.dll should be in modern layout");
+    var exeFolder = Path.Combine(game, "Ragnarock", "Binaries", "Win64");
+    var expectedDll = OperatingSystem.IsLinux()
+        ? Path.Combine(exeFolder, "UE4SS.dll")
+        : Path.Combine(exeFolder, "ue4ss", "UE4SS.dll");
+    Assert(File.Exists(expectedDll), "UE4SS.dll should be in the platform-compatible layout");
 }
 
 static void Ue4ssReleaseServiceCachesInstallsAndRollsBackVersions()
@@ -832,6 +844,14 @@ static void SteamLibraryVdfParserFindsLibraryPaths()
         """);
     Assert(paths.Count == 2, "expected two parsed library paths");
     Assert(paths[1] == "/mnt/games/SteamLibrary", "second library path should parse");
+}
+
+static void LaunchPlanIncludesRequiredArguments()
+{
+    var plan = new ProtonLaunch().BuildPlan("/games/Ragnarock.exe", preferSteamProtocol: false, "--custom");
+    Assert(plan.GameArguments == "-nohmd --custom", "direct launch should include the required and custom arguments");
+    Assert(plan.DisplayCommand.EndsWith("/games/Ragnarock.exe -nohmd --custom", StringComparison.Ordinal), "display command should show direct arguments");
+    Assert(plan.SteamLaunchOptions == ProtonLaunch.RequiredSteamLaunchOptions, "Steam launch options should include the UE4SS override and -nohmd");
 }
 
 static void CompatibilityCheckerReportsUsableInstall()

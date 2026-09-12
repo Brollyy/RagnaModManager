@@ -1,0 +1,34 @@
+name: Build and format
+
+on:
+  pull_request:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore
+        run: dotnet restore RagnaModManager.sln
+
+      - name: Check formatting
+        run: dotnet format RagnaModManager.sln --no-restore --verify-no-changes
+
+      - name: Build
+        run: dotnet build RagnaModManager.sln --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet tests/RagnaModManager.Tests/bin/Release/net9.0/RagnaModManager.Tests.dll

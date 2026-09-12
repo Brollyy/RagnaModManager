@@ -116,7 +116,7 @@ public sealed class OfficialCatalogService
         if (string.IsNullOrWhiteSpace(release.Sha256) || release.Sha256.Length != 64)
             return Result<ModManifest>.Fail("The catalog release is missing a valid SHA-256 checksum.");
 
-            var cache = Path.Combine(_paths.Downloads, "community-catalog", release.Sha256.ToLowerInvariant() + ".rmod");
+        var cache = Path.Combine(_paths.Downloads, "community-catalog", release.Sha256.ToLowerInvariant() + ".rmod");
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(cache)!);
@@ -164,7 +164,7 @@ public sealed class OfficialCatalogService
             if (missingCatalogConflicts.Count > 0)
                 return Result<ModManifest>.Fail($"Downloaded package manifest is missing registry conflicts: {string.Join(", ", missingCatalogConflicts)}.");
 
-            var result = _importer.Import(cache);
+            var result = _importer.Import(cache, enableInProfiles: true);
             if (result.Success) _logger.Info($"Installed community mod {result.Value!.Id} {result.Value.Version}.");
             return result;
         }
