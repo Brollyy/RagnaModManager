@@ -28,12 +28,12 @@ public sealed class RagnarockLauncher
 
     public Result Launch(string gameRoot, string? arguments = null)
     {
-        var plan = BuildLaunchPlan(gameRoot);
+        var plan = BuildLaunchPlan(gameRoot, arguments);
         if (!plan.UsesSteamProtocol && string.IsNullOrWhiteSpace(plan.ExecutablePath))
         {
             return Result.Fail("Could not find Ragnarock executable. Set or validate the game path first.");
         }
 
-        return _protonLaunch.Launch(plan, arguments);
+        return _protonLaunch.Launch(plan);
     }
 }

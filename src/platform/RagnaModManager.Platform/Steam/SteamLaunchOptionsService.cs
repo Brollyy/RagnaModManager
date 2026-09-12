@@ -10,6 +10,7 @@ public sealed record SteamLaunchOptionsStatus(
     bool Configured,
     string? ConfigPath,
     string CurrentOptions,
+    string CurrentArguments,
     string RequiredOptions,
     string Message);
 
@@ -29,27 +30,30 @@ public sealed class SteamLaunchOptionsService
         _steam = steam;
     }
 
-    public SteamLaunchOptionsStatus Inspect(string gameRoot)
+    public SteamLaunchOptionsStatus Inspect(string gameRoot, string? extraArguments = null)
     {
+        var requiredOptions = ProtonLaunch.BuildSteamLaunchOptions(extraArguments);
         if (OperatingSystem.IsWindows() || !_steam.IsLikelySteamInstall(gameRoot))
         {
-            return new SteamLaunchOptionsStatus(false, true, null, "", ProtonLaunch.RequiredSteamLaunchOptions, "Steam launch options are not needed for this launch.");
+            return new SteamLaunchOptionsStatus(false, true, null, "", "", requiredOptions, "Steam launch options are not needed for this launch.");
         }
 
         var config = FindConfig();
         if (config is null)
         {
-            return new SteamLaunchOptionsStatus(true, false, null, "", ProtonLaunch.RequiredSteamLaunchOptions, "Could not find your Steam launch-options file.");
+            return new SteamLaunchOptionsStatus(true, false, null, "", "", requiredOptions, "Could not find your Steam launch-options file.");
         }
 
         var current = ReadOptions(config);
-        return new SteamLaunchOptionsStatus(true, HasRequiredOptions(current), config, current, ProtonLaunch.RequiredSteamLaunchOptions,
-            HasRequiredOptions(current) ? "Steam launch options are configured." : "Steam needs one launch option for UE4SS to load through Proton.");
+        var currentArguments = ExtractArguments(current);
+        var configured = HasRequiredOptions(current, extraArguments);
+        return new SteamLaunchOptionsStatus(true, configured, config, current, currentArguments, requiredOptions,
+            configured ? "Steam launch options are configured." : "Steam needs an updated launch option for UE4SS and the manager's optional arguments.");
     }
 
-    public Result Configure(string gameRoot)
+    public Result Configure(string gameRoot, string? extraArguments = null)
     {
-        var status = Inspect(gameRoot);
+        var status = Inspect(gameRoot, extraArguments);
         if (!status.Applicable || status.Configured) return Result.Ok();
         if (status.ConfigPath is null) return Result.Fail(status.Message);
 
@@ -66,7 +70,7 @@ public sealed class SteamLaunchOptionsService
             var block = text[blockStart..blockEnd];
             var launchMatch = LaunchOptionsLine.Match(block);
             var current = launchMatch.Success ? Unescape(launchMatch.Groups[2].Value) : "";
-            var updated = EnsureRequiredOptions(current);
+            var updated = EnsureRequiredOptions(current, extraArguments);
             var updatedBlock = launchMatch.Success
                 ? block[..launchMatch.Index] + launchMatch.Groups[1].Value + "\"LaunchOptions\"\t\"" + Escape(updated) + "\"" + block[(launchMatch.Index + launchMatch.Length)..]
                 : block + Environment.NewLine + "\t\t\t\"LaunchOptions\"\t\"" + Escape(updated) + "\"";
@@ -110,20 +114,34 @@ public sealed class SteamLaunchOptionsService
         return match.Success ? Unescape(match.Groups[2].Value) : "";
     }
 
-    private static bool HasRequiredOptions(string options) =>
+    private static bool HasRequiredOptions(string options, string? extraArguments) =>
         options.Contains("WINEDLLOVERRIDES=\"dwmapi=n,b\"", StringComparison.Ordinal) &&
         options.Contains("%command%", StringComparison.Ordinal) &&
-        Regex.IsMatch(options, "(^|\\s)-nohmd(\\s|$)");
+        (string.IsNullOrWhiteSpace(extraArguments) || options.Contains(extraArguments.Trim(), StringComparison.Ordinal));
 
-    private static string EnsureRequiredOptions(string current)
+    private static string ExtractArguments(string options)
+    {
+        var withoutOverride = Regex.Replace(options, "WINEDLLOVERRIDES=\\\"[^\\\"]*\\\"\\s*", "", RegexOptions.IgnoreCase);
+        var commandIndex = withoutOverride.IndexOf("%command%", StringComparison.Ordinal);
+        return commandIndex >= 0
+            ? withoutOverride[(commandIndex + "%command%".Length)..].Trim()
+            : withoutOverride.Trim();
+    }
+
+    private static string EnsureRequiredOptions(string current, string? extraArguments)
     {
         var withoutOverride = Regex.Replace(current, "WINEDLLOVERRIDES=\\\"[^\\\"]*\\\"\\s*", "", RegexOptions.IgnoreCase);
-        var withoutNoHmd = Regex.Replace(withoutOverride, "(^|\\s)-nohmd(?=\\s|$)", " ", RegexOptions.IgnoreCase).Trim();
-        var commandIndex = withoutNoHmd.IndexOf("%command%", StringComparison.Ordinal);
-        var tail = commandIndex >= 0 ? withoutNoHmd[(commandIndex + "%command%".Length)..].Trim() : withoutNoHmd;
+        var commandIndex = withoutOverride.IndexOf("%command%", StringComparison.Ordinal);
+        var tail = commandIndex >= 0 ? withoutOverride[(commandIndex + "%command%".Length)..].Trim() : withoutOverride.Trim();
+        var optional = extraArguments?.Trim() ?? "";
+        if (!string.IsNullOrWhiteSpace(optional) && !tail.Contains(optional, StringComparison.Ordinal))
+        {
+            tail = string.IsNullOrWhiteSpace(tail) ? optional : $"{tail} {optional}";
+        }
+
         return string.IsNullOrWhiteSpace(tail)
             ? ProtonLaunch.RequiredSteamLaunchOptions
-            : $"WINEDLLOVERRIDES=\"dwmapi=n,b\" %command% -nohmd {tail}";
+            : $"WINEDLLOVERRIDES=\"dwmapi=n,b\" %command% {tail}";
     }
 
     private static int FindBlockEnd(string text, int start)

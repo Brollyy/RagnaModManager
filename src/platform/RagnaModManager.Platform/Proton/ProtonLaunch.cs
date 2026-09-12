@@ -13,23 +13,28 @@ public sealed record LaunchPlan(
 
 public sealed class ProtonLaunch
 {
-    public const string RequiredGameArguments = "-nohmd";
-    public const string RequiredSteamLaunchOptions = "WINEDLLOVERRIDES=\"dwmapi=n,b\" %command% -nohmd";
+    public const string RequiredSteamLaunchOptions = "WINEDLLOVERRIDES=\"dwmapi=n,b\" %command%";
+
+    public static string BuildSteamLaunchOptions(string? extraArguments) =>
+        OperatingSystem.IsWindows()
+            ? CombineArguments(extraArguments)
+            : CombineArguments(RequiredSteamLaunchOptions, extraArguments);
 
     public LaunchPlan BuildPlan(string? executablePath, bool preferSteamProtocol, string? extraArguments = null)
     {
-        var gameArguments = CombineArguments(RequiredGameArguments, extraArguments);
+        var gameArguments = CombineArguments(extraArguments);
         if (preferSteamProtocol)
         {
-            return new LaunchPlan($"steam://rungameid/{SteamLibraryDiscoverer.RagnarockSteamAppId}", true, executablePath, gameArguments, RequiredSteamLaunchOptions);
+            return new LaunchPlan($"steam://rungameid/{SteamLibraryDiscoverer.RagnarockSteamAppId}", true, executablePath, gameArguments, BuildSteamLaunchOptions(extraArguments));
         }
 
         if (string.IsNullOrWhiteSpace(executablePath))
         {
-            return new LaunchPlan($"steam://rungameid/{SteamLibraryDiscoverer.RagnarockSteamAppId}", true, null, gameArguments, RequiredSteamLaunchOptions);
+            return new LaunchPlan($"steam://rungameid/{SteamLibraryDiscoverer.RagnarockSteamAppId}", true, null, gameArguments, BuildSteamLaunchOptions(extraArguments));
         }
 
-        return new LaunchPlan($"{executablePath} {gameArguments}", false, executablePath, gameArguments, RequiredSteamLaunchOptions);
+        var displayCommand = string.IsNullOrWhiteSpace(gameArguments) ? executablePath : $"{executablePath} {gameArguments}";
+        return new LaunchPlan(displayCommand, false, executablePath, gameArguments, BuildSteamLaunchOptions(extraArguments));
     }
 
     public Result Launch(LaunchPlan plan, string? arguments = null)
