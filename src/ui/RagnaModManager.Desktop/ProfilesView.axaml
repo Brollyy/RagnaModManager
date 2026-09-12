@@ -7,50 +7,141 @@
     <StackPanel Spacing="14">
       <Border Classes="card" Padding="16">
         <StackPanel Spacing="10">
-        <StackPanel Spacing="6">
-          <TextBlock Text="Mod setups" FontSize="18" FontWeight="SemiBold"/>
-          <TextBlock Text="Keep different mod lists for different sessions." TextWrapping="Wrap"/>
-        </StackPanel>
-        <Separator Margin="0,4,0,10"/>
-      <ItemsControl ItemsSource="{Binding Items}" Margin="0,0,0,-15">
-        <ItemsControl.ItemsPanel><ItemsPanelTemplate><VirtualizingStackPanel/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
-        <ItemsControl.ItemTemplate>
-          <DataTemplate x:DataType="local:ProfileRowViewModel">
-            <Border Classes="card" Margin="0,0,0,10" Padding="12">
-              <StackPanel Spacing="8">
-                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
-                  <ToggleButton Classes="disclosure" Width="24" Height="24" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Content="{Binding DisclosureGlyph}" Command="{Binding ToggleExpanded}" VerticalAlignment="Center"/>
-                  <StackPanel Grid.Column="1" Spacing="3">
-                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                      <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="SemiBold" IsVisible="{Binding IsNotRenaming}" VerticalAlignment="Center"/>
-                      <TextBox Height="35" Text="{Binding Name, Mode=TwoWay}" MinWidth="220" IsVisible="{Binding IsRenaming}"/>
-                      <Button Width="30" Height="30" Classes="icon-action" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Content="✎" ToolTip.Tip="Rename setup" IsVisible="{Binding IsNotRenaming}" Command="{Binding Rename}"/>
-                      <Button Width="80" Height="35" Padding="12,8" HorizontalContentAlignment="Center" Content="Save" IsVisible="{Binding IsRenaming}" Command="{Binding SaveRename}"/>
-                    </StackPanel>
-                    <TextBlock Text="{Binding Summary}" Foreground="#9AAAC2" TextWrapping="Wrap"/>
-                  </StackPanel>
-                  <WrapPanel Grid.Column="2" Orientation="Horizontal" ItemSpacing="8" LineSpacing="6" VerticalAlignment="Center">
-                    <Button Width="68" Padding="12,8" Content="Active" IsVisible="{Binding IsActive}" IsEnabled="False"/>
-                    <Button Padding="12,8" Content="Use setup" IsVisible="{Binding IsInactive}" Command="{Binding Use}"/>
-                    <Button Width="89" Padding="12,8" Content="Duplicate" Command="{Binding Duplicate}"/>
-                    <Button Padding="12,8" Content="Export" Command="{Binding Export}"/>
-                    <Button Width="36" Height="35" Padding="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center" Content="🗑" ToolTip.Tip="Delete setup" Classes="destructive" Command="{Binding Delete}" IsEnabled="{Binding IsInactive}"/>
-                  </WrapPanel>
-                </Grid>
-                <Border Background="#17243B" BorderBrush="#2A3A55" BorderThickness="1" CornerRadius="10" Padding="12" IsVisible="{Binding IsExpanded}">
-                  <StackPanel Spacing="6">
-                    <TextBlock Text="Included mods" FontWeight="SemiBold"/>
-                    <ItemsControl ItemsSource="{Binding IncludedMods}"/>
+          <StackPanel Spacing="6">
+            <TextBlock Text="Mod setups" FontSize="18" FontWeight="SemiBold" />
+            <TextBlock Text="Keep different mod lists for different sessions." TextWrapping="Wrap" />
+          </StackPanel>
+          <Separator Margin="0,4,0,10" />
+          <ItemsControl ItemsSource="{Binding Items}" Margin="0,0,0,-15">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <VirtualizingStackPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="local:ProfileRowViewModel">
+                <Border Classes="card" Margin="0,0,0,10" Padding="12">
+                  <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                      <ToggleButton Classes="disclosure"
+                                    Width="24"
+                                    Height="24"
+                                    Padding="0"
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    Content="{Binding DisclosureGlyph}"
+                                    Command="{Binding ToggleExpanded}"
+                                    VerticalAlignment="Center" />
+                      <StackPanel Grid.Column="1" Spacing="3">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                          <TextBlock Text="{Binding Name}"
+                                     FontSize="18"
+                                     FontWeight="SemiBold"
+                                     IsVisible="{Binding IsNotRenaming}"
+                                     VerticalAlignment="Center" />
+                          <TextBox Height="35"
+                                   Text="{Binding Name, Mode=TwoWay}"
+                                   MinWidth="220"
+                                   IsVisible="{Binding IsRenaming}" />
+                          <Button Width="30"
+                                  Height="30"
+                                  Classes="icon-action"
+                                  HorizontalContentAlignment="Center"
+                                  VerticalContentAlignment="Center"
+                                  Content="✎"
+                                  ToolTip.Tip="Rename setup"
+                                  IsVisible="{Binding IsNotRenaming}"
+                                  Command="{Binding Rename}" />
+                          <Button Width="80"
+                                  Height="35"
+                                  Padding="12,8"
+                                  HorizontalContentAlignment="Center"
+                                  Content="Save"
+                                  IsVisible="{Binding IsRenaming}"
+                                  Command="{Binding SaveRename}" />
+                        </StackPanel>
+                        <TextBlock Text="{Binding Summary}"
+                                   Foreground="#9AAAC2"
+                                   TextWrapping="Wrap" />
+                      </StackPanel>
+                      <WrapPanel Grid.Column="2"
+                                 Orientation="Horizontal"
+                                 ItemSpacing="8"
+                                 LineSpacing="6"
+                                 VerticalAlignment="Center">
+                        <Button Width="68"
+                                Padding="12,8"
+                                Content="Active"
+                                IsVisible="{Binding IsActive}"
+                                IsEnabled="False" />
+                        <Button Padding="12,8"
+                                Content="Use setup"
+                                IsVisible="{Binding IsInactive}"
+                                Command="{Binding Use}" />
+                        <Button Width="89"
+                                Padding="12,8"
+                                Content="Duplicate"
+                                Command="{Binding Duplicate}" />
+                        <Button Padding="12,8"
+                                Content="Export"
+                                Command="{Binding Export}" />
+                        <Button Width="36"
+                                Height="35"
+                                Padding="0"
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Content="🗑"
+                                ToolTip.Tip="Delete setup"
+                                Classes="destructive"
+                                Command="{Binding Delete}"
+                                IsEnabled="{Binding IsInactive}" />
+                      </WrapPanel>
+                    </Grid>
+                    <Border Background="#17243B"
+                            BorderBrush="#2A3A55"
+                            BorderThickness="1"
+                            CornerRadius="10"
+                            Padding="12"
+                            IsVisible="{Binding IsExpanded}">
+                      <StackPanel Spacing="6">
+                        <TextBlock Text="Included mods" FontWeight="SemiBold" />
+                        <ItemsControl ItemsSource="{Binding IncludedMods}" />
+                      </StackPanel>
+                    </Border>
                   </StackPanel>
                 </Border>
-              </StackPanel>
-            </Border>
-          </DataTemplate>
-        </ItemsControl.ItemTemplate>
-      </ItemsControl>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
         </StackPanel>
       </Border>
-      <Border Classes="card" Margin="0,1,0,0" Padding="16,16,16,16"><StackPanel Spacing="10"><TextBlock Text="Create another setup" FontSize="18" FontWeight="SemiBold"/><TextBlock Text="Save a different group of mods for another kind of play session, or bring one in from another installation." TextWrapping="Wrap"/><WrapPanel Margin="0,0,0,9" Orientation="Horizontal" ItemSpacing="10" VerticalAlignment="Center"><TextBox Height="35" Text="{Binding NewName, Mode=TwoWay}" Watermark="Name this setup" MinWidth="240"/><Button Height="35" Padding="12,8" HorizontalContentAlignment="Center" FontWeight="SemiBold" Content="Create setup" Classes="accent" Command="{Binding Create}"/><Button Height="35" Padding="12,8" Content="Import setup" Command="{Binding Import}"/></WrapPanel></StackPanel></Border>
+      <Border Classes="card" Margin="0,1,0,0" Padding="16,16,16,16">
+        <StackPanel Spacing="10">
+          <TextBlock Text="Create another setup" FontSize="18" FontWeight="SemiBold" />
+          <TextBlock Text="Save a different group of mods for another kind of play session, or bring one in from another installation."
+                     TextWrapping="Wrap" />
+          <WrapPanel Margin="0,0,0,9"
+                     Orientation="Horizontal"
+                     ItemSpacing="10"
+                     VerticalAlignment="Center">
+            <TextBox Height="35"
+                     Text="{Binding NewName, Mode=TwoWay}"
+                     Watermark="Name this setup"
+                     MinWidth="240" />
+            <Button Height="35"
+                    Padding="12,8"
+                    HorizontalContentAlignment="Center"
+                    FontWeight="SemiBold"
+                    Content="Create setup"
+                    Classes="accent"
+                    Command="{Binding Create}" />
+            <Button Height="35"
+                    Padding="12,8"
+                    Content="Import setup"
+                    Command="{Binding Import}" />
+          </WrapPanel>
+        </StackPanel>
+      </Border>
     </StackPanel>
   </ScrollViewer>
 </UserControl>
