@@ -286,8 +286,10 @@ public sealed class DeploymentService
 
     public Result RemoveMod(string modId, string? gameRoot = null)
     {
-        var files = _database.GetProfiles()
+        var deployedFiles = _database.GetProfiles()
             .SelectMany(profile => _database.GetDeployedFiles(profile.Id))
+            .ToList();
+        var files = deployedFiles
             .Where(file => file.ModId.Equals(modId, StringComparison.OrdinalIgnoreCase))
             .GroupBy(file => file.TargetPath, StringComparer.OrdinalIgnoreCase)
             .Select(group => group.First())
@@ -304,17 +306,24 @@ public sealed class DeploymentService
                 }
             }
 
+            var removedUe4ssFolders = GetUe4ssModFolders(gameRoot, files);
+            var retainedUe4ssFolders = GetUe4ssModFolders(
+                gameRoot,
+                deployedFiles.Where(file => !file.ModId.Equals(modId, StringComparison.OrdinalIgnoreCase)));
+
             foreach (var file in files)
             {
                 if (!File.Exists(file.TargetPath)) continue;
                 File.Delete(file.TargetPath);
             }
 
-            _database.RemoveMod(modId);
             if (gameRoot is not null)
             {
-                RemoveUe4ssModLines(gameRoot, modId);
+                RemoveUe4ssModLines(gameRoot, removedUe4ssFolders.Except(retainedUe4ssFolders, StringComparer.OrdinalIgnoreCase));
+                RemoveEmptyUe4ssDirectories(gameRoot, files);
             }
+
+            _database.RemoveMod(modId);
 
             return Result.Ok();
         }
@@ -425,15 +434,51 @@ public sealed class DeploymentService
         return Result<int>.Ok(files.Count);
     }
 
-    private void RemoveUe4ssModLines(string gameRoot, string modId)
+    private HashSet<string> GetUe4ssModFolders(string? gameRoot, IEnumerable<DeployedFileRecord> files)
     {
+        var folders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (gameRoot is null) return folders;
+
+        foreach (var file in files)
+        {
+            if (TryGetUe4ssModFolder(gameRoot, file.TargetPath, out var folder) && folder is not null)
+                folders.Add(folder);
+        }
+
+        return folders;
+    }
+
+    private void RemoveUe4ssModLines(string gameRoot, IEnumerable<string> modFolders)
+    {
+        var folders = modFolders.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (folders.Count == 0) return;
         var modsFile = _rules.GetUe4ssModsFile(gameRoot);
         if (!File.Exists(modsFile)) return;
         var remaining = File.ReadAllLines(modsFile)
             .Where(line => !TryGetUe4ssModsFileFolder(line, out var folder) ||
-                           !folder!.Equals(modId, StringComparison.OrdinalIgnoreCase))
+                           !folders.Contains(folder!))
             .ToArray();
         File.WriteAllLines(modsFile, remaining);
+    }
+
+    private void RemoveEmptyUe4ssDirectories(string gameRoot, IEnumerable<DeployedFileRecord> files)
+    {
+        var modsRoot = Path.GetFullPath(Path.GetDirectoryName(_rules.GetUe4ssModsFile(gameRoot))!);
+        var rootWithSeparator = modsRoot.EndsWith(Path.DirectorySeparatorChar)
+            ? modsRoot
+            : modsRoot + Path.DirectorySeparatorChar;
+
+        foreach (var file in files)
+        {
+            if (!TryGetUe4ssModFolder(gameRoot, file.TargetPath, out _)) continue;
+            var directory = Path.GetDirectoryName(Path.GetFullPath(file.TargetPath));
+            while (directory is not null && directory.StartsWith(rootWithSeparator, StringComparison.Ordinal))
+            {
+                if (!Directory.Exists(directory) || Directory.EnumerateFileSystemEntries(directory).Any()) break;
+                Directory.Delete(directory);
+                directory = Path.GetDirectoryName(directory);
+            }
+        }
     }
 
     private void BackupPreviousDeployment(string profileId)
