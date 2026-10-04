@@ -73,6 +73,7 @@
           <TextBlock Text="Open the logs when support asks for them, or report a problem on GitHub." Foreground="#9AAAC2" TextWrapping="Wrap"/>
           <WrapPanel Orientation="Horizontal" ItemSpacing="8">
             <Button Content="Open app logs" Command="{Binding OpenLogs}"/>
+            <Button Content="Open UE4SS logs" IsEnabled="{Binding CanOpenUe4ssLogFolder}" Command="{Binding OpenUe4ssLogFolder}"/>
             <Button Content="Report a problem on GitHub" Classes="accent" Command="{Binding OpenIssues}"/>
           </WrapPanel>
         </StackPanel>

@@ -13,12 +13,6 @@ public sealed record Ue4ssStatus(
 
 public sealed class Ue4ssService
 {
-    // The current UE4SS layout is the preferred layout on Windows. Wine/Proton
-    // loads the proxy DLL, but the proxy cannot reliably resolve UE4SS.dll from
-    // the sibling ue4ss directory, so Linux installs must use the legacy
-    // same-directory layout.
-    private static bool UseProtonCompatibleLayout => OperatingSystem.IsLinux();
-
     public Ue4ssStatus Detect(string gameRoot)
     {
         var exeFolder = DeploymentRules.RagnarockDeploymentRules.GetExecutableFolder(gameRoot);
@@ -69,7 +63,6 @@ public sealed class Ue4ssService
         }
 
         var exeFolder = DeploymentRules.RagnarockDeploymentRules.GetExecutableFolder(gameRoot);
-        var installRoot = UseProtonCompatibleLayout ? exeFolder : Path.Combine(exeFolder, "ue4ss");
         Directory.CreateDirectory(exeFolder);
 
         try
@@ -79,6 +72,8 @@ public sealed class Ue4ssService
             {
                 return Result.Fail("UE4SS zip does not contain UE4SS.dll.");
             }
+
+            var installRoot = exeFolder;
 
             foreach (var entry in archive.Entries)
             {

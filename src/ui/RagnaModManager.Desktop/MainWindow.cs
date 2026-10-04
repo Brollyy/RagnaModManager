@@ -608,6 +608,7 @@ public partial class MainWindow : Window
         }
         model.CanCleanUp = game is not null && CreateDeploymentService().GetUnmanagedFiles(game.InstallPath).Count > 0;
         model.CanOpenModsFolder = game is not null;
+        model.CanOpenUe4ssLogFolder = game is not null && _ue4ss.Detect(game.InstallPath).Installed;
         var scriptMods = planResult?.Success == true && planResult.Value is not null
             ? planResult.Value.Items.Where(i => i.FileType.Equals("ue4ss-lua", StringComparison.OrdinalIgnoreCase) || i.FileType.Equals("ue4ss-dll", StringComparison.OrdinalIgnoreCase)).Select(i => i.ModId).Distinct(StringComparer.OrdinalIgnoreCase).ToList()
             : [];
@@ -684,6 +685,13 @@ public partial class MainWindow : Window
             ShowDashboard(4);
         });
         model.OpenLogs = new RelayCommand(() => OpenFolder(_paths.Logs));
+        model.OpenUe4ssLogFolder = new RelayCommand(() =>
+        {
+            var current = _database.GetGame();
+            if (current is null) return;
+            var status = _ue4ss.Detect(current.InstallPath);
+            if (status.Installed) OpenFolder(status.RootPath);
+        });
         model.OpenIssues = new RelayCommand(() => OpenExternalLink("https://github.com/Brollyy/RagnaModManager/issues"));
         model.ToggleRecovery = new RelayCommand(() => model.RecoveryExpanded = !model.RecoveryExpanded);
         model.ToggleLaunchOptions = new RelayCommand(() => model.LaunchOptionsExpanded = !model.LaunchOptionsExpanded);
