@@ -32,3 +32,40 @@ jobs:
 
       - name: Run tests
         run: dotnet tests/RagnaModManager.Tests/bin/Release/net9.0/RagnaModManager.Tests.dll
+
+  windows-native-smoke:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore
+        run: dotnet restore RagnaModManager.sln
+
+      - name: Build
+        run: dotnet build RagnaModManager.sln --configuration Release --no-restore
+
+      - name: Run tests
+        run: dotnet tests/RagnaModManager.Tests/bin/Release/net9.0/RagnaModManager.Tests.dll
+
+      - name: Publish Windows single-file app
+        run: dotnet publish src/ui/RagnaModManager.Desktop/RagnaModManager.Desktop.csproj --configuration Release --runtime win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/RagnaModManager-win-x64
+
+      - name: Check bundled native dependencies
+        shell: pwsh
+        run: |
+          $report = Join-Path $env:RUNNER_TEMP "rmm-native-dependency-check.txt"
+          Remove-Item $report -ErrorAction SilentlyContinue
+          $app = Join-Path $env:GITHUB_WORKSPACE "artifacts/RagnaModManager-win-x64/RagnaModManager.exe"
+          & $app --verify-native-dependencies $report
+          if ($LASTEXITCODE -ne 0) {
+            if (Test-Path $report) { Get-Content $report }
+            throw "Published Windows app failed its native dependency smoke check (exit code $LASTEXITCODE)."
+          }
+          Get-Content $report
