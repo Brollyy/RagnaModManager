@@ -63,9 +63,10 @@ jobs:
           $report = Join-Path $env:RUNNER_TEMP "rmm-native-dependency-check.txt"
           Remove-Item $report -ErrorAction SilentlyContinue
           $app = Join-Path $env:GITHUB_WORKSPACE "artifacts/RagnaModManager-win-x64/RagnaModManager.exe"
-          & $app --verify-native-dependencies $report
-          if ($LASTEXITCODE -ne 0) {
+          $arguments = "--verify-native-dependencies `"$report`""
+          $process = Start-Process -FilePath $app -ArgumentList $arguments -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) {
             if (Test-Path $report) { Get-Content $report }
-            throw "Published Windows app failed its native dependency smoke check (exit code $LASTEXITCODE)."
+            throw "Published Windows app failed its native dependency smoke check (exit code $($process.ExitCode))."
           }
           Get-Content $report
