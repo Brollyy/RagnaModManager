@@ -405,6 +405,7 @@ public sealed class SettingsPageViewModel : ObservableObject
     public bool CanUseSupport => HasGame;
     public bool CanCleanUp { get; set; }
     public bool CanOpenModsFolder { get; set; }
+    public bool CanOpenUe4ssLogFolder { get; set; }
     public bool HasCachedSupport { get; set; }
     public ObservableCollection<string> CachedSupportVersions { get; } = [];
     public string SelectedCachedSupport { get => _selectedCachedSupport; set => SetField(ref _selectedCachedSupport, value); }
@@ -428,6 +429,7 @@ public sealed class SettingsPageViewModel : ObservableObject
     public ICommand? SaveLaunchOptions { get; set; }
     public ICommand? ConfigureSteamLaunch { get; set; }
     public ICommand? OpenLogs { get; set; }
+    public ICommand? OpenUe4ssLogFolder { get; set; }
     public ICommand? OpenIssues { get; set; }
     public ICommand? ToggleRecovery { get; set; }
     public ICommand? ToggleLaunchOptions { get; set; }
