@@ -36,6 +36,7 @@ internal static class Program
         }
         finally
         {
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             if (Directory.Exists(dataRoot))
             {
                 Directory.Delete(dataRoot, recursive: true);
