@@ -760,9 +760,7 @@ static void Ue4ssInstallMapsLayout()
     var status = service.Detect(game);
     Assert(status.Installed, "ue4ss status should be installed");
     var exeFolder = Path.Combine(game, "Ragnarock", "Binaries", "Win64");
-    var expectedDll = OperatingSystem.IsLinux()
-        ? Path.Combine(exeFolder, "UE4SS.dll")
-        : Path.Combine(exeFolder, "ue4ss", "UE4SS.dll");
+    var expectedDll = Path.Combine(exeFolder, "UE4SS.dll");
     Assert(File.Exists(expectedDll), "UE4SS.dll should be in the platform-compatible layout");
 }
 
