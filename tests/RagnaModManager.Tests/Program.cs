@@ -867,7 +867,10 @@ static void LaunchPlanUsesOptionalArguments()
     var plan = new ProtonLaunch().BuildPlan("/games/Ragnarock.exe", preferSteamProtocol: false, "--custom");
     Assert(plan.GameArguments == "--custom", "direct launch should include the custom arguments without adding defaults");
     Assert(plan.DisplayCommand.EndsWith("/games/Ragnarock.exe --custom", StringComparison.Ordinal), "display command should show direct arguments");
-    Assert(plan.SteamLaunchOptions == $"{ProtonLaunch.RequiredSteamLaunchOptions} --custom", "Steam launch options should include the custom arguments");
+    var expectedSteamOptions = OperatingSystem.IsWindows()
+        ? "--custom"
+        : $"{ProtonLaunch.RequiredSteamLaunchOptions} --custom";
+    Assert(plan.SteamLaunchOptions == expectedSteamOptions, "Steam launch options should include the platform-specific defaults and custom arguments");
 }
 
 static void CompatibilityCheckerReportsUsableInstall()
@@ -963,6 +966,7 @@ internal sealed class TestEnv : IDisposable
 
     public void Dispose()
     {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         if (Directory.Exists(Root))
         {
             Directory.Delete(Root, recursive: true);
