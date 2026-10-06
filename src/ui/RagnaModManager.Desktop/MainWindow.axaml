@@ -59,11 +59,15 @@
           <TextBlock Text="{Binding CurrentSetupLabel}" Foreground="#4DE1C1" FontSize="12" />
           <TextBlock Text="{Binding VersionLabel}" Foreground="#71829D" FontSize="11" />
         </StackPanel>
-        <Button x:Name="LaunchButton"
-                Grid.Column="1"
-                Content="Launch Ragnarock"
-                Classes="accent"
-                VerticalAlignment="Center" />
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <ComboBox x:Name="LaunchModeSelector"
+                    MinWidth="100"
+                    VerticalAlignment="Center" />
+          <Button x:Name="LaunchButton"
+                  Content="Launch Ragnarock"
+                  Classes="accent"
+                  VerticalAlignment="Center" />
+        </StackPanel>
       </Grid>
     </Border>
     <Border x:Name="PendingChangesBar" DockPanel.Dock="Bottom" IsVisible="{Binding HasPendingChanges}" Background="#3B2D1B" BorderBrush="#FFB15C" BorderThickness="1" CornerRadius="6" Padding="12,8">
