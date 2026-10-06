@@ -118,6 +118,7 @@ public partial class MainWindow : Window
             if (launchModeSelector.SelectedItem is not string selectedMode) return;
             _launchMode = selectedMode;
             File.WriteAllText(_paths.LaunchModePath, _launchMode);
+            ShowDashboard();
         };
         _viewModel.ApplyChanges = new RelayCommand(DeployActiveProfile);
         _viewModel.RevertChanges = new RelayCommand(RevertPendingChanges);
@@ -636,11 +637,11 @@ public partial class MainWindow : Window
                 : $"There are {CountPhrase(planResult.Value.Conflicts.Count(c => c.BlocksDeployment), "thing")} to sort out before this setup can be applied.";
         var ue4ssInstalled = game is not null && _ue4ss.Detect(game.InstallPath).Installed;
         var steamOptions = ue4ssInstalled && game is not null
-            ? _steamLaunchOptions.Inspect(game.InstallPath, GetLaunchArguments())
+            ? _steamLaunchOptions.Inspect(game.InstallPath, _launchArguments)
             : null;
         model.LaunchArguments = _launchArguments;
         var effectiveLaunchArguments = GetLaunchArguments();
-        var launchPlan = game is null ? null : new RagnarockLauncher().BuildLaunchPlan(game.InstallPath, effectiveLaunchArguments);
+        var launchPlan = game is null ? null : new RagnarockLauncher().BuildLaunchPlan(game.InstallPath, effectiveLaunchArguments, GetSteamLaunchOption());
         model.SteamLaunchOptions = launchPlan?.SteamLaunchOptions ?? ProtonLaunch.BuildSteamLaunchOptions(effectiveLaunchArguments);
         model.ShowSteamLaunchOptions = steamOptions?.Applicable == true;
         model.CanConfigureSteamLaunch = steamOptions?.Applicable == true && steamOptions.Configured == false;
@@ -693,7 +694,7 @@ public partial class MainWindow : Window
         {
             var current = _database.GetGame();
             if (current is null) return;
-            var result = _steamLaunchOptions.Configure(current.InstallPath, GetLaunchArguments());
+            var result = _steamLaunchOptions.Configure(current.InstallPath, _launchArguments);
             SetStatus(result.Success ? "Steam launch options configured for UE4SS." : result.Error ?? "Could not configure Steam launch options.", !result.Success);
             ShowDashboard(4);
         });
@@ -1464,8 +1465,9 @@ public partial class MainWindow : Window
         }
 
         var ue4ssInstalled = _ue4ss.Detect(game.InstallPath).Installed;
-        var launchArguments = GetLaunchArguments();
-        var steamOptions = ue4ssInstalled ? _steamLaunchOptions.Inspect(game.InstallPath, launchArguments) : null;
+        var steamLaunchOption = GetSteamLaunchOption(game.InstallPath);
+        var launchArguments = steamLaunchOption.HasValue ? _launchArguments : GetLaunchArguments();
+        var steamOptions = ue4ssInstalled ? _steamLaunchOptions.Inspect(game.InstallPath, _launchArguments) : null;
         if (steamOptions?.Applicable == true && !steamOptions.Configured)
         {
             if (!await ConfirmSteamLaunchOptionsIfNeeded(game.InstallPath, "launching Ragnarock"))
@@ -1475,7 +1477,7 @@ public partial class MainWindow : Window
             }
         }
 
-        var result = new RagnarockLauncher().Launch(game.InstallPath, launchArguments);
+        var result = new RagnarockLauncher().Launch(game.InstallPath, launchArguments, steamLaunchOption);
         SetStatus(result.Success ? "Launch requested." : result.Error ?? "Launch failed.", !result.Success);
     }
 
@@ -1492,10 +1494,18 @@ public partial class MainWindow : Window
             .Select(argument => argument.Trim()));
     }
 
+    private int? GetSteamLaunchOption(string? gameRoot = null)
+    {
+        if (_launchMode == "Default") return null;
+        gameRoot ??= _database.GetGame()?.InstallPath;
+        if (gameRoot is null || !_detector.IsLikelySteamInstall(gameRoot)) return null;
+        return _launchMode == "Flat" ? 0 : 1;
+    }
+
     private async Task<bool> ConfirmSteamLaunchOptionsIfNeeded(string gameRoot, string context)
     {
         if (!_ue4ss.Detect(gameRoot).Installed) return true;
-        var status = _steamLaunchOptions.Inspect(gameRoot, GetLaunchArguments());
+        var status = _steamLaunchOptions.Inspect(gameRoot, _launchArguments);
         if (!status.Applicable || status.Configured) return true;
 
         var confirmed = await Confirm(
@@ -1504,7 +1514,7 @@ public partial class MainWindow : Window
             "Configure Steam launch");
         if (!confirmed) return false;
 
-        var result = _steamLaunchOptions.Configure(gameRoot, GetLaunchArguments());
+        var result = _steamLaunchOptions.Configure(gameRoot, _launchArguments);
         if (!result.Success)
         {
             SetStatus(result.Error ?? "Could not configure Steam launch options.", error: true);

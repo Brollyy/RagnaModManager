@@ -20,12 +20,15 @@ public sealed class ProtonLaunch
             ? CombineArguments(extraArguments)
             : CombineArguments(RequiredSteamLaunchOptions, extraArguments);
 
-    public LaunchPlan BuildPlan(string? executablePath, bool preferSteamProtocol, string? extraArguments = null)
+    public LaunchPlan BuildPlan(string? executablePath, bool preferSteamProtocol, string? extraArguments = null, int? steamLaunchOption = null)
     {
         var gameArguments = CombineArguments(extraArguments);
-        if (preferSteamProtocol)
+        if (preferSteamProtocol || steamLaunchOption.HasValue)
         {
-            return new LaunchPlan($"steam://rungameid/{SteamLibraryDiscoverer.RagnarockSteamAppId}", true, executablePath, gameArguments, BuildSteamLaunchOptions(extraArguments));
+            var launchUri = steamLaunchOption is int option
+                ? $"steam://launch/{SteamLibraryDiscoverer.RagnarockSteamAppId}/option{option}"
+                : $"steam://rungameid/{SteamLibraryDiscoverer.RagnarockSteamAppId}";
+            return new LaunchPlan(launchUri, true, executablePath, gameArguments, BuildSteamLaunchOptions(extraArguments));
         }
 
         if (string.IsNullOrWhiteSpace(executablePath))
