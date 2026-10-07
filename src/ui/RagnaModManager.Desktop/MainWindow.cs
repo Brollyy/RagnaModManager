@@ -1438,7 +1438,7 @@ public partial class MainWindow : Window
         return SemanticVersion.IsNewer(candidate, installed);
     }
 
-    private async void LaunchGame()
+    private void LaunchGame()
     {
         var game = _database.GetGame();
         if (game is null)

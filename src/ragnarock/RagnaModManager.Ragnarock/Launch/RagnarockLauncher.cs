@@ -8,6 +8,7 @@ public sealed class RagnarockLauncher
 {
     private readonly RagnarockDetector _detector;
     private readonly ProtonLaunch _protonLaunch;
+
     public RagnarockLauncher() : this(new RagnarockDetector(), new ProtonLaunch())
     {
     }
@@ -21,29 +22,12 @@ public sealed class RagnarockLauncher
     public LaunchPlan BuildLaunchPlan(string gameRoot, string? userOptionalArguments = null, string? launchOptionArguments = null)
     {
         var executable = RagnarockDetector.FindExecutable(gameRoot);
-        var steamInstall = _detector.IsLikelySteamInstall(gameRoot);
-        if (!OperatingSystem.IsWindows() && steamInstall)
-        {
-            var gameArguments = launchOptionArguments?.Trim() ?? "";
-            var display = string.IsNullOrWhiteSpace(gameArguments) ? executable ?? "Proton run Ragnarock" : $"{executable} {gameArguments}";
-            return new LaunchPlan(display, false, executable, gameArguments,
-                ProtonLaunch.BuildSteamLaunchOptions(userOptionalArguments, launchOptionArguments));
-        }
-
-        var arguments = Join(launchOptionArguments, userOptionalArguments);
-        return _protonLaunch.BuildPlan(executable, false, arguments);
+        var preferSteam = !OperatingSystem.IsWindows() && _detector.IsLikelySteamInstall(gameRoot);
+        return _protonLaunch.BuildPlan(executable, preferSteam, userOptionalArguments, launchOptionArguments);
     }
 
     public Result Launch(string gameRoot, string? userOptionalArguments = null, string? launchOptionArguments = null)
     {
-        if (!OperatingSystem.IsWindows() && _detector.IsLikelySteamInstall(gameRoot))
-        {
-            var executable = RagnarockDetector.FindExecutable(gameRoot);
-            return string.IsNullOrWhiteSpace(executable)
-                ? Result.Fail("Could not find Ragnarock executable. Set or validate the game path first.")
-                : _protonLaunch.Launch(gameRoot, executable, userOptionalArguments, launchOptionArguments);
-        }
-
         var plan = BuildLaunchPlan(gameRoot, userOptionalArguments, launchOptionArguments);
         if (!plan.UsesSteamProtocol && string.IsNullOrWhiteSpace(plan.ExecutablePath))
         {
@@ -52,7 +36,4 @@ public sealed class RagnarockLauncher
 
         return _protonLaunch.Launch(plan);
     }
-
-    private static string Join(params string?[] values) =>
-        string.Join(' ', values.Where(value => !string.IsNullOrWhiteSpace(value)).Select(value => value!.Trim()));
 }
