@@ -35,10 +35,8 @@ public sealed class ProtonLaunch
         var gameArguments = CombineArguments(extraArguments, launchOptionArguments);
         if (preferSteamProtocol)
         {
-            var uri = string.IsNullOrWhiteSpace(gameArguments)
-                ? $"steam://rungameid/{SteamLibraryDiscoverer.RagnarockSteamAppId}"
-                : $"steam://run/{SteamLibraryDiscoverer.RagnarockSteamAppId}//{Uri.EscapeDataString(gameArguments)}";
-            return new LaunchPlan(uri, true, executablePath, gameArguments, BuildSteamLaunchOptions(extraArguments, launchOptionArguments));
+            return new LaunchPlan($"steam://rungameid/{SteamLibraryDiscoverer.RagnarockSteamAppId}", true, executablePath, gameArguments,
+                BuildSteamLaunchOptions(extraArguments, launchOptionArguments));
         }
 
         if (string.IsNullOrWhiteSpace(executablePath))
