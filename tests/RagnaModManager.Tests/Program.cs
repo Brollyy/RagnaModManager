@@ -867,7 +867,7 @@ static void LaunchPlanUsesOptionalArguments()
     Assert(plan.DisplayCommand.EndsWith("/games/Ragnarock.exe --custom", StringComparison.Ordinal), "display command should show direct arguments");
     var expectedSteamOptions = OperatingSystem.IsWindows()
         ? "--custom"
-        : $"{ProtonLaunch.RequiredSteamLaunchOptions} --custom";
+        : $"WINEDLLOVERRIDES=\"dwmapi=n,b\" --custom %command%";
     Assert(plan.SteamLaunchOptions == expectedSteamOptions, "Steam launch options should include the platform-specific defaults and custom arguments");
 }
 
