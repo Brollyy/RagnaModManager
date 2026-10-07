@@ -636,14 +636,14 @@ public partial class MainWindow : Window
         model.LaunchArguments = _launchArguments;
         var launchOptionArguments = GetLaunchModeArguments();
         var launchPlan = game is null ? null : new RagnarockLauncher().BuildLaunchPlan(game.InstallPath, _launchArguments, launchOptionArguments);
-        model.SteamLaunchOptions = launchPlan?.SteamLaunchOptions ?? new SteamProtonLauncher().BuildTemplate(_launchArguments, launchOptionArguments);
+        model.SteamLaunchOptions = launchPlan?.SteamLaunchOptions ?? ProtonLaunch.BuildSteamLaunchOptions(_launchArguments, launchOptionArguments);
         model.ShowSteamLaunchOptions = game is not null && !OperatingSystem.IsWindows() && _detector.IsLikelySteamInstall(game.InstallPath);
         model.CanConfigureSteamLaunch = false;
         model.LaunchSetupStatus = game is null
             ? "Choose your Ragnarock folder first."
-            : OperatingSystem.IsWindows()
-                ? "Direct launches use the optional arguments below."
-                : "RMM applies these Proton settings only to launches started here. Steam's saved launch options are left alone.";
+            : model.ShowSteamLaunchOptions
+                ? "RMM applies these Proton settings only to launches started here. Steam's saved launch options are left alone."
+                : "Direct launches use the optional launch arguments below.";
         model.CachedSupportVersions.Clear();
         foreach (var release in _ue4ssReleases.GetCachedReleases()) model.CachedSupportVersions.Add($"{release.Version} ({release.AssetName})");
         model.HasCachedSupport = model.CachedSupportVersions.Count > 0;
@@ -685,7 +685,7 @@ public partial class MainWindow : Window
         {
             _launchArguments = model.LaunchArguments ?? "";
             File.WriteAllText(_paths.LaunchArgumentsPath, _launchArguments);
-            model.SteamLaunchOptions = new SteamProtonLauncher().BuildTemplate(_launchArguments, GetLaunchModeArguments());
+            model.SteamLaunchOptions = ProtonLaunch.BuildSteamLaunchOptions(_launchArguments, GetLaunchModeArguments());
             SetStatus(string.IsNullOrWhiteSpace(_launchArguments) ? "Launch arguments cleared." : "Launch arguments saved.");
             ShowDashboard(4);
         });

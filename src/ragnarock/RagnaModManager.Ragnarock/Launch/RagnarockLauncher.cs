@@ -8,17 +8,14 @@ public sealed class RagnarockLauncher
 {
     private readonly RagnarockDetector _detector;
     private readonly ProtonLaunch _protonLaunch;
-    private readonly SteamProtonLauncher _steamProtonLauncher;
-
-    public RagnarockLauncher() : this(new RagnarockDetector(), new ProtonLaunch(), new SteamProtonLauncher())
+    public RagnarockLauncher() : this(new RagnarockDetector(), new ProtonLaunch())
     {
     }
 
-    public RagnarockLauncher(RagnarockDetector detector, ProtonLaunch protonLaunch, SteamProtonLauncher? steamProtonLauncher = null)
+    public RagnarockLauncher(RagnarockDetector detector, ProtonLaunch protonLaunch)
     {
         _detector = detector;
         _protonLaunch = protonLaunch;
-        _steamProtonLauncher = steamProtonLauncher ?? new SteamProtonLauncher();
     }
 
     public LaunchPlan BuildLaunchPlan(string gameRoot, string? userOptionalArguments = null, string? launchOptionArguments = null)
@@ -30,7 +27,7 @@ public sealed class RagnarockLauncher
             var gameArguments = launchOptionArguments?.Trim() ?? "";
             var display = string.IsNullOrWhiteSpace(gameArguments) ? executable ?? "Proton run Ragnarock" : $"{executable} {gameArguments}";
             return new LaunchPlan(display, false, executable, gameArguments,
-                _steamProtonLauncher.BuildTemplate(userOptionalArguments, launchOptionArguments));
+                ProtonLaunch.BuildSteamLaunchOptions(userOptionalArguments, launchOptionArguments));
         }
 
         var arguments = Join(launchOptionArguments, userOptionalArguments);
@@ -44,7 +41,7 @@ public sealed class RagnarockLauncher
             var executable = RagnarockDetector.FindExecutable(gameRoot);
             return string.IsNullOrWhiteSpace(executable)
                 ? Result.Fail("Could not find Ragnarock executable. Set or validate the game path first.")
-                : _steamProtonLauncher.Launch(gameRoot, executable, userOptionalArguments, launchOptionArguments);
+                : _protonLaunch.Launch(gameRoot, executable, userOptionalArguments, launchOptionArguments);
         }
 
         var plan = BuildLaunchPlan(gameRoot, userOptionalArguments, launchOptionArguments);
