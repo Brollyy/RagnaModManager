@@ -16,25 +16,37 @@ public sealed class ProtonLaunch
     public const string RequiredSteamLaunchOptions = "WINEDLLOVERRIDES=\"dwmapi=n,b\" %command%";
 
     public static string BuildSteamLaunchOptions(string? extraArguments) =>
-        OperatingSystem.IsWindows()
-            ? CombineArguments(extraArguments)
-            : CombineArguments(RequiredSteamLaunchOptions, extraArguments);
+        BuildSteamLaunchOptions(extraArguments, null);
 
-    public LaunchPlan BuildPlan(string? executablePath, bool preferSteamProtocol, string? extraArguments = null)
+    public static string BuildSteamLaunchOptions(string? userOptionalArguments, string? launchOptionArguments)
     {
-        var gameArguments = CombineArguments(extraArguments);
+        if (OperatingSystem.IsWindows()) return CombineArguments(userOptionalArguments, launchOptionArguments);
+
+        const string command = "%command%";
+        var commandIndex = RequiredSteamLaunchOptions.IndexOf(command, StringComparison.Ordinal);
+        var prefix = RequiredSteamLaunchOptions[..commandIndex].Trim();
+        var userProvidedCommand = userOptionalArguments?.Contains(command, StringComparison.Ordinal) == true;
+        return userProvidedCommand
+            ? CombineArguments(prefix, userOptionalArguments, launchOptionArguments)
+            : CombineArguments(prefix, userOptionalArguments, command, launchOptionArguments);
+    }
+
+    public LaunchPlan BuildPlan(string? executablePath, bool preferSteamProtocol, string? extraArguments = null, string? launchOptionArguments = null)
+    {
+        var gameArguments = CombineArguments(extraArguments, launchOptionArguments);
         if (preferSteamProtocol)
         {
-            return new LaunchPlan($"steam://rungameid/{SteamLibraryDiscoverer.RagnarockSteamAppId}", true, executablePath, gameArguments, BuildSteamLaunchOptions(extraArguments));
+            return new LaunchPlan($"steam://rungameid/{SteamLibraryDiscoverer.RagnarockSteamAppId}", true, executablePath, gameArguments,
+                BuildSteamLaunchOptions(extraArguments, launchOptionArguments));
         }
 
         if (string.IsNullOrWhiteSpace(executablePath))
         {
-            return new LaunchPlan($"steam://rungameid/{SteamLibraryDiscoverer.RagnarockSteamAppId}", true, null, gameArguments, BuildSteamLaunchOptions(extraArguments));
+            return new LaunchPlan($"steam://rungameid/{SteamLibraryDiscoverer.RagnarockSteamAppId}", true, null, gameArguments, BuildSteamLaunchOptions(extraArguments, launchOptionArguments));
         }
 
         var displayCommand = string.IsNullOrWhiteSpace(gameArguments) ? executablePath : $"{executablePath} {gameArguments}";
-        return new LaunchPlan(displayCommand, false, executablePath, gameArguments, BuildSteamLaunchOptions(extraArguments));
+        return new LaunchPlan(displayCommand, false, executablePath, gameArguments, BuildSteamLaunchOptions(extraArguments, launchOptionArguments));
     }
 
     public Result Launch(LaunchPlan plan, string? arguments = null)

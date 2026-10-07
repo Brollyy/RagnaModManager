@@ -867,8 +867,14 @@ static void LaunchPlanUsesOptionalArguments()
     Assert(plan.DisplayCommand.EndsWith("/games/Ragnarock.exe --custom", StringComparison.Ordinal), "display command should show direct arguments");
     var expectedSteamOptions = OperatingSystem.IsWindows()
         ? "--custom"
-        : $"{ProtonLaunch.RequiredSteamLaunchOptions} --custom";
+        : $"WINEDLLOVERRIDES=\"dwmapi=n,b\" --custom %command%";
     Assert(plan.SteamLaunchOptions == expectedSteamOptions, "Steam launch options should include the platform-specific defaults and custom arguments");
+
+    var suppliedCommand = ProtonLaunch.BuildSteamLaunchOptions("--before %command% --after", "-vr");
+    var expectedSuppliedCommand = OperatingSystem.IsWindows()
+        ? "--before %command% --after -vr"
+        : "WINEDLLOVERRIDES=\"dwmapi=n,b\" --before %command% --after -vr";
+    Assert(suppliedCommand == expectedSuppliedCommand, "a user-supplied command token should keep its position without adding another token");
 }
 
 static void CompatibilityCheckerReportsUsableInstall()

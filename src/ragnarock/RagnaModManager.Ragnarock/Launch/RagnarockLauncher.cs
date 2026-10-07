@@ -19,16 +19,16 @@ public sealed class RagnarockLauncher
         _protonLaunch = protonLaunch;
     }
 
-    public LaunchPlan BuildLaunchPlan(string gameRoot, string? extraArguments = null)
+    public LaunchPlan BuildLaunchPlan(string gameRoot, string? userOptionalArguments = null, string? launchOptionArguments = null)
     {
         var executable = RagnarockDetector.FindExecutable(gameRoot);
         var preferSteam = !OperatingSystem.IsWindows() && _detector.IsLikelySteamInstall(gameRoot);
-        return _protonLaunch.BuildPlan(executable, preferSteam, extraArguments);
+        return _protonLaunch.BuildPlan(executable, preferSteam, userOptionalArguments, launchOptionArguments);
     }
 
-    public Result Launch(string gameRoot, string? arguments = null)
+    public Result Launch(string gameRoot, string? userOptionalArguments = null, string? launchOptionArguments = null)
     {
-        var plan = BuildLaunchPlan(gameRoot, arguments);
+        var plan = BuildLaunchPlan(gameRoot, userOptionalArguments, launchOptionArguments);
         if (!plan.UsesSteamProtocol && string.IsNullOrWhiteSpace(plan.ExecutablePath))
         {
             return Result.Fail("Could not find Ragnarock executable. Set or validate the game path first.");

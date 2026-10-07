@@ -57,6 +57,7 @@ public partial class MainWindow : Window
     private string _catalogSortColumn = "Name";
     private bool _catalogSortDescending;
     private string _launchArguments = "";
+    private string _launchMode = "Default";
     private readonly HashSet<string> _selectedMods = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, IReadOnlyList<ProfileModRecord>> _appliedProfileSnapshots = new(StringComparer.OrdinalIgnoreCase);
     private readonly MainWindowViewModel _viewModel = new();
@@ -83,6 +84,11 @@ public partial class MainWindow : Window
         {
             _database.Initialize();
             if (File.Exists(_paths.LaunchArgumentsPath)) _launchArguments = File.ReadAllText(_paths.LaunchArgumentsPath);
+            if (File.Exists(_paths.LaunchModePath))
+            {
+                var savedLaunchMode = File.ReadAllText(_paths.LaunchModePath).Trim();
+                if (savedLaunchMode is "Default" or "Flat" or "VR") _launchMode = savedLaunchMode;
+            }
             if (File.Exists(_paths.CatalogLastCheckedPath)) _catalogLastChecked = File.ReadAllText(_paths.CatalogLastCheckedPath);
             _logger.Info("RagnaModManager desktop UI started.");
             BuildShell();
@@ -103,6 +109,16 @@ public partial class MainWindow : Window
         _status = this.FindControl<TextBlock>("StatusText") ?? throw new InvalidOperationException("Status host was not loaded.");
         _launchButton = this.FindControl<Button>("LaunchButton") ?? throw new InvalidOperationException("Launch button was not loaded.");
         _launchButton.Click += (_, _) => LaunchGame();
+        var launchModeSelector = this.FindControl<ComboBox>("LaunchModeSelector") ?? throw new InvalidOperationException("Launch mode selector was not loaded.");
+        launchModeSelector.ItemsSource = new[] { "Default", "Flat", "VR" };
+        launchModeSelector.SelectedItem = _launchMode;
+        launchModeSelector.SelectionChanged += (_, _) =>
+        {
+            if (launchModeSelector.SelectedItem is not string selectedMode) return;
+            _launchMode = selectedMode;
+            File.WriteAllText(_paths.LaunchModePath, _launchMode);
+            ShowDashboard();
+        };
         _viewModel.ApplyChanges = new RelayCommand(DeployActiveProfile);
         _viewModel.RevertChanges = new RelayCommand(RevertPendingChanges);
         SizeChanged += (_, _) => UpdateNavigationLayout();
@@ -627,8 +643,9 @@ public partial class MainWindow : Window
             ? steamOptions.CurrentArguments
             : _launchArguments;
         model.LaunchArguments = launchArguments;
-        var launchPlan = game is null ? null : new RagnarockLauncher().BuildLaunchPlan(game.InstallPath, launchArguments);
-        model.SteamLaunchOptions = launchPlan?.SteamLaunchOptions ?? ProtonLaunch.BuildSteamLaunchOptions(launchArguments);
+        var launchModeArguments = GetLaunchModeArguments();
+        var launchPlan = game is null ? null : new RagnarockLauncher().BuildLaunchPlan(game.InstallPath, launchArguments, launchModeArguments);
+        model.SteamLaunchOptions = launchPlan?.SteamLaunchOptions ?? ProtonLaunch.BuildSteamLaunchOptions(launchArguments, launchModeArguments);
         model.ShowSteamLaunchOptions = steamOptions?.Applicable == true;
         model.CanConfigureSteamLaunch = steamOptions?.Applicable == true && steamOptions.Configured == false;
         model.LaunchSetupStatus = game is null
@@ -1468,9 +1485,16 @@ public partial class MainWindow : Window
             }
         }
 
-        var result = new RagnarockLauncher().Launch(game.InstallPath, _launchArguments);
+        var result = new RagnarockLauncher().Launch(game.InstallPath, _launchArguments, GetLaunchModeArguments());
         SetStatus(result.Success ? "Launch requested." : result.Error ?? "Launch failed.", !result.Success);
     }
+
+    private string GetLaunchModeArguments() => _launchMode switch
+    {
+        "Flat" => "-nohmd",
+        "VR" => "-vr",
+        _ => ""
+    };
 
     private async Task<bool> ConfirmSteamLaunchOptionsIfNeeded(string gameRoot, string context)
     {

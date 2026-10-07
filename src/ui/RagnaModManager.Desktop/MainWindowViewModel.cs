@@ -381,6 +381,7 @@ public sealed class SettingsPageViewModel : ObservableObject
     private string _gamePath = "";
     private string _savedGamePath = "";
     private string _launchArguments = "";
+    private string _steamLaunchOptions = "";
     private string _selectedCachedSupport = "";
     private bool _recoveryExpanded;
     private bool _launchOptionsExpanded;
@@ -395,7 +396,7 @@ public sealed class SettingsPageViewModel : ObservableObject
     public string RecoverySummary { get; set; } = "Choose your Ragnarock folder before using recovery tools.";
     public string LaunchArguments { get => _launchArguments; set => SetField(ref _launchArguments, value); }
     public string LaunchSetupStatus { get; set; } = "Choose your Ragnarock folder first.";
-    public string SteamLaunchOptions { get; set; } = "";
+    public string SteamLaunchOptions { get => _steamLaunchOptions; set => SetField(ref _steamLaunchOptions, value); }
     public bool ShowSteamLaunchOptions { get; set; }
     public bool CanConfigureSteamLaunch { get; set; }
     public bool HasGame { get; set; }
