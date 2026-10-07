@@ -16,9 +16,7 @@ public sealed class ProtonLaunch
     public const string RequiredSteamLaunchOptions = "WINEDLLOVERRIDES=\"dwmapi=n,b\" %command%";
 
     public static string BuildSteamLaunchOptions(string? extraArguments) =>
-        OperatingSystem.IsWindows()
-            ? CombineArguments(extraArguments)
-            : CombineArguments(RequiredSteamLaunchOptions, extraArguments);
+        BuildSteamLaunchOptions(extraArguments, null);
 
     public static string BuildSteamLaunchOptions(string? userOptionalArguments, string? launchOptionArguments)
     {
@@ -27,7 +25,10 @@ public sealed class ProtonLaunch
         const string command = "%command%";
         var commandIndex = RequiredSteamLaunchOptions.IndexOf(command, StringComparison.Ordinal);
         var prefix = RequiredSteamLaunchOptions[..commandIndex].Trim();
-        return CombineArguments(prefix, userOptionalArguments, command, launchOptionArguments);
+        var userProvidedCommand = userOptionalArguments?.Contains(command, StringComparison.Ordinal) == true;
+        return userProvidedCommand
+            ? CombineArguments(prefix, userOptionalArguments, launchOptionArguments)
+            : CombineArguments(prefix, userOptionalArguments, command, launchOptionArguments);
     }
 
     public LaunchPlan BuildPlan(string? executablePath, bool preferSteamProtocol, string? extraArguments = null, string? launchOptionArguments = null)
