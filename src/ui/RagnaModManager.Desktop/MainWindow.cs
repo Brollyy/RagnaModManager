@@ -19,7 +19,6 @@ using RagnaModManager.Core.Packages;
 using RagnaModManager.Core.Platform;
 using RagnaModManager.Platform.Folders;
 using RagnaModManager.Platform.Proton;
-using RagnaModManager.Platform.Steam;
 using RagnaModManager.Ragnarock.Compatibility;
 using RagnaModManager.Ragnarock.DeploymentRules;
 using RagnaModManager.Ragnarock.Detection;
@@ -41,7 +40,6 @@ public partial class MainWindow : Window
     private readonly Ue4ssReleaseService _ue4ssReleases;
     private readonly OfficialCatalogService _officialCatalog;
     private readonly FolderOpener _folderOpener = new();
-    private readonly SteamLaunchOptionsService _steamLaunchOptions = new();
 
     private TabControl _tabs = null!;
     private TextBlock _status = null!;
@@ -284,7 +282,7 @@ public partial class MainWindow : Window
         }
 
         dashboard.RefreshState();
-        dashboard.SetupAutomatically = new AsyncRelayCommand(SetupAutomatically);
+        dashboard.SetupAutomatically = new RelayCommand(SetupAutomatically);
         dashboard.DiscoverMods = new RelayCommand(() => ShowDashboard(1));
         dashboard.AddMod = new AsyncRelayCommand(ImportModPackage);
         dashboard.OpenGameFolder = new RelayCommand(() =>
@@ -635,23 +633,17 @@ public partial class MainWindow : Window
             : planResult.Value.Conflicts.Count(c => c.BlocksDeployment) == 0
                 ? "Nothing is blocking your setup."
                 : $"There are {CountPhrase(planResult.Value.Conflicts.Count(c => c.BlocksDeployment), "thing")} to sort out before this setup can be applied.";
-        var ue4ssInstalled = game is not null && _ue4ss.Detect(game.InstallPath).Installed;
-        var steamOptions = ue4ssInstalled && game is not null
-            ? _steamLaunchOptions.Inspect(game.InstallPath, _launchArguments)
-            : null;
         model.LaunchArguments = _launchArguments;
-        var effectiveLaunchArguments = GetLaunchArguments();
-        var launchPlan = game is null ? null : new RagnarockLauncher().BuildLaunchPlan(game.InstallPath, effectiveLaunchArguments, GetSteamLaunchOption());
-        model.SteamLaunchOptions = launchPlan?.SteamLaunchOptions ?? ProtonLaunch.BuildSteamLaunchOptions(effectiveLaunchArguments);
-        model.ShowSteamLaunchOptions = steamOptions?.Applicable == true;
-        model.CanConfigureSteamLaunch = steamOptions?.Applicable == true && steamOptions.Configured == false;
+        var launchOptionArguments = GetLaunchModeArguments();
+        var launchPlan = game is null ? null : new RagnarockLauncher().BuildLaunchPlan(game.InstallPath, _launchArguments, launchOptionArguments);
+        model.SteamLaunchOptions = launchPlan?.SteamLaunchOptions ?? new SteamProtonLauncher().BuildTemplate(_launchArguments, launchOptionArguments);
+        model.ShowSteamLaunchOptions = game is not null && !OperatingSystem.IsWindows() && _detector.IsLikelySteamInstall(game.InstallPath);
+        model.CanConfigureSteamLaunch = false;
         model.LaunchSetupStatus = game is null
             ? "Choose your Ragnarock folder first."
-            : !ue4ssInstalled
-                ? "No Steam launch option is needed until UE4SS is installed."
             : OperatingSystem.IsWindows()
                 ? "Direct launches use the optional arguments below."
-                : steamOptions?.Message ?? "Launch setup could not be checked.";
+                : "RMM applies these Proton settings only to launches started here. Steam's saved launch options are left alone.";
         model.CachedSupportVersions.Clear();
         foreach (var release in _ue4ssReleases.GetCachedReleases()) model.CachedSupportVersions.Add($"{release.Version} ({release.AssetName})");
         model.HasCachedSupport = model.CachedSupportVersions.Count > 0;
@@ -689,13 +681,12 @@ public partial class MainWindow : Window
         });
         model.Rollback = new RelayCommand(() => { var result = CreateDeploymentService().RollbackLatest(); SetStatus(result.Success ? "The last change was undone." : result.Error ?? "Could not undo the last change.", !result.Success); ShowDashboard(4); });
         model.ResetDeployment = new AsyncRelayCommand(async () => { if (!await Confirm("Remove applied files", "Remove the files currently applied by Ragna Mod Manager from the game folder? Backups are retained when possible.", "Remove files", destructive: true)) return; var result = CreateDeploymentService().ResetDeployment(); SetStatus(result.Success ? "The applied files were removed." : result.Error ?? "Could not remove the applied files.", !result.Success); ShowDashboard(4); });
-        model.SaveLaunchOptions = new RelayCommand(() => { _launchArguments = model.LaunchArguments ?? ""; File.WriteAllText(_paths.LaunchArgumentsPath, _launchArguments); SetStatus(string.IsNullOrWhiteSpace(_launchArguments) ? "Launch arguments cleared." : "Launch arguments saved."); });
-        model.ConfigureSteamLaunch = new RelayCommand(() =>
+        model.SaveLaunchOptions = new RelayCommand(() =>
         {
-            var current = _database.GetGame();
-            if (current is null) return;
-            var result = _steamLaunchOptions.Configure(current.InstallPath, _launchArguments);
-            SetStatus(result.Success ? "Steam launch options configured for UE4SS." : result.Error ?? "Could not configure Steam launch options.", !result.Success);
+            _launchArguments = model.LaunchArguments ?? "";
+            File.WriteAllText(_paths.LaunchArgumentsPath, _launchArguments);
+            model.SteamLaunchOptions = new SteamProtonLauncher().BuildTemplate(_launchArguments, GetLaunchModeArguments());
+            SetStatus(string.IsNullOrWhiteSpace(_launchArguments) ? "Launch arguments cleared." : "Launch arguments saved.");
             ShowDashboard(4);
         });
         model.OpenLogs = new RelayCommand(() => OpenFolder(_paths.Logs));
@@ -1020,7 +1011,7 @@ public partial class MainWindow : Window
         _viewModel.HasPendingChanges = _database.GetGame() is not null && _changesPending;
     }
 
-    private async Task SetupAutomatically()
+    private void SetupAutomatically()
     {
         SetStatus("Looking for your Ragnarock installation…");
         var install = _detector.DetectFirstValid();
@@ -1031,12 +1022,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var launchReady = await ConfirmSteamLaunchOptionsIfNeeded(install.Root, "automatic setup");
         SaveGame(install);
         ShowDashboard(0);
-        SetStatus(launchReady
-            ? "Ragnarock is ready. Browse Discover or import a mod."
-            : "Ragnarock is connected, but Steam launch options still need to be configured.", error: !launchReady);
+        SetStatus("Ragnarock is ready. Browse Discover or import a mod.");
     }
 
     private async Task ExportCurrentProfile(ProfileRecord profile)
@@ -1464,24 +1452,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        var ue4ssInstalled = _ue4ss.Detect(game.InstallPath).Installed;
-        var steamLaunchOption = GetSteamLaunchOption(game.InstallPath);
-        var launchArguments = steamLaunchOption.HasValue ? _launchArguments : GetLaunchArguments();
-        var steamOptions = ue4ssInstalled ? _steamLaunchOptions.Inspect(game.InstallPath, _launchArguments) : null;
-        if (steamOptions?.Applicable == true && !steamOptions.Configured)
-        {
-            if (!await ConfirmSteamLaunchOptionsIfNeeded(game.InstallPath, "launching Ragnarock"))
-            {
-                SetStatus("Ragnarock was not launched. Configure the Steam launch option first.", error: true);
-                return;
-            }
-        }
-
-        var result = new RagnarockLauncher().Launch(game.InstallPath, launchArguments, steamLaunchOption);
+        var result = new RagnarockLauncher().Launch(game.InstallPath, _launchArguments, GetLaunchModeArguments());
         SetStatus(result.Success ? "Launch requested." : result.Error ?? "Launch failed.", !result.Success);
     }
 
-    private string GetLaunchArguments()
+    private string GetLaunchModeArguments()
     {
         var modeArgument = _launchMode switch
         {
@@ -1489,39 +1464,7 @@ public partial class MainWindow : Window
             "VR" => "-vr",
             _ => ""
         };
-        return string.Join(' ', new[] { modeArgument, _launchArguments }
-            .Where(argument => !string.IsNullOrWhiteSpace(argument))
-            .Select(argument => argument.Trim()));
-    }
-
-    private int? GetSteamLaunchOption(string? gameRoot = null)
-    {
-        if (_launchMode == "Default") return null;
-        gameRoot ??= _database.GetGame()?.InstallPath;
-        if (gameRoot is null || !_detector.IsLikelySteamInstall(gameRoot)) return null;
-        return _launchMode == "Flat" ? 0 : 1;
-    }
-
-    private async Task<bool> ConfirmSteamLaunchOptionsIfNeeded(string gameRoot, string context)
-    {
-        if (!_ue4ss.Detect(gameRoot).Installed) return true;
-        var status = _steamLaunchOptions.Inspect(gameRoot, _launchArguments);
-        if (!status.Applicable || status.Configured) return true;
-
-        var confirmed = await Confirm(
-            "Configure Steam for UE4SS?",
-            $"This is a Steam installation. To load UE4SS through Proton, Ragna Mod Manager needs to add this Steam launch option:{Environment.NewLine}{Environment.NewLine}{status.RequiredOptions}{Environment.NewLine}{Environment.NewLine}Allow the manager to change Steam's launch options before {context}?",
-            "Configure Steam launch");
-        if (!confirmed) return false;
-
-        var result = _steamLaunchOptions.Configure(gameRoot, _launchArguments);
-        if (!result.Success)
-        {
-            SetStatus(result.Error ?? "Could not configure Steam launch options.", error: true);
-            return false;
-        }
-
-        return true;
+        return modeArgument;
     }
 
     private void ChangePriority(string profileId, ModRecord mod, int currentPriority, int delta)

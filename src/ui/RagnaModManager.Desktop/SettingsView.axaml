@@ -60,11 +60,9 @@
           <TextBlock Text="Steam launch option" Foreground="#9AAAC2" IsVisible="{Binding ShowSteamLaunchOptions}"/>
           <TextBlock Text="{Binding SteamLaunchOptions}" FontFamily="monospace" TextWrapping="Wrap" IsVisible="{Binding ShowSteamLaunchOptions}"/>
           <WrapPanel Orientation="Horizontal" ItemSpacing="8">
-            <TextBox Text="{Binding LaunchArguments, Mode=TwoWay}" Watermark="Optional launch arguments" MinWidth="420"/>
+            <TextBox Text="{Binding LaunchArguments, Mode=TwoWay}" Watermark="Optional Proton settings (NAME=value)" MinWidth="420"/>
             <Button Content="Save launch options" Command="{Binding SaveLaunchOptions}"/>
-            <Button Content="Configure Steam launch" IsVisible="{Binding CanConfigureSteamLaunch}" Command="{Binding ConfigureSteamLaunch}"/>
           </WrapPanel>
-          <TextBlock Text="Optional arguments are used when launching directly. Steam uses the option shown above." Foreground="#9AAAC2" TextWrapping="Wrap"/>
         </StackPanel>
       </Border>
       <Border Classes="card" Padding="16">
