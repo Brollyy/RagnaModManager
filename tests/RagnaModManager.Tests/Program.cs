@@ -28,7 +28,7 @@ var tests = new (string Name, Action Body)[]
     ("modified deployed files block overwrite", ModifiedDeployedFilesBlockOverwrite),
     ("existing managed mod files can be repaired", ExistingManagedModFilesCanBeRepaired),
     ("unmanaged target files require reconciliation", UnmanagedTargetFilesRequireReconciliation),
-    ("removing a mod clears its installation and profile entries", RemovingModClearsInstallation),
+    ("removing a mod clears its installation and ue4ss registration", RemovingModClearsInstallation),
     ("switching profiles redeploys from scratch", SwitchingProfilesRedeploysFromScratch),
     ("same target conflicts warn before deployment", SameTargetConflictWarnsBeforeDeployment),
     ("identical legacy entries are coalesced", IdenticalLegacyEntriesAreCoalesced),
@@ -453,14 +453,30 @@ static void UnmanagedTargetFilesRequireReconciliation()
 static void RemovingModClearsInstallation()
 {
     using var env = TestEnv.Create();
-    var package = env.CreatePackage("remove-mod", _ => { }, files => files["Scripts/main.lua"] = "print('remove')");
+    var game = env.CreateGame();
+    env.InstallFakeUe4ss(game);
+    env.Database.UpsertGame(new GameRecord("ragnarock", "Ragnarock", game, null, null, "test"));
+    var package = env.CreatePackage("remove-mod", manifest =>
+    {
+        manifest.Files = [new ManifestFile { Type = "ue4ss-lua", Source = "Scripts/main.lua", ModFolder = "RagnaCustomsApi" }];
+    }, files => files["Scripts/main.lua"] = "print('remove')");
     Assert(env.Importer.Import(package).Success, "remove package import should succeed");
     Assert(env.Database.GetMod("remove-mod") is not null, "remove package should be installed");
+    env.Database.SetProfileMod("default", "remove-mod", true, 0);
+    Assert(env.DeploymentService().Deploy(game).Success, "package should deploy before removal");
+    var modsRoot = Path.Combine(game, "Ragnarock", "Binaries", "Win64", "ue4ss", "Mods");
+    var modsFile = Path.Combine(modsRoot, "mods.txt");
+    var installedFile = Path.Combine(modsRoot, "RagnaCustomsApi", "scripts", "main.lua");
+    Assert(File.Exists(installedFile), "package file should be deployed");
+    Assert(File.ReadAllLines(modsFile).Contains("RagnaCustomsApi : 1"), "UE4SS should list the deployed folder as enabled");
 
-    var result = env.DeploymentService().RemoveMod("remove-mod");
+    var result = env.DeploymentService().RemoveMod("remove-mod", game);
     Assert(result.Success, result.Error ?? "mod removal should succeed");
     Assert(env.Database.GetMod("remove-mod") is null, "removed mod should not remain in the database");
     Assert(!env.Database.GetProfileMods("default").Any(m => m.ModId == "remove-mod"), "removed mod should leave profile entries");
+    Assert(!File.Exists(installedFile), "removal should delete the deployed package file");
+    Assert(!Directory.Exists(Path.Combine(modsRoot, "RagnaCustomsApi")), "removal should delete empty package folders");
+    Assert(!File.ReadAllLines(modsFile).Any(line => line.StartsWith("RagnaCustomsApi :", StringComparison.OrdinalIgnoreCase)), "removal should clear the UE4SS registration by deployed folder name");
 }
 
 static void SwitchingProfilesRedeploysFromScratch()
@@ -744,9 +760,7 @@ static void Ue4ssInstallMapsLayout()
     var status = service.Detect(game);
     Assert(status.Installed, "ue4ss status should be installed");
     var exeFolder = Path.Combine(game, "Ragnarock", "Binaries", "Win64");
-    var expectedDll = OperatingSystem.IsLinux()
-        ? Path.Combine(exeFolder, "UE4SS.dll")
-        : Path.Combine(exeFolder, "ue4ss", "UE4SS.dll");
+    var expectedDll = Path.Combine(exeFolder, "UE4SS.dll");
     Assert(File.Exists(expectedDll), "UE4SS.dll should be in the platform-compatible layout");
 }
 
@@ -851,7 +865,10 @@ static void LaunchPlanUsesOptionalArguments()
     var plan = new ProtonLaunch().BuildPlan("/games/Ragnarock.exe", preferSteamProtocol: false, "--custom");
     Assert(plan.GameArguments == "--custom", "direct launch should include the custom arguments without adding defaults");
     Assert(plan.DisplayCommand.EndsWith("/games/Ragnarock.exe --custom", StringComparison.Ordinal), "display command should show direct arguments");
-    Assert(plan.SteamLaunchOptions == "WINEDLLOVERRIDES=\"dwmapi=n,b\" --custom %command%", "Steam launch options should place custom settings before %command%");
+    var expectedSteamOptions = OperatingSystem.IsWindows()
+        ? "--custom"
+        : $"{ProtonLaunch.RequiredSteamLaunchOptions} --custom";
+    Assert(plan.SteamLaunchOptions == expectedSteamOptions, "Steam launch options should include the platform-specific defaults and custom arguments");
 }
 
 static void CompatibilityCheckerReportsUsableInstall()
@@ -947,6 +964,7 @@ internal sealed class TestEnv : IDisposable
 
     public void Dispose()
     {
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         if (Directory.Exists(Root))
         {
             Directory.Delete(Root, recursive: true);
