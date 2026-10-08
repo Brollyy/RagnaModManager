@@ -1,0 +1,9 @@
+newmtl HammerCyan
+Kd 0.09 0.70 0.82
+map_Kd T_RMM_AzureBlockhead_BaseColor.png
+
+newmtl HammerGold
+Kd 1.00 0.70 0.18
+
+newmtl HammerNavy
+Kd 0.05 0.16 0.32

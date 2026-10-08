@@ -2,6 +2,8 @@
 
 This guide covers a self-contained custom hammer package for RagnaModManager (RMM). It starts with new source files, imports and cooks them in Unreal Engine 4.27, and packages the cooked assets as an `.rhammer` library archive. RMM then creates the game-specific data asset and merged PAK for the installed Ragnarock build.
 
+The repository includes original source geometry, material art, and an icon for the [Azure Blockhead sample](../samples/azure-blockhead-source/README.md). Those source files are ready for the UE import/cook steps below; they are not mislabeled as cooked game assets.
+
 Ragnarock's inspected build uses UE 4.27 and a V11 PAK. Use the same engine version and cook for `WindowsNoEditor`, even when playing through Proton. The public RMM app does not import FBX/OBJ or cook Unreal assets; the creator must provide cooked UE assets.
 
 ## What the game expects
