@@ -99,6 +99,8 @@ public sealed class HammerPakBuildService
                 SetText(row, "Title", manifest.DisplayName, rowName + "_Title");
                 SetText(row, "Description", manifest.Description, rowName + "_Description");
                 ((StrPropertyData)row["EntitlementId"]).Value = new FString("");
+                if (!string.IsNullOrWhiteSpace(manifest.IconAssetPath))
+                    SetIcon(row, tableAsset, manifest.IconAssetPath);
 
                 var dataReference = (ObjectPropertyData)row["Data"];
                 var defaultDataImport = dataReference.ToImport(tableAsset);
@@ -226,13 +228,18 @@ public sealed class HammerPakBuildService
             packageImport.ObjectName = new FName(asset, manifest.MeshAssetPath);
             meshImport.value.ObjectName = new FName(asset, manifest.MeshAssetPath[(manifest.MeshAssetPath.LastIndexOf('/') + 1)..]);
 
-            if (!asset.Exports.Any(export => export.ClassIndex.Index < 0 &&
+            var dataAssetExport = asset.Exports.SingleOrDefault(export => export.ClassIndex.Index < 0 &&
                     -export.ClassIndex.Index <= asset.Imports.Count &&
-                    asset.Imports[-export.ClassIndex.Index - 1].ObjectName.ToString().Equals("DA_Hammers_C", StringComparison.OrdinalIgnoreCase)))
+                    asset.Imports[-export.ClassIndex.Index - 1].ObjectName.ToString().Equals("DA_Hammers_C", StringComparison.OrdinalIgnoreCase));
+            if (dataAssetExport is null)
             {
                 error = "RMM couldn't prepare the hammer data for this game version.";
                 return false;
             }
+            // The template keeps its original export name unless it is renamed to match
+            // the generated package. Unreal then resolves the package import but cannot
+            // find the requested object, leaving the hammer visible without a model.
+            dataAssetExport.ObjectName = new FName(asset, manifest.DataAssetPath[(manifest.DataAssetPath.LastIndexOf('/') + 1)..]);
 
             var outputPath = Path.Combine(staging, "GeneratedAssets", manifest.Id, "DA_Hammers.uasset");
             Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
@@ -267,6 +274,24 @@ public sealed class HammerPakBuildService
         property.CultureInvariantString = new FString(text);
     }
 
+    private static void SetIcon(StructPropertyData row, UAsset tableAsset, string iconPackagePath)
+    {
+        var iconProperty = (ObjectPropertyData)row["Icon"];
+        var templateImport = iconProperty.ToImport(tableAsset);
+        var packageIndex = tableAsset.AddImport(new Import(
+            new FName(tableAsset, "/Script/CoreUObject"),
+            new FName(tableAsset, "Package"),
+            new FPackageIndex(0),
+            new FName(tableAsset, iconPackagePath),
+            false));
+        iconProperty.Value = tableAsset.AddImport(new Import(
+            templateImport.ClassPackage,
+            templateImport.ClassName,
+            packageIndex,
+            new FName(tableAsset, iconPackagePath[(iconPackagePath.LastIndexOf('/') + 1)..]),
+            false));
+    }
+
     private static string ToPakPath(string packagePath, string extension) =>
         "Ragnarock/Content/" + packagePath["/Game/".Length..] + extension;
 
@@ -283,6 +308,9 @@ public sealed class HammerPakBuildService
             foreach (var file in hammer.Manifest.Assets)
                 if (!files.Contains(ToPakPath(file.PackagePath, Path.GetExtension(file.Source))))
                     throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s {file.Source}.");
+            if (!string.IsNullOrWhiteSpace(hammer.Manifest.IconAssetPath) &&
+                !files.Contains(ToPakPath(hammer.Manifest.IconAssetPath, ".uasset")))
+                throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s icon asset.");
             if (!files.Contains(ToPakPath(hammer.Manifest.DataAssetPath, ".uasset")) ||
                 !files.Contains(ToPakPath(hammer.Manifest.DataAssetPath, ".uexp")))
                 throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s generated hammer data.");
@@ -321,9 +349,18 @@ public sealed class HammerPakBuildService
                 var dataAsset = new UAsset(dataPath, EngineVersion.VER_UE4_27);
                 if (!dataAsset.Imports.Any(item => item.ClassName.ToString().Equals("Package", StringComparison.OrdinalIgnoreCase) &&
                                                    item.ObjectName.ToString().Equals(hammer.Manifest.MeshAssetPath, StringComparison.OrdinalIgnoreCase)) ||
-                    !dataAsset.Exports.Any(item => item.ClassIndex.Index < 0 && -item.ClassIndex.Index <= dataAsset.Imports.Count &&
+                    !dataAsset.Exports.Any(item => item.ObjectName.ToString().Equals(hammer.Manifest.DataAssetPath[(hammer.Manifest.DataAssetPath.LastIndexOf('/') + 1)..], StringComparison.Ordinal) &&
+                                                   item.ClassIndex.Index < 0 && -item.ClassIndex.Index <= dataAsset.Imports.Count &&
                                                    dataAsset.Imports[-item.ClassIndex.Index - 1].ObjectName.ToString().Equals("DA_Hammers_C", StringComparison.OrdinalIgnoreCase)))
                     throw new InvalidDataException($"Generated hammer data for {hammer.Manifest.Name} does not reference its model correctly.");
+                if (!string.IsNullOrWhiteSpace(hammer.Manifest.IconAssetPath))
+                {
+                    var icon = ((ObjectPropertyData)row["Icon"]).ToImport(asset);
+                    var iconPackage = icon.OuterIndex.Index < 0 ? asset.Imports[-icon.OuterIndex.Index - 1] : null;
+                    if (icon.ClassName.ToString() != "Texture2D" || iconPackage is null ||
+                        !iconPackage.ObjectName.ToString().Equals(hammer.Manifest.IconAssetPath, StringComparison.OrdinalIgnoreCase))
+                        throw new InvalidDataException($"Generated DT_Hammers does not reference {hammer.Manifest.Name}'s icon correctly.");
+                }
             }
         }
         finally

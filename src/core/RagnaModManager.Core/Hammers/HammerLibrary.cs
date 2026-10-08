@@ -20,6 +20,7 @@ public sealed class HammerManifest
     public string RowName { get; set; } = "";
     public string DisplayName { get; set; } = "";
     public string MeshAssetPath { get; set; } = "";
+    public string? IconAssetPath { get; set; }
     public string DataAssetPath { get; set; } = "";
     public string? Thumbnail { get; set; }
     public List<HammerPackageFile> Assets { get; set; } = [];
@@ -242,6 +243,8 @@ public sealed class HammerLibraryService
         if (manifest.Assets is null || manifest.Assets.Count == 0) return Result.Fail($"{manifest.Name} contains no model files.");
         if (!IsGameAssetPath(manifest.MeshAssetPath) || !IsGameAssetPath(manifest.DataAssetPath))
             return Result.Fail($"{manifest.Name} must use valid /Game/... mesh and data asset paths.");
+        if (manifest.IconAssetPath is not null && !IsGameAssetPath(manifest.IconAssetPath))
+            return Result.Fail($"{manifest.Name} has an invalid /Game/... icon asset path.");
 
         var packageFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var bySource = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -263,6 +266,8 @@ public sealed class HammerLibraryService
         }
 
         if (!packageFiles.Contains(manifest.MeshAssetPath + ".uasset")) return Result.Fail($"{manifest.Name} does not include its mesh asset '{manifest.MeshAssetPath}'.");
+        if (manifest.IconAssetPath is not null && !packageFiles.Contains(manifest.IconAssetPath + ".uasset"))
+            return Result.Fail($"{manifest.Name} does not include its icon asset '{manifest.IconAssetPath}'.");
         try
         {
             var meshSource = manifest.Assets.Single(asset => asset.PackagePath.Equals(manifest.MeshAssetPath, StringComparison.OrdinalIgnoreCase) && Path.GetExtension(asset.Source).Equals(".uasset", StringComparison.OrdinalIgnoreCase));
@@ -271,6 +276,16 @@ public sealed class HammerLibraryService
                 -export.ClassIndex.Index <= meshAsset.Imports.Count &&
                 meshAsset.Imports[-export.ClassIndex.Index - 1].ObjectName.ToString().Equals("StaticMesh", StringComparison.OrdinalIgnoreCase)))
                 return Result.Fail($"{manifest.Name}'s mesh package contains no cooked StaticMesh export.");
+            if (manifest.IconAssetPath is not null)
+            {
+                var iconSource = manifest.Assets.Single(asset => asset.PackagePath.Equals(manifest.IconAssetPath, StringComparison.OrdinalIgnoreCase) &&
+                    Path.GetExtension(asset.Source).Equals(".uasset", StringComparison.OrdinalIgnoreCase));
+                var iconAsset = new UAsset(Path.Combine(root, iconSource.Source.Replace('/', Path.DirectorySeparatorChar)), EngineVersion.VER_UE4_27);
+                if (!iconAsset.Exports.Any(export => export.ClassIndex.Index < 0 &&
+                    -export.ClassIndex.Index <= iconAsset.Imports.Count &&
+                    iconAsset.Imports[-export.ClassIndex.Index - 1].ObjectName.ToString().Equals("Texture2D", StringComparison.OrdinalIgnoreCase)))
+                    return Result.Fail($"{manifest.Name}'s icon package contains no cooked Texture2D export.");
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or NotSupportedException or InvalidDataException or NullReferenceException)
         {
