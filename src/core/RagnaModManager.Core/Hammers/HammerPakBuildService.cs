@@ -79,6 +79,9 @@ public sealed class HammerPakBuildService
             if (defaultRow is null || !HasSupportedRowSchema(defaultRow))
                 return Result<HammerPakBuildResult>.Fail("DT_Hammers no longer has the supported CustomizableInfo row schema. No PAK was built.");
 
+            var dependencyValidation = ValidateHammerDependencies(enabledHammers, baseFileSet);
+            if (!dependencyValidation.Success) return Result<HammerPakBuildResult>.Fail(dependencyValidation.Error!);
+
             var writtenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var generatedDataAssets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var hammer in enabledHammers.OrderBy(entry => entry.Manifest.RowName, StringComparer.Ordinal))
@@ -228,7 +231,7 @@ public sealed class HammerPakBuildService
             packageImport.ObjectName = new FName(asset, manifest.MeshAssetPath);
             meshImport.value.ObjectName = new FName(asset, manifest.MeshAssetPath[(manifest.MeshAssetPath.LastIndexOf('/') + 1)..]);
 
-            var dataAssetExport = asset.Exports.SingleOrDefault(export => export.ClassIndex.Index < 0 &&
+            var dataAssetExport = asset.Exports.OfType<NormalExport>().SingleOrDefault(export => export.ClassIndex.Index < 0 &&
                     -export.ClassIndex.Index <= asset.Imports.Count &&
                     asset.Imports[-export.ClassIndex.Index - 1].ObjectName.ToString().Equals("DA_Hammers_C", StringComparison.OrdinalIgnoreCase));
             if (dataAssetExport is null)
@@ -240,6 +243,10 @@ public sealed class HammerPakBuildService
             // the generated package. Unreal then resolves the package import but cannot
             // find the requested object, leaving the hammer visible without a model.
             dataAssetExport.ObjectName = new FName(asset, manifest.DataAssetPath[(manifest.DataAssetPath.LastIndexOf('/') + 1)..]);
+            if (!string.IsNullOrWhiteSpace(manifest.SilhouetteAssetPath))
+                SetDataAssetReference(asset, dataAssetExport, "Silhouette", manifest.SilhouetteAssetPath);
+            if (!string.IsNullOrWhiteSpace(manifest.SymbolAssetPath))
+                SetDataAssetReference(asset, dataAssetExport, "Symbol", manifest.SymbolAssetPath);
 
             var outputPath = Path.Combine(staging, "GeneratedAssets", manifest.Id, "DA_Hammers.uasset");
             Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
@@ -267,6 +274,38 @@ public sealed class HammerPakBuildService
         row["EntitlementId"] is StrPropertyData &&
         row["Data"] is ObjectPropertyData;
 
+    private static Result ValidateHammerDependencies(IReadOnlyList<HammerLibraryEntry> hammers, HashSet<string> baseFileSet)
+    {
+        var customPackages = hammers.SelectMany(hammer => hammer.Manifest.Assets)
+            .Select(asset => asset.PackagePath)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var hammer in hammers)
+        {
+            foreach (var file in hammer.Manifest.Assets.Where(asset =>
+                         Path.GetExtension(asset.Source).Equals(".uasset", StringComparison.OrdinalIgnoreCase) &&
+                         !asset.PackagePath.Equals(hammer.Manifest.DataAssetPath, StringComparison.OrdinalIgnoreCase)))
+            {
+                var source = Path.GetFullPath(Path.Combine(hammer.InstalledPath, file.Source.Replace('/', Path.DirectorySeparatorChar)));
+                var root = Path.GetFullPath(hammer.InstalledPath) + Path.DirectorySeparatorChar;
+                if (!source.StartsWith(root, StringComparison.Ordinal) || !File.Exists(source))
+                    return Result.Fail($"{hammer.Manifest.Name} is missing cooked file '{file.Source}'.");
+
+                var asset = new UAsset(source, EngineVersion.VER_UE4_27);
+                foreach (var import in asset.Imports.Where(item =>
+                             item.ClassName.ToString().Equals("Package", StringComparison.OrdinalIgnoreCase) && item.OuterIndex.Index == 0))
+                {
+                    var dependency = import.ObjectName.ToString();
+                    if (!dependency.StartsWith("/Game/", StringComparison.Ordinal)) continue;
+                    if (!customPackages.Contains(dependency) && !baseFileSet.Contains(dependency))
+                        return Result.Fail($"{hammer.Manifest.Name}'s cooked asset '{file.Source}' references missing package '{dependency}'. Include that asset in the hammer package or use a package from this Ragnarock build.");
+                }
+            }
+        }
+
+        return Result.Ok();
+    }
+
     private static void SetText(StructPropertyData row, string propertyName, string text, string stableKey)
     {
         var property = (TextPropertyData)row[propertyName];
@@ -292,6 +331,24 @@ public sealed class HammerPakBuildService
             false));
     }
 
+    private static void SetDataAssetReference(UAsset asset, NormalExport export, string propertyName, string packagePath)
+    {
+        var property = (ObjectPropertyData)export.Data.Single(item => item.Name.ToString().Equals(propertyName, StringComparison.Ordinal));
+        var templateImport = property.ToImport(asset);
+        var packageIndex = asset.AddImport(new Import(
+            new FName(asset, "/Script/CoreUObject"),
+            new FName(asset, "Package"),
+            new FPackageIndex(0),
+            new FName(asset, packagePath),
+            false));
+        property.Value = asset.AddImport(new Import(
+            templateImport.ClassPackage,
+            new FName(asset, "MaterialInstanceConstant"),
+            packageIndex,
+            new FName(asset, packagePath[(packagePath.LastIndexOf('/') + 1)..]),
+            false));
+    }
+
     private static string ToPakPath(string packagePath, string extension) =>
         "Ragnarock/Content/" + packagePath["/Game/".Length..] + extension;
 
@@ -311,6 +368,12 @@ public sealed class HammerPakBuildService
             if (!string.IsNullOrWhiteSpace(hammer.Manifest.IconAssetPath) &&
                 !files.Contains(ToPakPath(hammer.Manifest.IconAssetPath, ".uasset")))
                 throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s icon asset.");
+            if (!string.IsNullOrWhiteSpace(hammer.Manifest.SilhouetteAssetPath) &&
+                !files.Contains(ToPakPath(hammer.Manifest.SilhouetteAssetPath, ".uasset")))
+                throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s silhouette material.");
+            if (!string.IsNullOrWhiteSpace(hammer.Manifest.SymbolAssetPath) &&
+                !files.Contains(ToPakPath(hammer.Manifest.SymbolAssetPath, ".uasset")))
+                throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s symbol material.");
             if (!files.Contains(ToPakPath(hammer.Manifest.DataAssetPath, ".uasset")) ||
                 !files.Contains(ToPakPath(hammer.Manifest.DataAssetPath, ".uexp")))
                 throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s generated hammer data.");
@@ -353,6 +416,8 @@ public sealed class HammerPakBuildService
                                                    item.ClassIndex.Index < 0 && -item.ClassIndex.Index <= dataAsset.Imports.Count &&
                                                    dataAsset.Imports[-item.ClassIndex.Index - 1].ObjectName.ToString().Equals("DA_Hammers_C", StringComparison.OrdinalIgnoreCase)))
                     throw new InvalidDataException($"Generated hammer data for {hammer.Manifest.Name} does not reference its model correctly.");
+                VerifyDataAssetReference(dataAsset, hammer.Manifest, "Silhouette", hammer.Manifest.SilhouetteAssetPath);
+                VerifyDataAssetReference(dataAsset, hammer.Manifest, "Symbol", hammer.Manifest.SymbolAssetPath);
                 if (!string.IsNullOrWhiteSpace(hammer.Manifest.IconAssetPath))
                 {
                     var icon = ((ObjectPropertyData)row["Icon"]).ToImport(asset);
@@ -367,6 +432,18 @@ public sealed class HammerPakBuildService
         {
             if (Directory.Exists(checkDirectory)) Directory.Delete(checkDirectory, recursive: true);
         }
+    }
+
+    private static void VerifyDataAssetReference(UAsset asset, HammerManifest manifest, string propertyName, string? packagePath)
+    {
+        if (string.IsNullOrWhiteSpace(packagePath)) return;
+        var export = asset.Exports.OfType<NormalExport>().Single(item => item.ObjectName.ToString().Equals(
+            manifest.DataAssetPath[(manifest.DataAssetPath.LastIndexOf('/') + 1)..], StringComparison.Ordinal));
+        var importedObject = ((ObjectPropertyData)export.Data.Single(item => item.Name.ToString().Equals(propertyName, StringComparison.Ordinal))).ToImport(asset);
+        var importedPackage = importedObject.OuterIndex.Index < 0 ? asset.Imports[-importedObject.OuterIndex.Index - 1] : null;
+        if (importedObject.ClassName.ToString() != "MaterialInstanceConstant" || importedPackage is null ||
+            !importedPackage.ObjectName.ToString().Equals(packagePath, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException($"Generated hammer data for {manifest.Name} does not reference its {propertyName} material correctly.");
     }
 
     private static string Sha256(string path)

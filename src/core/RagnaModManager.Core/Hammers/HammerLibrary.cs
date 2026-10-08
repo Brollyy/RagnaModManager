@@ -21,6 +21,8 @@ public sealed class HammerManifest
     public string DisplayName { get; set; } = "";
     public string MeshAssetPath { get; set; } = "";
     public string? IconAssetPath { get; set; }
+    public string? SilhouetteAssetPath { get; set; }
+    public string? SymbolAssetPath { get; set; }
     public string DataAssetPath { get; set; } = "";
     public string? Thumbnail { get; set; }
     public List<HammerPackageFile> Assets { get; set; } = [];
@@ -245,6 +247,10 @@ public sealed class HammerLibraryService
             return Result.Fail($"{manifest.Name} must use valid /Game/... mesh and data asset paths.");
         if (manifest.IconAssetPath is not null && !IsGameAssetPath(manifest.IconAssetPath))
             return Result.Fail($"{manifest.Name} has an invalid /Game/... icon asset path.");
+        if (manifest.SilhouetteAssetPath is not null && !IsGameAssetPath(manifest.SilhouetteAssetPath))
+            return Result.Fail($"{manifest.Name} has an invalid /Game/... silhouette material path.");
+        if (manifest.SymbolAssetPath is not null && !IsGameAssetPath(manifest.SymbolAssetPath))
+            return Result.Fail($"{manifest.Name} has an invalid /Game/... symbol material path.");
 
         var packageFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var bySource = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -268,6 +274,10 @@ public sealed class HammerLibraryService
         if (!packageFiles.Contains(manifest.MeshAssetPath + ".uasset")) return Result.Fail($"{manifest.Name} does not include its mesh asset '{manifest.MeshAssetPath}'.");
         if (manifest.IconAssetPath is not null && !packageFiles.Contains(manifest.IconAssetPath + ".uasset"))
             return Result.Fail($"{manifest.Name} does not include its icon asset '{manifest.IconAssetPath}'.");
+        if (manifest.SilhouetteAssetPath is not null && !packageFiles.Contains(manifest.SilhouetteAssetPath + ".uasset"))
+            return Result.Fail($"{manifest.Name} does not include its silhouette material '{manifest.SilhouetteAssetPath}'.");
+        if (manifest.SymbolAssetPath is not null && !packageFiles.Contains(manifest.SymbolAssetPath + ".uasset"))
+            return Result.Fail($"{manifest.Name} does not include its symbol material '{manifest.SymbolAssetPath}'.");
         try
         {
             var meshSource = manifest.Assets.Single(asset => asset.PackagePath.Equals(manifest.MeshAssetPath, StringComparison.OrdinalIgnoreCase) && Path.GetExtension(asset.Source).Equals(".uasset", StringComparison.OrdinalIgnoreCase));
@@ -286,6 +296,10 @@ public sealed class HammerLibraryService
                     iconAsset.Imports[-export.ClassIndex.Index - 1].ObjectName.ToString().Equals("Texture2D", StringComparison.OrdinalIgnoreCase)))
                     return Result.Fail($"{manifest.Name}'s icon package contains no cooked Texture2D export.");
             }
+            if (manifest.SilhouetteAssetPath is not null && !PackageContainsMaterialInstance(root, manifest, manifest.SilhouetteAssetPath))
+                return Result.Fail($"{manifest.Name}'s silhouette package contains no cooked MaterialInstanceConstant export.");
+            if (manifest.SymbolAssetPath is not null && !PackageContainsMaterialInstance(root, manifest, manifest.SymbolAssetPath))
+                return Result.Fail($"{manifest.Name}'s symbol package contains no cooked MaterialInstanceConstant export.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or NotSupportedException or InvalidDataException or NullReferenceException)
         {
@@ -314,6 +328,16 @@ public sealed class HammerLibraryService
     {
         var paths = entries.SelectMany(entry => entry.Manifest.Assets.Select(asset => asset.PackagePath)).ToHashSet(StringComparer.OrdinalIgnoreCase);
         return manifest.Assets.Select(asset => asset.PackagePath).FirstOrDefault(paths.Contains);
+    }
+
+    private static bool PackageContainsMaterialInstance(string root, HammerManifest manifest, string packagePath)
+    {
+        var source = manifest.Assets.Single(asset => asset.PackagePath.Equals(packagePath, StringComparison.OrdinalIgnoreCase) &&
+            Path.GetExtension(asset.Source).Equals(".uasset", StringComparison.OrdinalIgnoreCase));
+        var asset = new UAsset(Path.Combine(root, source.Source.Replace('/', Path.DirectorySeparatorChar)), EngineVersion.VER_UE4_27);
+        return asset.Exports.Any(export => export.ClassIndex.Index < 0 &&
+            -export.ClassIndex.Index <= asset.Imports.Count &&
+            asset.Imports[-export.ClassIndex.Index - 1].ObjectName.ToString().Equals("MaterialInstanceConstant", StringComparison.OrdinalIgnoreCase));
     }
 
     private Dictionary<string, bool> ReadIndex()
