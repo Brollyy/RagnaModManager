@@ -9,7 +9,7 @@ These are original source assets for the UE 4.27 authoring guide. They are gener
 
 Run `python3 generate_source.py` to regenerate the files. Import the OBJ and images into UE 4.27, create the mesh/material/texture assets plus the `Silhouette` and `Symbol` Material Instances described in [the authoring guide](../../docs/custom-hammer-authoring-ue4-27.md), then cook for `WindowsNoEditor` on Windows. The Windows cook is required for game-compatible `PCD3D_SM5` material shaders.
 
-This folder currently contains **source art only**. A cooked runtime trial showed that the model and custom icon load in the changing room, but its surface material falls back to the checker/default material because Linux UE cooked Vulkan shaders and Ragnarock requires `PCD3D_SM5`. Therefore this is not a finished working hammer package. Produce the Windows UE 4.27 cook and verify the surface in game before treating it as complete.
+This folder currently contains **source art only**. A runtime trial confirmed that the model and custom icon load in the changing room and that both in-game `HammerMesh` components reference the Azure mesh during a song. Its surface material falls back to the checker/default material because the Linux UE cook produced Vulkan shaders and Ragnarock requires `PCD3D_SM5`. Configure the project Windows target for `PCD3D_SM5`, cook with Windows UE 4.27, then verify the surface in game before treating the package as complete.
 
 ## Runtime-verified library icon sources
 

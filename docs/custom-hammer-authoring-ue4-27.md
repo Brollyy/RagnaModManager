@@ -72,6 +72,16 @@ Use the editor to preview the mesh and UI materials and fix broken references be
 
 Unreal stores editor assets in source formats and converts them to platform-specific formats during cooking. Cook for `WindowsNoEditor`, which is the platform used by the installed PC game:
 
+Make sure the project targets the game's shader format. A project-level Windows target override can replace the engine default. In `Config/DefaultEngine.ini`, use:
+
+```ini
+[/Script/WindowsTargetPlatform.WindowsTargetSettings]
+!TargetedRHIs=ClearArray
++TargetedRHIs=PCD3D_SM5
+```
+
+Do not set the Windows target to `SF_VULKAN_SM5`; that is the Linux shader format. A WindowsNoEditor cook made by the Linux editor can still contain Vulkan shader maps if the project overrides `TargetedRHIs`, and Ragnarock will fall back to its default checker material.
+
 ```text
 UE4Editor-Cmd.exe <ProjectPath>/<ProjectName>.uproject -run=cook -targetplatform=WindowsNoEditor -cookall
 ```
@@ -131,7 +141,7 @@ RMM validates cooked Static Mesh, Texture2D, and Material Instance exports, copi
 
 Stock build evidence used for this guide: UE 4.27 metadata; `DT_Hammers` row fields `Title`, `Description`, `Icon`, `EntitlementId`, and `Data`; `DA_SummerHammer` fields `Mesh`, `Silhouette`, and `Symbol`; `Default__DA_Hammers_C.DrumHitSound` references the shared FMOD event `DrumHit`.
 
-The Azure Blockhead source model and textures in this repository were imported and packaged for a runtime check. Its icon and mesh load in the changing room, but its custom material does not render correctly: the Linux-cooked asset has no `PCD3D_SM5` shader map, so Ragnarock logs that it is using the default material. A trial reassignment to stock game material instances did not resolve the checker rendering. Treat this sample as source art, not as a finished working hammer package, until it has been cooked with Windows UE 4.27 and rechecked in game. Stock material assets cannot be inspected from the encrypted game PAK in this environment.
+The Azure Blockhead source model and textures in this repository were imported and packaged for a runtime check. Its distinct icon, mesh preview, and gameplay hammer mesh load. A read-only UE4SS probe confirmed both gameplay `HammerMesh` components reference `/Game/RMM/Hammers/azure-blockhead-verified/Mesh/SM_AzureBlockhead`. Its surface still renders as a checker because the Linux cook produced no `PCD3D_SM5` shader map; Ragnarock logs that it falls back to the default material. A trial reassignment to stock game material instances after cooking did not resolve the checker rendering. Treat this sample as source art and a runtime-tested mesh, not as a finished working hammer package, until a Windows UE 4.27 cook targets `PCD3D_SM5` and the surface is rechecked in game. Stock material assets cannot be inspected from the encrypted game PAK in this environment.
 
 ## UE 4.27 references
 
