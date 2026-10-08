@@ -35,6 +35,8 @@ def main():
     args = parser.parse_args()
 
     content_root = args.content_dir.resolve()
+    if not any(part.lower() == "windowsnoeditor" for part in content_root.parts):
+        parser.error("Expected a WindowsNoEditor cook directory; refusing to package other targets")
     package_root = (content_root / CONTENT_PACKAGE_ROOT).resolve()
     try:
         package_root.relative_to(content_root)
