@@ -20,7 +20,7 @@ The installed `DT_Hammers` DataTable row has these fields:
 
 The game hammer data asset is an instance of the shared `DA_Hammers_C` class. Its inspected fields are `Mesh`, `Silhouette`, and `Symbol`; the stock `DA_SummerHammer` references a Static Mesh and two Material Instances for these fields. The common class default object also supplies `DrumHitSound`, an FMOD `DrumHit` event. RMM preserves this class and its default when it generates each hammer data asset, so creators do not need to add a combo counter or a new sound class.
 
-The combo meter itself is gameplay logic driven by drum hit input and timing. There is no combo-meter field in `DT_Hammers` or the custom hammer data asset schema inspected for this game build. A package should keep the `DA_Hammers_C` parent, provide a valid mesh, and leave `EntitlementId` empty. `DrumHitSound` is the shared hit sound, not the combo counter. A custom hit sound is outside the current RMM package format.
+There is no combo-meter field in `DT_Hammers` or the custom hammer data asset schema inspected for this game build. The extracted `BP_HammerSelector` contains the `Silhouette` and `Symbol` references, while the shared hammer class default supplies `DrumHitSound`; none of these is a custom combo-counter asset. A package should keep the `DA_Hammers_C` parent, provide a valid mesh, and leave `EntitlementId` empty. The game should continue to use its normal combo logic when hits register; confirm this by playing a song with the custom hammer equipped. `DrumHitSound` is the shared hit sound, not the combo counter. A custom hit sound is outside the current RMM package format.
 
 For complete custom presentation, include all four kinds of assets:
 
@@ -41,7 +41,7 @@ Before export:
 - Triangulate the mesh and check face normals.
 - Create a non-overlapping UV set for the surface textures. Add a second UV set only if the mesh needs baked lighting.
 - Assign stable material slot names and keep the number of slots small.
-- Use simple custom collision only if the model needs collision in a preview scene; hammer contact and combo timing are handled by gameplay input, not by the visible mesh collider.
+- Inspect the collision generated for the Static Mesh and keep it simple. The hammer Data Asset has no per-hammer collision field, so collision settings come from the mesh asset itself.
 - Export FBX 2018, which matches UE 4.27's FBX importer. Export only the intended mesh and material assignments.
 
 Create the texture art for the body and optional normal, roughness, metallic, or mask maps. Keep the icon art as a separate square PNG with a transparent or solid background and a strong silhouette at small size. Create separate silhouette/symbol art if those in-game material effects should differ from the surface material.

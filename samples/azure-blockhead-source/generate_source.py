@@ -53,6 +53,34 @@ def draw_icon(path: Path) -> None:
     image.save(path)
 
 
+def draw_silhouette(path: Path) -> None:
+    image = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    ink = (12, 24, 42, 255)
+    draw.polygon([(117, 104), (144, 108), (134, 233), (107, 230)], fill=ink)
+    draw.polygon([(99, 226), (141, 230), (133, 247), (95, 244)], fill=ink)
+    draw.polygon([(45, 47), (87, 22), (207, 42), (166, 68)], fill=ink)
+    draw.polygon([(45, 47), (166, 68), (166, 145), (45, 121)], fill=ink)
+    draw.polygon([(166, 68), (207, 42), (207, 120), (166, 145)], fill=ink)
+    image.save(path)
+
+
+def draw_symbol(path: Path) -> None:
+    image = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(image)
+    outline = (15, 33, 57, 255)
+    cyan = (32, 188, 210, 255)
+    gold = (248, 179, 43, 255)
+    gold_light = (255, 222, 112, 255)
+    draw.polygon([(128, 22), (215, 72), (215, 177), (128, 229), (41, 177), (41, 72)], fill=cyan, outline=outline, width=8)
+    draw.polygon([(128, 42), (195, 80), (128, 119), (61, 80)], fill=(110, 232, 235, 255), outline=outline, width=5)
+    draw.polygon([(61, 92), (120, 126), (120, 196), (61, 161)], fill=(17, 116, 166, 255), outline=outline, width=5)
+    draw.polygon([(136, 126), (195, 92), (195, 161), (136, 196)], fill=(13, 92, 151, 255), outline=outline, width=5)
+    draw.polygon([(119, 92), (137, 92), (137, 122), (159, 114), (167, 131), (137, 143), (137, 173), (119, 173)], fill=gold_light, outline=outline, width=4)
+    draw.polygon([(99, 132), (120, 139), (120, 158), (99, 151)], fill=gold, outline=outline, width=3)
+    image.save(path)
+
+
 def prism_obj() -> str:
     vertices: list[tuple[float, float, float]] = []
     uvs: list[tuple[float, float]] = []
@@ -132,6 +160,8 @@ def prism_obj() -> str:
 
 write_base_color(SOURCE / "T_RMM_AzureBlockhead_BaseColor.png")
 draw_icon(SOURCE / "T_RMM_AzureBlockhead_Icon.png")
+draw_silhouette(SOURCE / "T_RMM_AzureBlockhead_Silhouette.png")
+draw_symbol(SOURCE / "T_RMM_AzureBlockhead_Symbol.png")
 (SOURCE / "SM_RMM_AzureBlockhead.obj").write_text(prism_obj(), encoding="utf-8")
 (SOURCE / "T_RMM_AzureBlockhead.mtl").write_text(
     """newmtl HammerCyan
