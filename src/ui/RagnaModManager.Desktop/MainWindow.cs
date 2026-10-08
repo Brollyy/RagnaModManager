@@ -276,7 +276,7 @@ public partial class MainWindow : Window
             row.ToggleEnabled = new RelayCommand(() =>
             {
                 var result = _hammerLibrary.SetEnabled(row.Id, row.Enabled);
-                SetStatus(result.Success ? $"{row.Name} { (row.Enabled ? "enabled" : "disabled") } in the hammer library." : result.Error ?? "Could not update hammer.", !result.Success);
+                SetStatus(result.Success ? $"{row.Name} {(row.Enabled ? "enabled" : "disabled")} in the hammer library." : result.Error ?? "Could not update hammer.", !result.Success);
                 ShowDashboard(5);
             });
             row.Remove = new AsyncRelayCommand(async () =>

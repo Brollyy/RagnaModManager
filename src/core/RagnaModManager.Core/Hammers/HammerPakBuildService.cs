@@ -280,9 +280,9 @@ public sealed class HammerPakBuildService
             throw new InvalidDataException("The generated PAK is missing a DT_Hammers cooked file.");
         foreach (var hammer in hammers)
         {
-        foreach (var file in hammer.Manifest.Assets)
-            if (!files.Contains(ToPakPath(file.PackagePath, Path.GetExtension(file.Source))))
-                throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s {file.Source}.");
+            foreach (var file in hammer.Manifest.Assets)
+                if (!files.Contains(ToPakPath(file.PackagePath, Path.GetExtension(file.Source))))
+                    throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s {file.Source}.");
             if (!files.Contains(ToPakPath(hammer.Manifest.DataAssetPath, ".uasset")) ||
                 !files.Contains(ToPakPath(hammer.Manifest.DataAssetPath, ".uexp")))
                 throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s generated hammer data.");
