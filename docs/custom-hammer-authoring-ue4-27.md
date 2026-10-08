@@ -135,6 +135,8 @@ Create `hammer.json` at the archive root. RMM derives the DataTable row name and
 
 The example omits sidecar entries for brevity. Add an `assets` entry for every cooked sidecar and every transitive custom dependency, using the same `packagePath` as its `.uasset`. ZIP `hammer.json`, the assets, and optional preview into a `.zip`, then rename it to `.rhammer`.
 
+For the Azure Blockhead sample, after a successful cook, run `python build_rhammer.py <Project>/Saved/Sandboxes/Cooked/WindowsNoEditor/RMMAzureBlockhead/Content --output azure-blockhead-verified.rhammer` from `samples/azure-blockhead-source/UEProject/Scripts/`. The script scans only the sample's unique `/Game/RMM/Hammers/azure-blockhead-verified` folder, includes `.uasset` and any `.uexp`, `.ubulk`, or `.uptnl` sidecars, maps those files into the manifest, and stops if any of the four manifest references is absent from the cook.
+
 ## 5. Import and verify in RMM and Ragnarock
 
 1. Import the `.rhammer` in RMM. Reject and fix any missing-file, invalid-class, duplicate-path, or invalid-reference error rather than omitting dependencies.
