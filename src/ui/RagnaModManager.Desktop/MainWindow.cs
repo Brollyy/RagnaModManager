@@ -13,6 +13,7 @@ using RagnaModManager.Core.Checksums;
 using RagnaModManager.Core.Compatibility;
 using RagnaModManager.Core.Database;
 using RagnaModManager.Core.Deployment;
+using RagnaModManager.Core.Hammers;
 using RagnaModManager.Core.Logging;
 using RagnaModManager.Core.Manifests;
 using RagnaModManager.Core.Packages;
@@ -40,6 +41,7 @@ public partial class MainWindow : Window
     private readonly Ue4ssService _ue4ss = new();
     private readonly Ue4ssReleaseService _ue4ssReleases;
     private readonly OfficialCatalogService _officialCatalog;
+    private HammerLibraryService _hammerLibrary = null!;
     private readonly FolderOpener _folderOpener = new();
     private readonly SteamLaunchOptionsService _steamLaunchOptions = new();
 
@@ -77,6 +79,7 @@ public partial class MainWindow : Window
         _paths = string.IsNullOrWhiteSpace(root) ? AppPaths.CreateDefault() : AppPaths.Create(root);
         _logger = new AppLogger(_paths.Logs);
         _database = new ManagerDatabase(_paths);
+        _hammerLibrary = new HammerLibraryService(_paths);
         _ue4ssReleases = new Ue4ssReleaseService(_paths, ue4ss: _ue4ss);
         _officialCatalog = new OfficialCatalogService(_paths, _database, _logger);
 
@@ -233,8 +236,161 @@ public partial class MainWindow : Window
         PopulateDiscoverModel(mods);
         PopulateProfilesModel(active);
         PopulateSettingsModel(game, planResult);
+        PopulateHammerLibraryModel(game);
 
         _viewModel.RefreshPages();
+    }
+
+    private void PopulateHammerLibraryModel(GameRecord? game)
+    {
+        var model = _viewModel.Hammers;
+        var keySourcePath = File.Exists(_paths.HammerKeySourcePath) ? File.ReadAllText(_paths.HammerKeySourcePath).Trim() : null;
+        var status = _hammerLibrary.GetStatus(game?.InstallPath, keySourcePath);
+        model.GameBuild = status.GameBuild;
+        model.BuildStatus = status.BuildStatus;
+        var hasEnabledHammers = status.Hammers.Any(entry => entry.Enabled);
+        var generatedProfileMod = _database.GetProfileMods(_database.GetActiveProfile().Id)
+            .FirstOrDefault(mod => mod.ModId.Equals("rmm-custom-hammers", StringComparison.OrdinalIgnoreCase));
+        var canRemoveGeneratedPak = generatedProfileMod?.Enabled == true;
+        model.BuildLabel = hasEnabledHammers ? "Build and deploy PAK" : "Remove deployed hammer PAK";
+        model.CanBuild = hasEnabledHammers
+            ? game is not null && !string.IsNullOrWhiteSpace(keySourcePath) && File.Exists(keySourcePath) && status.GamePakPath is not null && File.Exists(status.GamePakPath)
+            : canRemoveGeneratedPak;
+        model.CountLabel = status.Hammers.Count == 1 ? "1 hammer in library" : $"{status.Hammers.Count} hammers in library";
+        model.Items.Clear();
+        foreach (var entry in status.Hammers)
+        {
+            var row = new HammerLibraryRowViewModel
+            {
+                Id = entry.Manifest.Id,
+                Name = entry.Manifest.Name,
+                Author = entry.Manifest.Author,
+                Version = entry.Manifest.Version,
+                Description = entry.Manifest.Description,
+                RowName = entry.Manifest.RowName,
+                MeshAssetPath = entry.Manifest.MeshAssetPath,
+                Enabled = entry.Enabled
+            };
+            row.ToggleEnabled = new RelayCommand(() =>
+            {
+                var result = _hammerLibrary.SetEnabled(row.Id, row.Enabled);
+                SetStatus(result.Success ? $"{row.Name} { (row.Enabled ? "enabled" : "disabled") } in the hammer library." : result.Error ?? "Could not update hammer.", !result.Success);
+                ShowDashboard(5);
+            });
+            row.Remove = new AsyncRelayCommand(async () =>
+            {
+                if (!await Confirm("Remove custom hammer", $"Remove {row.Name} from the hammer library?", "Remove hammer", destructive: true)) return;
+                var result = _hammerLibrary.Remove(row.Id);
+                SetStatus(result.Success ? $"Removed {row.Name} from the hammer library." : result.Error ?? "Could not remove hammer.", !result.Success);
+                ShowDashboard(5);
+            });
+            model.Items.Add(row);
+        }
+        model.Import = new AsyncRelayCommand(ImportHammerPackage);
+        model.ChooseKeyFile = new AsyncRelayCommand(ChooseHammerKeyFile);
+        model.OpenFolder = new RelayCommand(() => OpenFolder(_paths.HammerLibrary));
+        model.Build = new AsyncRelayCommand(BuildAndDeployHammers, () => model.CanBuild);
+        model.RefreshState();
+    }
+
+    private async Task ChooseHammerKeyFile()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Choose local AES key candidate file",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("Text files") { Patterns = ["*.txt", "*.ini", "*.log"] }, FilePickerFileTypes.All]
+        });
+        if (files.Count == 0) return;
+        File.WriteAllText(_paths.HammerKeySourcePath, files[0].Path.LocalPath);
+        SetStatus("Saved the local key file path. Key candidates are only read while opening the installed game PAK.");
+        ShowDashboard(5);
+    }
+
+    private async Task BuildAndDeployHammers()
+    {
+        var enabled = _hammerLibrary.GetEntries().Where(entry => entry.Enabled).ToList();
+        if (enabled.Count == 0)
+        {
+            var removeGame = _database.GetGame();
+            if (removeGame is null) { SetStatus("Choose your Ragnarock folder first.", error: true); return; }
+            var removeProfile = _database.GetActiveProfile();
+            var installedHammerMod = _database.GetProfileMods(removeProfile.Id).FirstOrDefault(mod => mod.ModId.Equals("rmm-custom-hammers", StringComparison.OrdinalIgnoreCase));
+            if (installedHammerMod?.Enabled != true) { SetStatus("There are no enabled custom hammers or deployed hammer PAK to remove."); return; }
+            _database.SetProfileMod(removeProfile.Id, installedHammerMod.ModId, false, installedHammerMod.Priority, installedHammerMod.Version);
+            _changesPending = true;
+            SetStatus("Removing the generated hammer PAK and restoring any files it replaced.");
+            DeployActiveProfile();
+            return;
+        }
+        var game = _database.GetGame();
+        if (game is null) { SetStatus("Choose your Ragnarock folder first.", error: true); return; }
+        var keyFile = File.Exists(_paths.HammerKeySourcePath) ? File.ReadAllText(_paths.HammerKeySourcePath).Trim() : "";
+        var outputDirectory = Path.Combine(_paths.Downloads, "custom-hammers");
+        Directory.CreateDirectory(outputDirectory);
+        var pakPath = Path.Combine(outputDirectory, "RMM_CustomHammers_P.pak");
+        SetStatus("Merging enabled hammers with the installed game table and verifying the PAK...");
+        var build = await Task.Run(() => new HammerPakBuildService().Build(game.InstallPath, enabled, keyFile, pakPath));
+        if (!build.Success || build.Value is null)
+        {
+            SetStatus(build.Error ?? "Custom hammer PAK build failed.", error: true);
+            return;
+        }
+
+        var packageVersion = "1.0.0-" + build.Value.Sha256[..12].ToLowerInvariant();
+        var packageId = "rmm-custom-hammers";
+        var packagePath = Path.Combine(outputDirectory, packageId + "-" + packageVersion + ".rmod");
+        var packageManifest = new ModManifest
+        {
+            SchemaVersion = 1,
+            Id = packageId,
+            Name = "RMM Custom Hammers",
+            Version = packageVersion,
+            Author = "RagnaModManager",
+            Game = "ragnarock",
+            Description = $"Merged {build.Value.AddedRowCount} custom hammers for game build {build.Value.GamePakSha256[..12]}.",
+            Affects = ["gameplay"],
+            Files = [new ManifestFile { Type = "pak", Source = "Files/RMM_CustomHammers_P.pak", LoadOrder = 500 }]
+        };
+        await using (var packageStream = File.Create(packagePath))
+        using (var archive = new System.IO.Compression.ZipArchive(packageStream, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            var manifestEntry = archive.CreateEntry("manifest.json");
+            await using (var output = manifestEntry.Open())
+                await System.Text.Json.JsonSerializer.SerializeAsync(output, packageManifest, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            var pakEntry = archive.CreateEntry("Files/RMM_CustomHammers_P.pak", System.IO.Compression.CompressionLevel.NoCompression);
+            await using var pakOutput = pakEntry.Open();
+            await using var pakInput = File.OpenRead(pakPath);
+            await pakInput.CopyToAsync(pakOutput);
+        }
+
+        var imported = new PackageImporter(_paths, _database, _logger).Import(packagePath);
+        if (!imported.Success || imported.Value is null)
+        {
+            SetStatus(imported.Error ?? "Could not register the generated hammer PAK.", error: true);
+            return;
+        }
+        var active = _database.GetActiveProfile();
+        var existing = _database.GetProfileMods(active.Id).FirstOrDefault(mod => mod.ModId.Equals(packageId, StringComparison.OrdinalIgnoreCase));
+        _database.SetProfileMod(active.Id, packageId, true, existing?.Priority ?? 500, packageVersion);
+        _changesPending = true;
+        ShowDashboard(5);
+        SetStatus($"Built and registered {build.Value.AddedRowCount} custom hammers. Applying the profile to Ragnarock now.");
+        DeployActiveProfile();
+    }
+
+    private async Task ImportHammerPackage()
+    {
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "Import custom hammer package",
+            AllowMultiple = false,
+            FileTypeFilter = [new FilePickerFileType("RMM hammer packages") { Patterns = ["*.rhammer"] }]
+        });
+        if (files.Count == 0) return;
+        var result = _hammerLibrary.Import(files[0].Path.LocalPath);
+        SetStatus(result.Success ? $"Added {result.Value!.Manifest.Name} to the hammer library." : result.Error ?? "Hammer import failed.", !result.Success);
+        ShowDashboard(5);
     }
 
     private void PopulateDashboardModel(GameRecord? game, ProfileRecord active, IReadOnlyList<ModRecord> mods, Core.Common.Result<DeploymentPlan>? planResult)
