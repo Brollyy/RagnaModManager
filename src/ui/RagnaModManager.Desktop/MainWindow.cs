@@ -354,18 +354,23 @@ public partial class MainWindow : Window
         var packageDirectory = Path.Combine(outputDirectory, packageVersion);
         Directory.CreateDirectory(packageDirectory);
         var packagePath = Path.Combine(packageDirectory, packageId + "-" + packageVersion + ".rmod");
-        var packageManifest = new ModManifest
+        ModManifest packageManifest;
+        try
         {
-            SchemaVersion = 1,
-            Id = packageId,
-            Name = "RMM Custom Hammers",
-            Version = packageVersion,
-            Author = "RagnaModManager",
-            Game = "ragnarock",
-            Description = $"Merged {build.Value.AddedRowCount} custom hammers for game build {build.Value.GamePakSha256[..12]}.",
-            Affects = ["gameplay"],
-            Files = [new ManifestFile { Type = "pak", Source = "Files/RMM_CustomHammers_P.pak", LoadOrder = 500 }]
-        };
+            var templatePath = Path.Combine(AppContext.BaseDirectory, "ManagedMods", packageId, "manifest.json");
+            packageManifest = JsonSerializer.Deserialize<ModManifest>(
+                await File.ReadAllTextAsync(templatePath),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? throw new InvalidDataException("Managed hammer package manifest is empty.");
+            packageManifest.Version = packageVersion;
+            packageManifest.Description = $"Contains {build.Value.AddedRowCount} custom hammers for game build {build.Value.GamePakSha256[..12]}.";
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidDataException)
+        {
+            _logger.Error($"Could not load the custom hammer package manifest from ManagedMods: {ex}");
+            SetStatus("RMM couldn't prepare the hammer package. Check the log for details.", error: true);
+            return;
+        }
         await using (var packageStream = File.Create(packagePath))
         using (var archive = new System.IO.Compression.ZipArchive(packageStream, System.IO.Compression.ZipArchiveMode.Create))
         {
