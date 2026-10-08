@@ -4,16 +4,9 @@ RMM downloads one metadata archive for the exact SHA-256 of the installed `Ragna
 
 ## Preparing metadata
 
-Maintainers prepare metadata with the private [RMM Hammer Metadata Tool](https://github.com/Brollyy/RMM-HammerMetadataTool) repository. Clone it locally and run its console application as shown below. The local key candidate list is read only by this maintainer tool and is never copied to the archive or RMM logs. Player machines do not need access to the private repository or this tool:
+For each supported game build, maintainers prepare an archive containing the build's cooked `DT_Hammers` table, a stock hammer data asset template, and the associated metadata. Keep the game PAK and local key candidate files out of this repository. The archive and RMM logs must not contain key material.
 
-```sh
-dotnet run --project /path/to/RMM-HammerMetadataTool/HammerMetadataTool.csproj -- \
-  /path/to/Ragnarock/Ragnarock/Content/Paks/Ragnarock-WindowsNoEditor.pak \
-  /path/to/local-key-candidates.txt \
-  /tmp/ragnarock-hammer-metadata.zip
-```
-
-The tool prints the full game PAK SHA-256 and metadata archive SHA-256. Add the archive under `builds/<lowercase-game-pak-sha256>.zip` and add a matching `builds` entry in `index.json`. RMM fetches the committed archive from the repository's raw HTTPS URL:
+Add the reviewed archive under `builds/<lowercase-game-pak-sha256>.zip` and add a matching `builds` entry in `index.json`. RMM fetches the committed archive from the repository's raw HTTPS URL:
 
 ```json
 {
