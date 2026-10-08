@@ -46,7 +46,13 @@ Before export:
 
 Create the texture art for the body and optional normal, roughness, metallic, or mask maps. Keep the icon art as a separate square PNG with a transparent or solid background and a strong silhouette at small size. Create separate silhouette/symbol art if those in-game material effects should differ from the surface material.
 
-The Azure Blockhead UE project includes `Scripts/create_hammer_materials.py`, which imports its authored silhouette and symbol PNGs as `Texture2D` assets and creates a translucent unlit parent Material with one `MaterialInstanceConstant` per image. Run it in UE 4.27 with the Python Script Plugin enabled. The resulting paths are `UI/MI_AzureBlockhead_Silhouette` and `UI/MI_AzureBlockhead_Symbol`. For a different hammer, adapt the texture names and asset names in that script. These are starter material graphs; preview the instances in the game context and adjust them if Ragnarock's selector expects a different visual treatment.
+The Azure Blockhead UE project includes `Scripts/create_hammer_materials.py`, which imports its authored silhouette and symbol PNGs as `Texture2D` assets and creates a translucent unlit parent Material with one `MaterialInstanceConstant` per image. Run it in UE 4.27 with the Python Script Plugin enabled:
+
+```text
+UE4Editor-Cmd.exe <ProjectPath>/RMMAzureBlockhead.uproject -run=pythonscript -script=<ProjectPath>/Scripts/create_hammer_materials.py -unattended -nop4 -nullrhi
+```
+
+The resulting paths are `UI/MI_AzureBlockhead_Silhouette` and `UI/MI_AzureBlockhead_Symbol`. For a different hammer, adapt the texture names and asset names in that script. These are starter material graphs; preview the instances in the game context and adjust them if Ragnarock's selector expects a different visual treatment.
 
 ## 2. Import and author assets in UE 4.27
 

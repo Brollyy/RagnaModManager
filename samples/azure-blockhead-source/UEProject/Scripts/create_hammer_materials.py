@@ -27,7 +27,11 @@ def import_texture(filename, asset_name):
 
 def create_material(name):
     path = UI_FOLDER + "/" + name
-    material = unreal.EditorAssetLibrary.load_asset(path)
+    material = (
+        unreal.EditorAssetLibrary.load_asset(path)
+        if unreal.EditorAssetLibrary.does_asset_exist(path)
+        else None
+    )
     if not material:
         material = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
             name, UI_FOLDER, unreal.Material, unreal.MaterialFactoryNew()
@@ -56,7 +60,11 @@ def create_material(name):
 
 def create_instance(name, parent, texture):
     path = UI_FOLDER + "/" + name
-    instance = unreal.EditorAssetLibrary.load_asset(path)
+    instance = (
+        unreal.EditorAssetLibrary.load_asset(path)
+        if unreal.EditorAssetLibrary.does_asset_exist(path)
+        else None
+    )
     if not instance:
         instance = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
             name,
