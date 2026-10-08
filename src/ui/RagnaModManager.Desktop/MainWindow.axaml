@@ -14,6 +14,7 @@
     <DataTemplate x:DataType="local:ModsPageViewModel"><local:ModsView /></DataTemplate>
     <DataTemplate x:DataType="local:ProfilesPageViewModel"><local:ProfilesView /></DataTemplate>
     <DataTemplate x:DataType="local:HammerLibraryPageViewModel"><local:HammerLibraryView /></DataTemplate>
+    <DataTemplate x:DataType="local:MainWindowViewModel"><local:AssetsView /></DataTemplate>
     <DataTemplate x:DataType="local:SettingsPageViewModel"><local:SettingsView /></DataTemplate>
   </Window.DataTemplates>
   <Window.Styles>
@@ -89,7 +90,7 @@
       <TabItem Header="MODS"><ContentControl Content="{Binding Mods}" /></TabItem>
       <TabItem Header="SETUPS"><ContentControl Content="{Binding Profiles}" /></TabItem>
       <TabItem Header="SETTINGS"><ContentControl Content="{Binding Settings}" /></TabItem>
-      <TabItem Header="HAMMERS"><ContentControl Content="{Binding Hammers}" /></TabItem>
+      <TabItem Header="ASSETS"><ContentControl Content="{Binding}" /></TabItem>
     </TabControl>
   </DockPanel>
 </Window>

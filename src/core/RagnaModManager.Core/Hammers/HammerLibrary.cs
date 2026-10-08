@@ -2,6 +2,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text.Json;
 using RagnaModManager.Core.Common;
+using RagnaModManager.Core.Logging;
 using RagnaModManager.Core.Platform;
 using UAssetAPI;
 using UAssetAPI.UnrealTypes;
@@ -20,8 +21,8 @@ public sealed class HammerManifest
     public string DisplayName { get; set; } = "";
     public string MeshAssetPath { get; set; } = "";
     public string DataAssetPath { get; set; } = "";
+    public string? Thumbnail { get; set; }
     public List<HammerPackageFile> Assets { get; set; } = [];
-    public string? RowData { get; set; }
 }
 
 public sealed class HammerPackageFile
@@ -45,12 +46,17 @@ public sealed class HammerLibraryService
     };
 
     private readonly AppPaths _paths;
+    private readonly AppLogger _logger;
     private string? _cachedPakPath;
     private long _cachedPakLength = -1;
     private long _cachedPakWriteTicks = -1;
     private string? _cachedGameBuild;
 
-    public HammerLibraryService(AppPaths paths) => _paths = paths;
+    public HammerLibraryService(AppPaths paths, AppLogger logger)
+    {
+        _paths = paths;
+        _logger = logger;
+    }
 
     public IReadOnlyList<HammerLibraryEntry> GetEntries()
     {
@@ -64,10 +70,19 @@ public sealed class HammerLibraryService
             try
             {
                 var manifest = JsonSerializer.Deserialize<HammerManifest>(File.ReadAllText(manifestPath), JsonOptions);
-                if (manifest is not null && ValidateManifest(manifest, directory).Success)
-                    entries.Add(new HammerLibraryEntry(manifest, directory, enabled.GetValueOrDefault(manifest.Id, true)));
+                if (manifest is not null)
+                {
+                    var validation = ValidateManifest(manifest, directory);
+                    if (validation.Success)
+                        entries.Add(new HammerLibraryEntry(manifest, directory, enabled.GetValueOrDefault(manifest.Id, true)));
+                    else
+                        _logger.Error($"Ignored invalid hammer package at '{directory}': {validation.Error}");
+                }
             }
-            catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException) { }
+            catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException)
+            {
+                _logger.Error($"Could not read hammer package at '{directory}': {ex}");
+            }
         }
         return entries;
     }
@@ -116,12 +131,31 @@ public sealed class HammerLibraryService
             WriteIndex(index);
             return Result<HammerLibraryEntry>.Ok(new HammerLibraryEntry(manifest, installedPath, true));
         }
-        catch (InvalidDataException ex) { return Result<HammerLibraryEntry>.Fail($"This is not a valid hammer package: {ex.Message}"); }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
-        { return Result<HammerLibraryEntry>.Fail($"Could not import hammer package: {ex.Message}"); }
+        catch (InvalidDataException ex)
+        {
+            _logger.Error($"Invalid hammer archive '{archivePath}': {ex}");
+            return Result<HammerLibraryEntry>.Fail("This file isn't a valid hammer package.");
+        }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or NotSupportedException)
+        {
+            _logger.Error($"Could not import hammer archive '{archivePath}': {ex}");
+            return Result<HammerLibraryEntry>.Fail("RMM couldn't add this hammer package. Check that the file is complete and try again.");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"Unexpected hammer import failure for '{archivePath}': {ex}");
+            return Result<HammerLibraryEntry>.Fail("RMM couldn't add this hammer package. Check the log for details.");
+        }
         finally
         {
-            if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+            try
+            {
+                if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.Error($"Could not clean up hammer import staging directory '{staging}': {ex}");
+            }
         }
     }
 
@@ -131,26 +165,42 @@ public sealed class HammerLibraryService
         if (entry is null) return Result.Fail($"Hammer '{id}' is not installed.");
         var index = ReadIndex();
         index[id] = enabled;
-        WriteIndex(index);
-        return Result.Ok();
+        try
+        {
+            WriteIndex(index);
+            return Result.Ok();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.Error($"Could not update the enabled state for '{id}': {ex}");
+            return Result.Fail("RMM couldn't update this hammer. Check the library folder permissions.");
+        }
     }
 
     public Result Remove(string id)
     {
         var entry = GetEntries().FirstOrDefault(item => item.Manifest.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
         if (entry is null) return Result.Fail($"Hammer '{id}' is not installed.");
-        Directory.Delete(entry.InstalledPath, recursive: true);
-        var index = ReadIndex();
-        index.Remove(id);
-        WriteIndex(index);
-        return Result.Ok();
+        try
+        {
+            Directory.Delete(entry.InstalledPath, recursive: true);
+            var index = ReadIndex();
+            index.Remove(id);
+            WriteIndex(index);
+            return Result.Ok();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.Error($"Could not remove hammer '{id}': {ex}");
+            return Result.Fail("RMM couldn't remove this hammer. Check the library folder permissions.");
+        }
     }
 
     public static string GetStableRowName(string id) => "RMM_" + id.Replace('-', '_').ToUpperInvariant();
 
     public static string GetDataAssetPath(string id) => "/Game/Data/Hammers/DA_" + GetStableRowName(id);
 
-    public HammerLibraryStatus GetStatus(string? gameRoot, string? keySourcePath)
+    public HammerLibraryStatus GetStatus(string? gameRoot)
     {
         if (string.IsNullOrWhiteSpace(gameRoot))
             return new HammerLibraryStatus(GetEntries(), "Game not configured", "Connect your Ragnarock folder to check hammer compatibility.", null);
@@ -167,18 +217,18 @@ public sealed class HammerLibraryService
             _cachedPakLength = pakInfo.Length;
             _cachedPakWriteTicks = pakInfo.LastWriteTimeUtc.Ticks;
         }
-        var hash = _cachedGameBuild!;
         var entries = GetEntries();
         var enabledCount = entries.Count(entry => entry.Enabled);
+        var metadataPath = Path.Combine(_paths.HammerMetadata, _cachedGameBuild!.ToLowerInvariant(), "metadata.json");
         var buildStatus = enabledCount == 0
-            ? "Enable at least one custom hammer to build the merged table."
-            : string.IsNullOrWhiteSpace(keySourcePath) || !File.Exists(keySourcePath)
-                ? "Choose a local AES key candidate file for the installed game PAK before building. The key stays on this device."
-                : $"Ready to merge {enabledCount} custom {(enabledCount == 1 ? "hammer" : "hammers")} with the installed DT_Hammers, retaining its current stock and DLC rows.";
-        return new HammerLibraryStatus(entries, hash[..12], buildStatus, pakPath);
+            ? "Enable at least one hammer to add it to Ragnarock."
+            : File.Exists(metadataPath)
+                ? "Matching game data is ready. RMM will check it again before building."
+                : "RMM will check for matching game data before building. New game updates may need a compatibility update first.";
+        return new HammerLibraryStatus(entries, "Ragnarock detected", buildStatus, pakPath);
     }
 
-    private static Result ValidateManifest(HammerManifest manifest, string root)
+    private Result ValidateManifest(HammerManifest manifest, string root)
     {
         if (manifest.FormatVersion != 1) return Result.Fail($"Unsupported hammer package format version {manifest.FormatVersion}.");
         if (!IsIdentifier(manifest.Id)) return Result.Fail("Package ID must contain only lowercase letters, digits, and hyphens, and be 60 characters or fewer.");
@@ -189,12 +239,11 @@ public sealed class HammerLibraryService
             return Result.Fail($"{manifest.Name} must use stable row name '{GetStableRowName(manifest.Id)}'.");
         if (!manifest.DataAssetPath.Equals(GetDataAssetPath(manifest.Id), StringComparison.Ordinal))
             return Result.Fail($"{manifest.Name} must place its hammer data asset at '{GetDataAssetPath(manifest.Id)}'.");
-        if (manifest.Assets is null || manifest.Assets.Count == 0) return Result.Fail($"{manifest.Name} contains no cooked assets.");
+        if (manifest.Assets is null || manifest.Assets.Count == 0) return Result.Fail($"{manifest.Name} contains no model files.");
         if (!IsGameAssetPath(manifest.MeshAssetPath) || !IsGameAssetPath(manifest.DataAssetPath))
             return Result.Fail($"{manifest.Name} must use valid /Game/... mesh and data asset paths.");
 
         var packageFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var packagePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var bySource = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var asset in manifest.Assets)
         {
@@ -207,7 +256,6 @@ public sealed class HammerLibraryService
                 return Result.Fail($"{manifest.Name} has an unsupported cooked asset file '{asset.Source}'.");
             if (!packageFiles.Add(asset.PackagePath + extension))
                 return Result.Fail($"{manifest.Name} includes more than one '{extension}' file for '{asset.PackagePath}'.");
-            packagePaths.Add(asset.PackagePath);
             var sourcePath = Path.GetFullPath(Path.Combine(root, asset.Source.Replace('/', Path.DirectorySeparatorChar)));
             var fullRoot = Path.GetFullPath(root) + Path.DirectorySeparatorChar;
             if (!sourcePath.StartsWith(fullRoot, StringComparison.Ordinal) || !File.Exists(sourcePath))
@@ -215,37 +263,34 @@ public sealed class HammerLibraryService
         }
 
         if (!packageFiles.Contains(manifest.MeshAssetPath + ".uasset")) return Result.Fail($"{manifest.Name} does not include its mesh asset '{manifest.MeshAssetPath}'.");
-        if (!packageFiles.Contains(manifest.DataAssetPath + ".uasset")) return Result.Fail($"{manifest.Name} does not include its hammer data asset '{manifest.DataAssetPath}'.");
         try
         {
             var meshSource = manifest.Assets.Single(asset => asset.PackagePath.Equals(manifest.MeshAssetPath, StringComparison.OrdinalIgnoreCase) && Path.GetExtension(asset.Source).Equals(".uasset", StringComparison.OrdinalIgnoreCase));
-            var dataSource = manifest.Assets.Single(asset => asset.PackagePath.Equals(manifest.DataAssetPath, StringComparison.OrdinalIgnoreCase) && Path.GetExtension(asset.Source).Equals(".uasset", StringComparison.OrdinalIgnoreCase));
             var meshAsset = new UAsset(Path.Combine(root, meshSource.Source.Replace('/', Path.DirectorySeparatorChar)), EngineVersion.VER_UE4_27);
             if (!meshAsset.Exports.Any(export => export.ClassIndex.Index < 0 &&
                 -export.ClassIndex.Index <= meshAsset.Imports.Count &&
                 meshAsset.Imports[-export.ClassIndex.Index - 1].ObjectName.ToString().Equals("StaticMesh", StringComparison.OrdinalIgnoreCase)))
                 return Result.Fail($"{manifest.Name}'s mesh package contains no cooked StaticMesh export.");
-            var dataAsset = new UAsset(Path.Combine(root, dataSource.Source.Replace('/', Path.DirectorySeparatorChar)), EngineVersion.VER_UE4_27);
-            if (!dataAsset.Imports.Any(import => import.ClassName.ToString().Equals("Package", StringComparison.OrdinalIgnoreCase) &&
-                                                import.ObjectName.ToString().Equals(manifest.MeshAssetPath, StringComparison.OrdinalIgnoreCase)))
-                return Result.Fail($"{manifest.Name}'s hammer data asset does not reference its declared mesh '{manifest.MeshAssetPath}'.");
-            if (!dataAsset.Exports.Any(export => export.ClassIndex.Index < 0 &&
-                -export.ClassIndex.Index <= dataAsset.Imports.Count &&
-                dataAsset.Imports[-export.ClassIndex.Index - 1].ObjectName.ToString().Equals("DA_Hammers_C", StringComparison.OrdinalIgnoreCase)))
-                return Result.Fail($"{manifest.Name}'s data asset does not use the game's DA_Hammers class.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or NotSupportedException or InvalidDataException or NullReferenceException)
         {
+            _logger.Error($"Could not validate cooked model data for '{manifest.Name}': {ex}");
             return Result.Fail($"{manifest.Name}'s cooked assets could not be read as UE4.27 packages: {ex.Message}");
         }
-        if (string.IsNullOrWhiteSpace(manifest.DisplayName)) return Result.Fail($"{manifest.Name} is missing its in-game display name.");
-        if (manifest.RowData is not null)
+        catch (Exception ex)
         {
-            if (!IsSafeRelativePath(manifest.RowData)) return Result.Fail($"{manifest.Name} has an unsafe row-data path.");
-            var rowPath = Path.GetFullPath(Path.Combine(root, manifest.RowData.Replace('/', Path.DirectorySeparatorChar)));
+            _logger.Error($"Unexpected model validation failure for '{manifest.Name}': {ex}");
+            return Result.Fail($"{manifest.Name}'s model data could not be checked.");
+        }
+        if (string.IsNullOrWhiteSpace(manifest.DisplayName)) return Result.Fail($"{manifest.Name} is missing its in-game display name.");
+        if (manifest.Thumbnail is not null)
+        {
+            if (!IsSafeRelativePath(manifest.Thumbnail) || Path.GetExtension(manifest.Thumbnail).ToLowerInvariant() is not ".png" and not ".jpg" and not ".jpeg" and not ".webp")
+                return Result.Fail($"{manifest.Name} has an invalid thumbnail. Use a PNG, JPG, or WebP image inside the package.");
+            var thumbnailPath = Path.GetFullPath(Path.Combine(root, manifest.Thumbnail.Replace('/', Path.DirectorySeparatorChar)));
             var fullRoot = Path.GetFullPath(root) + Path.DirectorySeparatorChar;
-            if (!rowPath.StartsWith(fullRoot, StringComparison.Ordinal) || !File.Exists(rowPath))
-                return Result.Fail($"{manifest.Name} is missing row data '{manifest.RowData}'.");
+            if (!thumbnailPath.StartsWith(fullRoot, StringComparison.Ordinal) || !File.Exists(thumbnailPath))
+                return Result.Fail($"{manifest.Name}'s preview image is missing.");
         }
         return Result.Ok();
     }
@@ -261,7 +306,11 @@ public sealed class HammerLibraryService
         var path = Path.Combine(_paths.HammerLibrary, IndexFileName);
         if (!File.Exists(path)) return new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
         try { return JsonSerializer.Deserialize<Dictionary<string, bool>>(File.ReadAllText(path)) ?? new(StringComparer.OrdinalIgnoreCase); }
-        catch (Exception ex) when (ex is IOException or JsonException) { return new(StringComparer.OrdinalIgnoreCase); }
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        {
+            _logger.Error($"Could not read hammer library settings: {ex}");
+            return new(StringComparer.OrdinalIgnoreCase);
+        }
     }
 
     private void WriteIndex(Dictionary<string, bool> index) => File.WriteAllText(

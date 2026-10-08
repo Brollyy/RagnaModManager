@@ -6,6 +6,7 @@ public sealed record AppPaths(
     string Downloads,
     string ModLibrary,
     string HammerLibrary,
+    string HammerMetadata,
     string Profiles,
     string Deployment,
     string Backups,
@@ -25,6 +26,7 @@ public sealed record AppPaths(
             Path.Combine(root, "downloads"),
             Path.Combine(root, "mod-library"),
             Path.Combine(root, "hammer-library"),
+            Path.Combine(root, "hammer-metadata"),
             Path.Combine(root, "profiles"),
             Path.Combine(root, "deployment"),
             Path.Combine(root, "deployment", "backups"),
@@ -34,9 +36,9 @@ public sealed record AppPaths(
     }
 
     public string CurrentDeploymentPath => Path.Combine(Deployment, "current.json");
+    public string ManagedMods => Path.Combine(Root, "ManagedMods");
     public string LaunchArgumentsPath => Path.Combine(Root, "launch-arguments.txt");
     public string LaunchModePath => Path.Combine(Root, "launch-mode.txt");
-    public string HammerKeySourcePath => Path.Combine(Root, "hammer-key-source.txt");
     public string CatalogLastCheckedPath => Path.Combine(Root, "official-registry-checked.txt");
     public string AppliedProfiles => Path.Combine(Root, "applied-profiles");
 
@@ -50,11 +52,13 @@ public sealed record AppPaths(
         Directory.CreateDirectory(Downloads);
         Directory.CreateDirectory(ModLibrary);
         Directory.CreateDirectory(HammerLibrary);
+        Directory.CreateDirectory(HammerMetadata);
         Directory.CreateDirectory(Profiles);
         Directory.CreateDirectory(Deployment);
         Directory.CreateDirectory(Backups);
         Directory.CreateDirectory(Logs);
         Directory.CreateDirectory(AppliedProfiles);
+        Directory.CreateDirectory(ManagedMods);
         Directory.CreateDirectory(Ue4ssDownloads);
     }
 

@@ -42,6 +42,7 @@ public partial class MainWindow : Window
     private readonly Ue4ssReleaseService _ue4ssReleases;
     private readonly OfficialCatalogService _officialCatalog;
     private HammerLibraryService _hammerLibrary = null!;
+    private HammerTableMetadataRegistry _hammerMetadataRegistry = null!;
     private readonly FolderOpener _folderOpener = new();
     private readonly SteamLaunchOptionsService _steamLaunchOptions = new();
 
@@ -79,7 +80,8 @@ public partial class MainWindow : Window
         _paths = string.IsNullOrWhiteSpace(root) ? AppPaths.CreateDefault() : AppPaths.Create(root);
         _logger = new AppLogger(_paths.Logs);
         _database = new ManagerDatabase(_paths);
-        _hammerLibrary = new HammerLibraryService(_paths);
+        _hammerLibrary = new HammerLibraryService(_paths, _logger);
+        _hammerMetadataRegistry = new HammerTableMetadataRegistry(_paths, _logger);
         _ue4ssReleases = new Ue4ssReleaseService(_paths, ue4ss: _ue4ss);
         _officialCatalog = new OfficialCatalogService(_paths, _database, _logger);
 
@@ -244,17 +246,16 @@ public partial class MainWindow : Window
     private void PopulateHammerLibraryModel(GameRecord? game)
     {
         var model = _viewModel.Hammers;
-        var keySourcePath = File.Exists(_paths.HammerKeySourcePath) ? File.ReadAllText(_paths.HammerKeySourcePath).Trim() : null;
-        var status = _hammerLibrary.GetStatus(game?.InstallPath, keySourcePath);
+        var status = _hammerLibrary.GetStatus(game?.InstallPath);
         model.GameBuild = status.GameBuild;
         model.BuildStatus = status.BuildStatus;
         var hasEnabledHammers = status.Hammers.Any(entry => entry.Enabled);
         var generatedProfileMod = _database.GetProfileMods(_database.GetActiveProfile().Id)
             .FirstOrDefault(mod => mod.ModId.Equals("rmm-custom-hammers", StringComparison.OrdinalIgnoreCase));
         var canRemoveGeneratedPak = generatedProfileMod?.Enabled == true;
-        model.BuildLabel = hasEnabledHammers ? "Build and deploy PAK" : "Remove deployed hammer PAK";
+        model.BuildLabel = hasEnabledHammers ? "Build and add to Ragnarock" : "Remove from Ragnarock";
         model.CanBuild = hasEnabledHammers
-            ? game is not null && !string.IsNullOrWhiteSpace(keySourcePath) && File.Exists(keySourcePath) && status.GamePakPath is not null && File.Exists(status.GamePakPath)
+            ? game is not null && status.GamePakPath is not null && File.Exists(status.GamePakPath)
             : canRemoveGeneratedPak;
         model.CountLabel = status.Hammers.Count == 1 ? "1 hammer in library" : $"{status.Hammers.Count} hammers in library";
         model.Items.Clear();
@@ -269,6 +270,7 @@ public partial class MainWindow : Window
                 Description = entry.Manifest.Description,
                 RowName = entry.Manifest.RowName,
                 MeshAssetPath = entry.Manifest.MeshAssetPath,
+                Thumbnail = LoadHammerThumbnail(entry),
                 Enabled = entry.Enabled
             };
             row.ToggleEnabled = new RelayCommand(() =>
@@ -287,24 +289,27 @@ public partial class MainWindow : Window
             model.Items.Add(row);
         }
         model.Import = new AsyncRelayCommand(ImportHammerPackage);
-        model.ChooseKeyFile = new AsyncRelayCommand(ChooseHammerKeyFile);
         model.OpenFolder = new RelayCommand(() => OpenFolder(_paths.HammerLibrary));
         model.Build = new AsyncRelayCommand(BuildAndDeployHammers, () => model.CanBuild);
         model.RefreshState();
     }
 
-    private async Task ChooseHammerKeyFile()
+    private Avalonia.Media.Imaging.Bitmap? LoadHammerThumbnail(HammerLibraryEntry entry)
     {
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        if (string.IsNullOrWhiteSpace(entry.Manifest.Thumbnail)) return null;
+        var path = Path.GetFullPath(Path.Combine(entry.InstalledPath, entry.Manifest.Thumbnail.Replace('/', Path.DirectorySeparatorChar)));
+        var root = Path.GetFullPath(entry.InstalledPath) + Path.DirectorySeparatorChar;
+        if (!path.StartsWith(root, StringComparison.Ordinal) || !File.Exists(path)) return null;
+        try
         {
-            Title = "Choose local AES key candidate file",
-            AllowMultiple = false,
-            FileTypeFilter = [new FilePickerFileType("Text files") { Patterns = ["*.txt", "*.ini", "*.log"] }, FilePickerFileTypes.All]
-        });
-        if (files.Count == 0) return;
-        File.WriteAllText(_paths.HammerKeySourcePath, files[0].Path.LocalPath);
-        SetStatus("Saved the local key file path. Key candidates are only read while opening the installed game PAK.");
-        ShowDashboard(5);
+            using var stream = File.OpenRead(path);
+            return new Avalonia.Media.Imaging.Bitmap(stream);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            _logger.Error($"Could not load preview image for {entry.Manifest.Name}: {ex}");
+            return null;
+        }
     }
 
     private async Task BuildAndDeployHammers()
@@ -325,12 +330,19 @@ public partial class MainWindow : Window
         }
         var game = _database.GetGame();
         if (game is null) { SetStatus("Choose your Ragnarock folder first.", error: true); return; }
-        var keyFile = File.Exists(_paths.HammerKeySourcePath) ? File.ReadAllText(_paths.HammerKeySourcePath).Trim() : "";
-        var outputDirectory = Path.Combine(_paths.Downloads, "custom-hammers");
+        var outputDirectory = Path.Combine(_paths.ManagedMods, "rmm-custom-hammers");
         Directory.CreateDirectory(outputDirectory);
         var pakPath = Path.Combine(outputDirectory, "RMM_CustomHammers_P.pak");
-        SetStatus("Merging enabled hammers with the installed game table and verifying the PAK...");
-        var build = await Task.Run(() => new HammerPakBuildService().Build(game.InstallPath, enabled, keyFile, pakPath));
+        var gamePakPath = Path.Combine(game.InstallPath, "Ragnarock", "Content", "Paks", "Ragnarock-WindowsNoEditor.pak");
+        SetStatus("Checking compatibility with this Ragnarock update...");
+        var metadata = await _hammerMetadataRegistry.EnsureAvailableAsync(gamePakPath);
+        if (!metadata.Success || metadata.Value is null)
+        {
+            SetStatus(metadata.Error ?? "RMM could not check this game update.", error: true);
+            return;
+        }
+        SetStatus("Preparing your enabled hammers...");
+        var build = await Task.Run(() => new HammerPakBuildService(_logger).Build(game.InstallPath, enabled, metadata.Value, pakPath));
         if (!build.Success || build.Value is null)
         {
             SetStatus(build.Error ?? "Custom hammer PAK build failed.", error: true);
@@ -339,7 +351,9 @@ public partial class MainWindow : Window
 
         var packageVersion = "1.0.0-" + build.Value.Sha256[..12].ToLowerInvariant();
         var packageId = "rmm-custom-hammers";
-        var packagePath = Path.Combine(outputDirectory, packageId + "-" + packageVersion + ".rmod");
+        var packageDirectory = Path.Combine(outputDirectory, packageVersion);
+        Directory.CreateDirectory(packageDirectory);
+        var packagePath = Path.Combine(packageDirectory, packageId + "-" + packageVersion + ".rmod");
         var packageManifest = new ModManifest
         {
             SchemaVersion = 1,

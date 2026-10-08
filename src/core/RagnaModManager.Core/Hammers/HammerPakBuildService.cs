@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
-using System.Text.RegularExpressions;
+using System.Text.Json;
 using RagnaModManager.Core.Common;
+using RagnaModManager.Core.Logging;
 using UAssetAPI;
 using UAssetAPI.ExportTypes;
 using UAssetAPI.PropertyTypes.Objects;
@@ -12,50 +13,61 @@ namespace RagnaModManager.Core.Hammers;
 public sealed record HammerPakBuildResult(string PakPath, string Sha256, string GamePakSha256, int BaseRowCount, int AddedRowCount);
 
 /// <summary>
-/// Merges rows into the installed DT_Hammers, then creates a UE4.27 / PAK V11 overlay.
-/// The base game table is read from the user's encrypted install and is never bundled.
+/// Merges rows into maintainer-prepared metadata for the exact installed game build,
+/// then creates a UE4.27 / PAK V11 overlay. This service never decrypts the game PAK.
 /// </summary>
 public sealed class HammerPakBuildService
 {
     private const string DataTablePath = "Ragnarock/Content/Data/Hammers/DT_Hammers.uasset";
-    private static readonly Regex HexKey = new("(?i)(?<![0-9a-f])(?:0x)?[0-9a-f]{64}(?![0-9a-f])", RegexOptions.Compiled);
+    private readonly AppLogger _logger;
 
+    public HammerPakBuildService(AppLogger logger) => _logger = logger;
     public Result<HammerPakBuildResult> Build(
         string gameRoot,
         IReadOnlyList<HammerLibraryEntry> enabledHammers,
-        string keyCandidateFile,
+        string metadataDirectory,
         string outputPakPath)
     {
         if (enabledHammers.Count == 0) return Result<HammerPakBuildResult>.Fail("Enable at least one custom hammer before building.");
-        if (!File.Exists(keyCandidateFile)) return Result<HammerPakBuildResult>.Fail("The AES key candidate file could not be found.");
         var gamePakPath = Path.Combine(gameRoot, "Ragnarock", "Content", "Paks", "Ragnarock-WindowsNoEditor.pak");
         if (!File.Exists(gamePakPath)) return Result<HammerPakBuildResult>.Fail("The installed Ragnarock data PAK could not be found.");
+        var metadataTablePath = Path.Combine(metadataDirectory, DataTablePath.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(metadataTablePath)) return Result<HammerPakBuildResult>.Fail("Matching hammer compatibility data is not available for this game update.");
 
         var staging = Path.Combine(Path.GetTempPath(), "rmm-hammer-build-" + Guid.NewGuid().ToString("N"));
         try
         {
             Directory.CreateDirectory(staging);
-            var keyResult = FindPakKey(gamePakPath, keyCandidateFile);
-            if (!keyResult.Success || keyResult.Value is null) return Result<HammerPakBuildResult>.Fail(keyResult.Error!);
             var gamePakSha256 = Sha256(gamePakPath);
-
-            using var sourceStream = File.OpenRead(gamePakPath);
-            using var sourcePak = new PakBuilder().Key(keyResult.Value).Reader(sourceStream);
-            if (sourcePak.GetVersion() != PakVersion.V11)
-                return Result<HammerPakBuildResult>.Fail($"This game uses PAK {sourcePak.GetVersion()}, but the hammer merge adapter supports PAK V11.");
-
-            var baseFileSet = sourcePak.Files().ToHashSet(StringComparer.OrdinalIgnoreCase);
-            if (!baseFileSet.Contains(DataTablePath))
-                return Result<HammerPakBuildResult>.Fail("The installed game PAK does not contain DT_Hammers at the supported package path.");
-            var tableBytes = sourcePak.Get(sourceStream, DataTablePath);
-            var exportBytes = sourcePak.Get(sourceStream, DataTablePath.Replace(".uasset", ".uexp", StringComparison.Ordinal));
-            if (tableBytes is null || exportBytes is null)
-                return Result<HammerPakBuildResult>.Fail("Could not read both cooked files for the installed DT_Hammers asset.");
+            var metadata = JsonSerializer.Deserialize<HammerTableMetadataManifest>(
+                File.ReadAllText(Path.Combine(metadataDirectory, "metadata.json")),
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (metadata is null || metadata.FormatVersion != 1 || metadata.PakVersion != 11 ||
+                !string.Equals(metadata.EngineVersion, "UE4.27", StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(metadata.GamePakSha256, gamePakSha256, StringComparison.OrdinalIgnoreCase) ||
+                metadata.ExistingAssetPackagePaths is null || metadata.ExistingAssetPackagePaths.Count == 0 ||
+                !FileSha256Matches(metadataTablePath, metadata.TableSha256))
+                return Result<HammerPakBuildResult>.Fail("The hammer compatibility data doesn't match this game update. No PAK was built.");
+            var exportSourcePath = Path.ChangeExtension(metadataTablePath, ".uexp");
+            if (!FileSha256Matches(exportSourcePath, metadata.ExportSha256) ||
+                string.IsNullOrWhiteSpace(metadata.DataAssetTemplatePath) ||
+                Path.IsPathRooted(metadata.DataAssetTemplatePath) ||
+                !metadata.DataAssetTemplatePath.StartsWith("Ragnarock/Content/Data/Hammers/", StringComparison.Ordinal) ||
+                metadata.DataAssetTemplatePath.Contains("..", StringComparison.Ordinal) ||
+                !metadata.DataAssetTemplatePath.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+                return Result<HammerPakBuildResult>.Fail("The matching hammer compatibility data is incomplete.");
+            var metadataRoot = Path.GetFullPath(metadataDirectory) + Path.DirectorySeparatorChar;
+            var metadataTemplatePath = Path.GetFullPath(Path.Combine(metadataDirectory, metadata.DataAssetTemplatePath.Replace('/', Path.DirectorySeparatorChar)));
+            if (!metadataTemplatePath.StartsWith(metadataRoot, StringComparison.Ordinal) ||
+                !FileSha256Matches(metadataTemplatePath, metadata.DataAssetTemplateSha256) ||
+                !FileSha256Matches(Path.ChangeExtension(metadataTemplatePath, ".uexp"), metadata.DataAssetTemplateExportSha256))
+                return Result<HammerPakBuildResult>.Fail("The matching hammer compatibility data is incomplete.");
+            var baseFileSet = metadata.ExistingAssetPackagePaths.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             var tablePath = Path.Combine(staging, DataTablePath.Replace('/', Path.DirectorySeparatorChar));
             Directory.CreateDirectory(Path.GetDirectoryName(tablePath)!);
-            File.WriteAllBytes(tablePath, tableBytes);
-            File.WriteAllBytes(Path.ChangeExtension(tablePath, ".uexp"), exportBytes);
+            File.Copy(metadataTablePath, tablePath);
+            File.Copy(exportSourcePath, Path.ChangeExtension(tablePath, ".uexp"));
 
             var tableAsset = new UAsset(tablePath, EngineVersion.VER_UE4_27);
             var tableExport = tableAsset.Exports.OfType<DataTableExport>().SingleOrDefault();
@@ -68,6 +80,7 @@ public sealed class HammerPakBuildService
                 return Result<HammerPakBuildResult>.Fail("DT_Hammers no longer has the supported CustomizableInfo row schema. No PAK was built.");
 
             var writtenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var generatedDataAssets = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var hammer in enabledHammers.OrderBy(entry => entry.Manifest.RowName, StringComparer.Ordinal))
             {
                 var manifest = hammer.Manifest;
@@ -75,6 +88,11 @@ public sealed class HammerPakBuildService
                 if (!rowName.Equals(manifest.RowName, StringComparison.Ordinal) || existingNames.Contains(rowName))
                     return Result<HammerPakBuildResult>.Fail($"{manifest.Name} has a duplicate or unstable DataTable row name '{rowName}'.");
                 existingNames.Add(rowName);
+                if (baseFileSet.Contains(manifest.DataAssetPath))
+                    return Result<HammerPakBuildResult>.Fail($"{manifest.Name} would replace an existing game data asset. Choose a different hammer ID.");
+                if (!TryCreateHammerDataAsset(metadataTemplatePath, manifest, staging, out var generatedDataAssetPath, out var dataAssetError))
+                    return Result<HammerPakBuildResult>.Fail($"{manifest.Name}: {dataAssetError}");
+                generatedDataAssets[manifest.Id] = generatedDataAssetPath;
 
                 var row = (StructPropertyData)defaultRow.Clone();
                 row.Name = new FName(tableAsset, rowName);
@@ -106,7 +124,7 @@ public sealed class HammerPakBuildService
                     var pakPath = ToPakPath(file.PackagePath, extension);
                     if (!writtenFiles.Add(pakPath))
                         return Result<HammerPakBuildResult>.Fail($"More than one hammer package writes '{pakPath}'.");
-                    if (baseFileSet.Contains(pakPath))
+                    if (baseFileSet.Contains(file.PackagePath))
                         return Result<HammerPakBuildResult>.Fail($"{manifest.Name} would replace existing game asset '{pakPath}'. Choose a unique package path.");
                 }
             }
@@ -128,13 +146,20 @@ public sealed class HammerPakBuildService
                 writer.WriteFile(DataTablePath, File.ReadAllBytes(tablePath));
                 writer.WriteFile(DataTablePath.Replace(".uasset", ".uexp", StringComparison.Ordinal), File.ReadAllBytes(Path.ChangeExtension(tablePath, ".uexp")));
                 foreach (var hammer in enabledHammers)
-                foreach (var file in hammer.Manifest.Assets)
                 {
-                    var source = Path.GetFullPath(Path.Combine(hammer.InstalledPath, file.Source.Replace('/', Path.DirectorySeparatorChar)));
-                    var root = Path.GetFullPath(hammer.InstalledPath) + Path.DirectorySeparatorChar;
-                    if (!source.StartsWith(root, StringComparison.Ordinal) || !File.Exists(source))
-                        return Result<HammerPakBuildResult>.Fail($"{hammer.Manifest.Name} is missing cooked file '{file.Source}'.");
-                    writer.WriteFile(ToPakPath(file.PackagePath, Path.GetExtension(file.Source)), File.ReadAllBytes(source));
+                    foreach (var file in hammer.Manifest.Assets)
+                    {
+                        if (file.PackagePath.Equals(hammer.Manifest.DataAssetPath, StringComparison.OrdinalIgnoreCase))
+                            continue; // Legacy packages may carry this asset; RMM now synthesizes it from the build template.
+                        var source = Path.GetFullPath(Path.Combine(hammer.InstalledPath, file.Source.Replace('/', Path.DirectorySeparatorChar)));
+                        var root = Path.GetFullPath(hammer.InstalledPath) + Path.DirectorySeparatorChar;
+                        if (!source.StartsWith(root, StringComparison.Ordinal) || !File.Exists(source))
+                            return Result<HammerPakBuildResult>.Fail($"{hammer.Manifest.Name} is missing cooked file '{file.Source}'.");
+                        writer.WriteFile(ToPakPath(file.PackagePath, Path.GetExtension(file.Source)), File.ReadAllBytes(source));
+                    }
+                    var generatedDataAsset = generatedDataAssets[hammer.Manifest.Id];
+                    writer.WriteFile(ToPakPath(hammer.Manifest.DataAssetPath, ".uasset"), File.ReadAllBytes(generatedDataAsset));
+                    writer.WriteFile(ToPakPath(hammer.Manifest.DataAssetPath, ".uexp"), File.ReadAllBytes(Path.ChangeExtension(generatedDataAsset, ".uexp")));
                 }
                 writer.WriteIndex();
             }
@@ -148,45 +173,84 @@ public sealed class HammerPakBuildService
                 baseRows.Count,
                 enabledHammers.Count));
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException or NotSupportedException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException or NotSupportedException or JsonException)
         {
-            return Result<HammerPakBuildResult>.Fail($"Could not build custom hammer PAK: {ex.Message}");
+            _logger.Error($"Custom hammer package build failed: {ex}");
+            return Result<HammerPakBuildResult>.Fail("RMM couldn't build the hammer package. Check the log for details.");
         }
         catch (Exception ex)
         {
-            return Result<HammerPakBuildResult>.Fail($"Could not build custom hammer PAK: {ex.Message}");
+            _logger.Error($"Unexpected custom hammer package build failure: {ex}");
+            return Result<HammerPakBuildResult>.Fail("RMM couldn't build the hammer package. Check the log for details.");
         }
         finally
         {
-            if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+            try
+            {
+                if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.Error($"Could not clean up hammer build staging directory '{staging}': {ex}");
+            }
         }
     }
 
-    private static Result<byte[]> FindPakKey(string gamePakPath, string candidateFile)
+    private static bool TryCreateHammerDataAsset(
+        string templatePath,
+        HammerManifest manifest,
+        string staging,
+        out string generatedPath,
+        out string? error)
     {
-        var info = new FileInfo(candidateFile);
-        if (info.Length > 1024 * 1024) return Result<byte[]>.Fail("The AES key candidate file is larger than 1 MiB.");
-        var contents = File.ReadAllText(candidateFile);
-        var candidates = HexKey.Matches(contents)
-            .Select(match => match.Value.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? match.Value[2..] : match.Value)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(256);
-        foreach (var candidate in candidates)
+        generatedPath = "";
+        error = null;
+        try
         {
-            byte[] key;
-            try { key = Convert.FromHexString(candidate); }
-            catch (FormatException) { continue; }
-            try
+            var asset = new UAsset(templatePath, EngineVersion.VER_UE4_27);
+            var meshImport = asset.Imports.Select((value, index) => (value, index))
+                .FirstOrDefault(item => item.value.ClassName.ToString().Equals("StaticMesh", StringComparison.OrdinalIgnoreCase));
+            if (meshImport.value is null || meshImport.value.OuterIndex.Index >= 0 ||
+                -meshImport.value.OuterIndex.Index > asset.Imports.Count)
             {
-                using var stream = File.OpenRead(gamePakPath);
-                using var reader = new PakBuilder().Key(key).Reader(stream);
-                if (reader.GetVersion() == PakVersion.V11 && reader.Files().Contains(DataTablePath, StringComparer.OrdinalIgnoreCase))
-                    return Result<byte[]>.Ok(key);
+                error = "RMM couldn't prepare the model for this game version.";
+                return false;
             }
-            catch (Exception ex) when (ex is IOException or InvalidDataException or InvalidOperationException or ArgumentException or NotSupportedException or DllNotFoundException) { }
-            catch (Exception) { }
+
+            var packageImport = asset.Imports[-meshImport.value.OuterIndex.Index - 1];
+            if (!packageImport.ClassName.ToString().Equals("Package", StringComparison.OrdinalIgnoreCase))
+            {
+                error = "RMM couldn't prepare the model for this game version.";
+                return false;
+            }
+            packageImport.ObjectName = new FName(asset, manifest.MeshAssetPath);
+            meshImport.value.ObjectName = new FName(asset, manifest.MeshAssetPath[(manifest.MeshAssetPath.LastIndexOf('/') + 1)..]);
+
+            if (!asset.Exports.Any(export => export.ClassIndex.Index < 0 &&
+                    -export.ClassIndex.Index <= asset.Imports.Count &&
+                    asset.Imports[-export.ClassIndex.Index - 1].ObjectName.ToString().Equals("DA_Hammers_C", StringComparison.OrdinalIgnoreCase)))
+            {
+                error = "RMM couldn't prepare the hammer data for this game version.";
+                return false;
+            }
+
+            var outputPath = Path.Combine(staging, "GeneratedAssets", manifest.Id, "DA_Hammers.uasset");
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+            asset.Write(outputPath);
+            var outputExportPath = Path.ChangeExtension(outputPath, ".uexp");
+            if (!File.Exists(outputPath) || !File.Exists(outputExportPath))
+            {
+                error = "RMM couldn't prepare the hammer data for this game version.";
+                return false;
+            }
+            generatedPath = outputPath;
+            return true;
         }
-        return Result<byte[]>.Fail("No AES key candidate in that file opened this game's V11 PAK with DT_Hammers. Choose the matching local key list.");
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException or NotSupportedException or NullReferenceException)
+        {
+            error = "RMM couldn't prepare the hammer data for this game version.";
+            return false;
+        }
     }
 
     private static bool HasSupportedRowSchema(StructPropertyData row) =>
@@ -215,9 +279,14 @@ public sealed class HammerPakBuildService
         if (!files.Contains(DataTablePath) || !files.Contains(DataTablePath.Replace(".uasset", ".uexp", StringComparison.Ordinal)))
             throw new InvalidDataException("The generated PAK is missing a DT_Hammers cooked file.");
         foreach (var hammer in hammers)
+        {
         foreach (var file in hammer.Manifest.Assets)
             if (!files.Contains(ToPakPath(file.PackagePath, Path.GetExtension(file.Source))))
                 throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s {file.Source}.");
+            if (!files.Contains(ToPakPath(hammer.Manifest.DataAssetPath, ".uasset")) ||
+                !files.Contains(ToPakPath(hammer.Manifest.DataAssetPath, ".uexp")))
+                throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s generated hammer data.");
+        }
         var tableBytes = reader.Get(stream, DataTablePath) ?? throw new InvalidDataException("Could not read merged DT_Hammers from generated PAK.");
         var expBytes = reader.Get(stream, DataTablePath.Replace(".uasset", ".uexp", StringComparison.Ordinal)) ?? throw new InvalidDataException("Could not read merged DT_Hammers export data from generated PAK.");
         var checkDirectory = Path.Combine(Path.GetTempPath(), "rmm-hammer-pak-check-" + Guid.NewGuid().ToString("N"));
@@ -232,8 +301,30 @@ public sealed class HammerPakBuildService
             if (export?.Table?.Data.Count != expectedRows)
                 throw new InvalidDataException($"Generated DT_Hammers has {export?.Table?.Data.Count ?? 0} rows; expected {expectedRows}.");
             foreach (var hammer in hammers)
-                if (!export.Table.Data.Any(row => row.Name.ToString() == hammer.Manifest.RowName))
+            {
+                var row = export.Table.Data.FirstOrDefault(item => item.Name.ToString() == hammer.Manifest.RowName);
+                if (row is null)
                     throw new InvalidDataException($"Generated DT_Hammers is missing {hammer.Manifest.Name}'s row.");
+                var dataImport = ((ObjectPropertyData)row["Data"]).ToImport(asset);
+                var packageImport = dataImport.OuterIndex.Index < 0
+                    ? asset.Imports[-dataImport.OuterIndex.Index - 1]
+                    : null;
+                if (packageImport is null || !packageImport.ObjectName.ToString().Equals(hammer.Manifest.DataAssetPath, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException($"Generated DT_Hammers points {hammer.Manifest.Name} at the wrong data asset.");
+                var dataBytes = reader.Get(stream, ToPakPath(hammer.Manifest.DataAssetPath, ".uasset")) ??
+                                throw new InvalidDataException($"Could not verify {hammer.Manifest.Name}'s generated hammer data.");
+                var dataExportBytes = reader.Get(stream, ToPakPath(hammer.Manifest.DataAssetPath, ".uexp")) ??
+                                      throw new InvalidDataException($"Could not verify {hammer.Manifest.Name}'s generated hammer data.");
+                var dataPath = Path.Combine(checkDirectory, hammer.Manifest.Id + ".uasset");
+                File.WriteAllBytes(dataPath, dataBytes);
+                File.WriteAllBytes(Path.ChangeExtension(dataPath, ".uexp"), dataExportBytes);
+                var dataAsset = new UAsset(dataPath, EngineVersion.VER_UE4_27);
+                if (!dataAsset.Imports.Any(item => item.ClassName.ToString().Equals("Package", StringComparison.OrdinalIgnoreCase) &&
+                                                   item.ObjectName.ToString().Equals(hammer.Manifest.MeshAssetPath, StringComparison.OrdinalIgnoreCase)) ||
+                    !dataAsset.Exports.Any(item => item.ClassIndex.Index < 0 && -item.ClassIndex.Index <= dataAsset.Imports.Count &&
+                                                   dataAsset.Imports[-item.ClassIndex.Index - 1].ObjectName.ToString().Equals("DA_Hammers_C", StringComparison.OrdinalIgnoreCase)))
+                    throw new InvalidDataException($"Generated hammer data for {hammer.Manifest.Name} does not reference its model correctly.");
+            }
         }
         finally
         {
@@ -245,5 +336,12 @@ public sealed class HammerPakBuildService
     {
         using var stream = File.OpenRead(path);
         return Convert.ToHexString(SHA256.HashData(stream));
+    }
+
+    private static bool FileSha256Matches(string path, string expected)
+    {
+        if (!File.Exists(path)) return false;
+        try { return Sha256(path).Equals(expected, StringComparison.OrdinalIgnoreCase); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException) { return false; }
     }
 }

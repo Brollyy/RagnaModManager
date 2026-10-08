@@ -124,7 +124,6 @@ public sealed class HammerLibraryPageViewModel : ObservableObject
     public bool CanBuild { get; set; }
     public ObservableCollection<HammerLibraryRowViewModel> Items { get; } = [];
     public ICommand? Import { get; set; }
-    public ICommand? ChooseKeyFile { get; set; }
     public ICommand? Build { get; set; }
     public ICommand? OpenFolder { get; set; }
 
@@ -145,6 +144,7 @@ public sealed class HammerLibraryRowViewModel : ObservableObject
     public string Description { get; init; } = "";
     public string RowName { get; init; } = "";
     public string MeshAssetPath { get; init; } = "";
+    public Avalonia.Media.Imaging.Bitmap? Thumbnail { get; init; }
     public bool Enabled { get => _enabled; set => SetField(ref _enabled, value); }
     public ICommand? ToggleEnabled { get; set; }
     public ICommand? Remove { get; set; }

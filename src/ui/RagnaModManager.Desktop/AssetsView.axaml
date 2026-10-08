@@ -1,0 +1,9 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="RagnaModManager.Desktop.AssetsView">
+  <TabControl TabStripPlacement="Top">
+    <TabItem Header="Hammers">
+      <ContentControl Content="{Binding Hammers}" />
+    </TabItem>
+  </TabControl>
+</UserControl>
