@@ -4,10 +4,10 @@ RMM downloads one metadata archive for the exact SHA-256 of the installed `Ragna
 
 ## Preparing metadata
 
-Maintainers prepare metadata with the separate `tools/HammerMetadataTool` console application. The local key candidate list is read only by this maintainer tool and is never copied to the archive or RMM logs:
+Maintainers prepare metadata with the private [RMM Hammer Metadata Tool](https://github.com/Brollyy/RMM-HammerMetadataTool) repository. Clone it locally and run its console application as shown below. The local key candidate list is read only by this maintainer tool and is never copied to the archive or RMM logs. Player machines do not need access to the private repository or this tool:
 
 ```sh
-dotnet run --project tools/HammerMetadataTool -- \
+dotnet run --project /path/to/RMM-HammerMetadataTool/HammerMetadataTool.csproj -- \
   /path/to/Ragnarock/Ragnarock/Content/Paks/Ragnarock-WindowsNoEditor.pak \
   /path/to/local-key-candidates.txt \
   /tmp/ragnarock-hammer-metadata.zip
