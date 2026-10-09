@@ -14,7 +14,7 @@ Without a local Windows PC, use a Windows guest VM on a Linux host, a temporary 
 
 ### Build the UE 4.27 editor from source on Windows
 
-When using the UE 4.27 source tree instead of an installed editor, compile it natively in Windows. The Epic GitHub source checkout or a transferred source snapshot is sufficient; Unreal Editor and the command-line cooker do not require Epic Games Launcher sign-in. Install Visual Studio 2019 with the **Desktop development with C++** workload and a Windows 10 SDK (10.0.18362 or newer), then open a Developer Command Prompt and run these commands from the engine source root:
+When using the UE 4.27 source tree instead of an installed editor, compile it natively in Windows. The Epic GitHub source checkout or a transferred source snapshot is sufficient; Unreal Editor and the command-line cooker do not require Epic Games Launcher sign-in. Install Visual Studio 2019 with the **Desktop development with C++** workload and a Windows 10 SDK (10.0.18362 or newer), then open a Developer Command Prompt and run these commands from the engine source root. Epic's [UE 4.27 Project Files for IDEs](https://dev.epicgames.com/documentation/unreal-engine/project-files-for-ides?application_version=4.27) describes project-file generation, and its [UE 4.27 Unreal Build System guide](https://dev.epicgames.com/documentation/unreal-engine/unreal-build-system?application_version=4.27) describes compiling UE4 targets:
 
 ```bat
 Setup.bat
