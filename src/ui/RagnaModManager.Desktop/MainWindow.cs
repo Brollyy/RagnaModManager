@@ -692,7 +692,7 @@ public partial class MainWindow : Window
         });
         model.Rollback = new RelayCommand(() => { var result = CreateDeploymentService().RollbackLatest(); SetStatus(result.Success ? "The last change was undone." : result.Error ?? "Could not undo the last change.", !result.Success); ShowDashboard(4); });
         model.ResetDeployment = new AsyncRelayCommand(async () => { if (!await Confirm("Remove applied files", "Remove the files currently applied by Ragna Mod Manager from the game folder? Backups are retained when possible.", "Remove files", destructive: true)) return; var result = CreateDeploymentService().ResetDeployment(); SetStatus(result.Success ? "The applied files were removed." : result.Error ?? "Could not remove the applied files.", !result.Success); ShowDashboard(4); });
-        model.SaveLaunchOptions = new RelayCommand(() => { _launchArguments = model.LaunchArguments ?? ""; File.WriteAllText(_paths.LaunchArgumentsPath, _launchArguments); SetStatus(string.IsNullOrWhiteSpace(_launchArguments) ? "Launch arguments cleared." : "Launch arguments saved."); });
+        model.SaveLaunchOptions = new RelayCommand(() => { _launchArguments = model.LaunchArguments ?? ""; File.WriteAllText(_paths.LaunchArgumentsPath, _launchArguments); SetStatus(string.IsNullOrWhiteSpace(_launchArguments) ? "Launch arguments cleared." : "Launch arguments saved."); ShowDashboard(4); });
         model.ConfigureSteamLaunch = new RelayCommand(() =>
         {
             var current = _database.GetGame();
