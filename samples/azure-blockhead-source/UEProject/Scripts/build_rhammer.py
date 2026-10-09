@@ -51,6 +51,22 @@ def main():
             "PCD3D_SM5 cook metadata not found under " + str(shader_info_dir)
             + "; verify the Windows target RHI and cooker output before packaging"
         )
+    compiled_materials = set()
+    for shader_info in d3d_shader_info:
+        with shader_info.open(encoding="utf-8") as metadata_file:
+            metadata = json.load(metadata_file)
+        for shader_map in metadata.get("ShaderCodeToAssets", []):
+            compiled_materials.update(shader_map.get("Assets", []))
+    required_materials = {
+        "/Game/RMM/Hammers/azure-blockhead-verified/Materials/M_AzureBlockhead",
+        "/Game/RMM/Hammers/azure-blockhead-verified/UI/M_AzureBlockhead_Mark",
+    }
+    missing_materials = sorted(required_materials - compiled_materials)
+    if missing_materials:
+        parser.error(
+            "PCD3D_SM5 cook metadata does not contain compiled shader maps for: "
+            + ", ".join(missing_materials)
+        )
     package_root = (content_root / CONTENT_PACKAGE_ROOT).resolve()
     try:
         package_root.relative_to(content_root)
