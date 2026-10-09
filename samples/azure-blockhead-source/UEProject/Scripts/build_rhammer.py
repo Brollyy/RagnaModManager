@@ -38,6 +38,19 @@ def main():
     windows_cook_dirs = {"windowsnoeditor", "cooked-windowsnoeditor"}
     if not any(part.lower() in windows_cook_dirs for part in content_root.parts):
         parser.error("Expected a WindowsNoEditor cook directory; refusing to package other targets")
+    shader_info_dir = content_root.parent / "Metadata" / "ShaderLibrarySource"
+    d3d_shader_info = list(shader_info_dir.glob("ShaderAssetInfo-*-PCD3D_SM5.assetinfo.json"))
+    if not d3d_shader_info:
+        vulkan_shader_info = list(shader_info_dir.glob("ShaderAssetInfo-*-SF_VULKAN_SM5.assetinfo.json"))
+        if vulkan_shader_info:
+            parser.error(
+                "Cook metadata contains SF_VULKAN_SM5 shaders; cook again on Windows with "
+                "PCD3D_SM5 before packaging"
+            )
+        parser.error(
+            "PCD3D_SM5 cook metadata not found under " + str(shader_info_dir)
+            + "; verify the Windows target RHI and cooker output before packaging"
+        )
     package_root = (content_root / CONTENT_PACKAGE_ROOT).resolve()
     try:
         package_root.relative_to(content_root)
