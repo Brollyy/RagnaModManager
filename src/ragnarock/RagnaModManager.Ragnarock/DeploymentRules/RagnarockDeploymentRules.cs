@@ -100,6 +100,8 @@ public sealed class RagnarockDeploymentRules : IGameDeploymentRules
     {
         var loadOrder = file.LoadOrder ?? 500;
         var fileName = Path.GetFileName(sourcePath);
+        if (fileName.StartsWith("pakchunk", StringComparison.OrdinalIgnoreCase))
+            return fileName;
         return $"{loadOrder:0000}_{manifest.Id}_{fileName}";
     }
 
