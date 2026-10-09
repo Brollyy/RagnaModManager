@@ -22,7 +22,7 @@ GenerateProjectFiles.bat -2019
 Engine\Build\BatchFiles\Build.bat UE4Editor Win64 Development -WaitMutex
 ```
 
-`Setup.bat` obtains the engine's pinned binary dependencies; it may ask Windows to approve the signed UE prerequisite installer. After the editor build succeeds, use `Engine\Binaries\Win64\UE4Editor-Cmd.exe` for the sample project's cook command below. This builds the editor/cooker required to import and cook the custom assets; it does not build Ragnarock or its game binaries. If using an already built UE 4.27 editor, skip the engine build and run its `UE4Editor-Cmd.exe` directly.
+`Setup.bat` obtains the engine's pinned binary dependencies; it may ask Windows to approve the signed UE prerequisite installer. On a clean Windows image, prerequisite setup can also enable .NET Framework 3.5 through Windows Features and request a restart. Let Windows finish that update, sign back in, and rerun `Setup.bat` if the original command did not resume. When the console reaches `Installing prerequisites...`, check for the UE4 Prerequisites consent prompt and approve it; the command waits while that prompt is unanswered. After the editor build succeeds, use `Engine\Binaries\Win64\UE4Editor-Cmd.exe` for the sample project's cook command below. This builds the editor/cooker required to import and cook the custom assets; it does not build Ragnarock or its game binaries. If using an already built UE 4.27 editor, skip the engine build and run its `UE4Editor-Cmd.exe` directly.
 
 This is a remote native cook rather than cross-compilation. Building only Unreal's Linux editor on Linux, or forcing `WindowsNoEditor` as a cook target, does not supply the Windows D3D shader compiler path used by Ragnarock.
 
