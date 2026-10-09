@@ -10,7 +10,7 @@ using UAssetAPI.UnrealTypes;
 
 namespace RagnaModManager.Core.Hammers;
 
-public sealed record HammerPakBuildResult(string PakPath, string Sha256, string GamePakSha256, int BaseRowCount, int AddedRowCount);
+public sealed record HammerPakBuildResult(string PakPath, string Sha256, string GamePakSha256, int BaseRowCount, int AddedRowCount, IReadOnlyList<HammerShaderPak> ShaderPaks);
 
 /// <summary>
 /// Merges rows into maintainer-prepared metadata for the exact installed game build,
@@ -171,12 +171,44 @@ public sealed class HammerPakBuildService
 
             VerifyBuiltPak(tempPak, baseRows.Count + enabledHammers.Count, enabledHammers);
             File.Copy(tempPak, outputPakPath, overwrite: true);
+            var shaderPaks = new List<HammerShaderPak>();
+            var shaderHammers = enabledHammers
+                .Where(hammer => !string.IsNullOrWhiteSpace(hammer.Manifest.ShaderArchive))
+                .OrderBy(hammer => hammer.Manifest.Id, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (shaderHammers.Count > 1000)
+                return Result<HammerPakBuildResult>.Fail("Too many custom shader archives are enabled for the reserved Ragnarock shader chunk range.");
+            for (var index = 0; index < shaderHammers.Count; index++)
+            {
+                var hammer = shaderHammers[index];
+                var chunkId = 10000 + index;
+                var chunkFileName = $"pakchunk{chunkId}-WindowsNoEditor.pak";
+                var tempShaderPak = Path.Combine(staging, chunkFileName);
+                var runtimeArchivePath = $"Ragnarock/Content/ShaderArchive-Global_Chunk{chunkId}-PCD3D_SM5.ushaderbytecode";
+                var shaderArchive = Path.GetFullPath(Path.Combine(
+                    hammer.InstalledPath,
+                    hammer.Manifest.ShaderArchive!.Replace('/', Path.DirectorySeparatorChar)));
+                var hammerRoot = Path.GetFullPath(hammer.InstalledPath) + Path.DirectorySeparatorChar;
+                if (!shaderArchive.StartsWith(hammerRoot, StringComparison.Ordinal) || !File.Exists(shaderArchive))
+                    return Result<HammerPakBuildResult>.Fail($"{hammer.Manifest.Name} is missing its cooked shader archive.");
+                using (var shaderStream = File.Create(tempShaderPak))
+                using (var writer = new PakBuilder().Writer(shaderStream, PakVersion.V11, "../../../"))
+                {
+                    writer.WriteFile(runtimeArchivePath, File.ReadAllBytes(shaderArchive));
+                    writer.WriteIndex();
+                }
+                VerifyShaderPak(tempShaderPak, runtimeArchivePath);
+                var outputShaderPak = Path.Combine(pakDirectory, chunkFileName);
+                File.Copy(tempShaderPak, outputShaderPak, overwrite: true);
+                shaderPaks.Add(new HammerShaderPak(outputShaderPak, chunkId));
+            }
             return Result<HammerPakBuildResult>.Ok(new HammerPakBuildResult(
                 outputPakPath,
-                Sha256(outputPakPath),
+                Sha256(new[] { outputPakPath }.Concat(shaderPaks.Select(shaderPak => shaderPak.PakPath))),
                 gamePakSha256,
                 baseRows.Count,
-                enabledHammers.Count));
+                enabledHammers.Count,
+                shaderPaks));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException or NotSupportedException or JsonException)
         {
@@ -351,6 +383,28 @@ public sealed class HammerPakBuildService
 
     private static string ToPakPath(string packagePath, string extension) =>
         "Ragnarock/Content/" + packagePath["/Game/".Length..] + extension;
+
+    private static string Sha256(IEnumerable<string> paths)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        foreach (var path in paths.Order(StringComparer.OrdinalIgnoreCase))
+        {
+            using var stream = File.OpenRead(path);
+            var buffer = new byte[64 * 1024];
+            int read;
+            while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+                hash.AppendData(buffer, 0, read);
+        }
+        return Convert.ToHexString(hash.GetHashAndReset());
+    }
+
+    private static void VerifyShaderPak(string path, string archivePath)
+    {
+        using var stream = File.OpenRead(path);
+        using var reader = new PakBuilder().Reader(stream);
+        if (reader.GetVersion() != PakVersion.V11 || !reader.Files().Contains(archivePath, StringComparer.OrdinalIgnoreCase))
+            throw new InvalidDataException($"The generated shader PAK is missing {archivePath}.");
+    }
 
     private static void VerifyBuiltPak(string path, int expectedRows, IReadOnlyList<HammerLibraryEntry> hammers)
     {

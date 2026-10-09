@@ -4,7 +4,7 @@ import os
 import unreal
 
 
-CONTENT_ROOT = "/Game/RMM/Hammers/azure-blockhead-verified"
+CONTENT_ROOT = "/Game/RMM/Hammers/azure-blockhead-runtime-verified"
 UI_FOLDER = CONTENT_ROOT + "/UI"
 PROJECT_ROOT = os.path.abspath(unreal.Paths.project_dir())
 SOURCE_ROOT = os.path.normpath(os.path.join(PROJECT_ROOT, "..", "Source"))

@@ -10,7 +10,7 @@ import zipfile
 
 SAMPLE_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE_PATH = SAMPLE_ROOT / "hammer.json.template"
-CONTENT_PACKAGE_ROOT = Path("RMM/Hammers/azure-blockhead-verified")
+CONTENT_PACKAGE_ROOT = Path("RMM/Hammers/azure-blockhead-runtime-verified")
 COOKED_EXTENSIONS = {".uasset", ".uexp", ".ubulk", ".uptnl"}
 
 
@@ -58,14 +58,24 @@ def main():
         for shader_map in metadata.get("ShaderCodeToAssets", []):
             compiled_materials.update(shader_map.get("Assets", []))
     required_materials = {
-        "/Game/RMM/Hammers/azure-blockhead-verified/Materials/M_AzureBlockhead",
-        "/Game/RMM/Hammers/azure-blockhead-verified/UI/M_AzureBlockhead_Mark",
+        "/Game/RMM/Hammers/azure-blockhead-runtime-verified/Materials/M_AzureBlockhead",
+        "/Game/RMM/Hammers/azure-blockhead-runtime-verified/UI/M_AzureBlockhead_Mark",
     }
     missing_materials = sorted(required_materials - compiled_materials)
     if missing_materials:
         parser.error(
             "PCD3D_SM5 cook metadata does not contain compiled shader maps for: "
             + ", ".join(missing_materials)
+        )
+    shader_archives = [
+        path
+        for path in content_root.glob("ShaderArchive-*-PCD3D_SM5.ushaderbytecode")
+        if not path.name.startswith("ShaderArchive-Global-")
+    ]
+    if len(shader_archives) != 1:
+        parser.error(
+            "Expected exactly one project PCD3D_SM5 ShaderArchive in the cooked Content directory; "
+            "the archive is required for Ragnarock to resolve cooked material shader maps"
         )
     package_root = (content_root / CONTENT_PACKAGE_ROOT).resolve()
     try:
@@ -105,6 +115,7 @@ def main():
     if missing:
         parser.error("Cook is missing required hammer assets: " + ", ".join(missing))
     manifest["assets"] = package_assets
+    manifest["shaderArchive"] = "Shaders/" + shader_archives[0].name
 
     output_path = args.output.resolve()
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -118,6 +129,9 @@ def main():
             destination = staging_root / "Assets" / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
+        shader_destination = staging_root / manifest["shaderArchive"]
+        shader_destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(shader_archives[0], shader_destination)
 
         preview_source = SAMPLE_ROOT / "Source/T_RMM_AzureBlockhead_Icon.png"
         preview_destination = staging_root / manifest["thumbnail"]

@@ -23,6 +23,7 @@ public sealed class HammerManifest
     public string? IconAssetPath { get; set; }
     public string? SilhouetteAssetPath { get; set; }
     public string? SymbolAssetPath { get; set; }
+    public string? ShaderArchive { get; set; }
     public string DataAssetPath { get; set; } = "";
     public string? Thumbnail { get; set; }
     public List<HammerPackageFile> Assets { get; set; } = [];
@@ -36,6 +37,7 @@ public sealed class HammerPackageFile
 
 public sealed record HammerLibraryEntry(HammerManifest Manifest, string InstalledPath, bool Enabled);
 public sealed record HammerLibraryStatus(IReadOnlyList<HammerLibraryEntry> Hammers, string GameBuild, string BuildStatus, string? GamePakPath);
+public sealed record HammerShaderPak(string PakPath, int ChunkId);
 
 /// <summary>Stores cooked, game-ready hammer packages imported as .rhammer ZIP archives.</summary>
 public sealed class HammerLibraryService
@@ -245,6 +247,19 @@ public sealed class HammerLibraryService
         if (manifest.Assets is null || manifest.Assets.Count == 0) return Result.Fail($"{manifest.Name} contains no model files.");
         if (!IsGameAssetPath(manifest.MeshAssetPath) || !IsGameAssetPath(manifest.DataAssetPath))
             return Result.Fail($"{manifest.Name} must use valid /Game/... mesh and data asset paths.");
+        if (!string.IsNullOrWhiteSpace(manifest.ShaderArchive))
+        {
+            var archiveName = Path.GetFileName(manifest.ShaderArchive);
+            if (!IsSafeRelativePath(manifest.ShaderArchive) ||
+                !archiveName.StartsWith("ShaderArchive-", StringComparison.OrdinalIgnoreCase) ||
+                !archiveName.Contains("-PCD3D_SM5.", StringComparison.OrdinalIgnoreCase) ||
+                !archiveName.EndsWith(".ushaderbytecode", StringComparison.OrdinalIgnoreCase))
+                return Result.Fail($"{manifest.Name} has an invalid PCD3D_SM5 shader archive path.");
+            var shaderArchivePath = Path.GetFullPath(Path.Combine(root, manifest.ShaderArchive.Replace('/', Path.DirectorySeparatorChar)));
+            var shaderArchiveRoot = Path.GetFullPath(root) + Path.DirectorySeparatorChar;
+            if (!shaderArchivePath.StartsWith(shaderArchiveRoot, StringComparison.Ordinal) || !File.Exists(shaderArchivePath))
+                return Result.Fail($"{manifest.Name}'s cooked shader archive is missing.");
+        }
         if (manifest.IconAssetPath is not null && !IsGameAssetPath(manifest.IconAssetPath))
             return Result.Fail($"{manifest.Name} has an invalid /Game/... icon asset path.");
         if (manifest.SilhouetteAssetPath is not null && !IsGameAssetPath(manifest.SilhouetteAssetPath))
