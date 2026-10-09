@@ -6,6 +6,14 @@ The repository includes original source geometry, material art, and an icon for 
 
 Ragnarock's inspected build uses UE 4.27 and a V11 PAK. Use the same engine version and cook for `WindowsNoEditor`, even when playing through Proton. The public RMM app does not import FBX/OBJ or cook Unreal assets; the creator must provide cooked UE assets. For materials, use a Windows UE 4.27 cooker: Linux UE builds cook Vulkan shader maps, while this game requests `PCD3D_SM5` shader maps at runtime.
 
+### Linux-to-Windows cooking
+
+UE 4.27 does not provide a supported Linux-hosted cross-compile workflow for Windows. Epic's documented cross-compilation support is Windows-hosted development targeting Linux; the reverse direction is not the supported toolchain. Also, a WindowsNoEditor cook is not sufficient by itself: the cook must compile the project's material shaders for `PCD3D_SM5`. This sample's Linux cook fell back to Ragnarock's checker material because it had no usable Direct3D shader map.
+
+Without a local Windows PC, use a temporary Windows cloud VM or a Windows self-hosted CI runner to run UE 4.27 natively. The VM needs the UE 4.27 editor/cooker, Visual Studio 2019 and a Windows SDK if building UE from source, and enough disk space for the engine and project. Epic's UE 4.27 setup lists VS 2019 and Windows SDK 10.0.18362 or newer. A UE 4.27 binary installation can avoid compiling the whole engine from source if it is available to the VM. Open this sample project, confirm `PCD3D_SM5` in `Config/DefaultEngine.ini`, cook `WindowsNoEditor`, and inspect the cooker log for successful SM5 material compilation. Run `build_rhammer.py` on the resulting cooked Content directory, then copy the `.rhammer` back to the Linux machine for RMM import, PAK deployment, and Proton runtime checks.
+
+This is a remote native cook rather than cross-compilation. Building only Unreal's Linux editor on Linux, or forcing `WindowsNoEditor` as a cook target, does not supply the Windows D3D shader compiler path used by Ragnarock.
+
 ## What the game expects
 
 The installed `DT_Hammers` DataTable row has these fields:
