@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+    <PackageReference Include="UAssetAPI" Version="1.1.0" />
   </ItemGroup>
 
   <PropertyGroup>

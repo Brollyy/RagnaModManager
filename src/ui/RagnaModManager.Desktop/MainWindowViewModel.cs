@@ -97,6 +97,7 @@ public sealed class MainWindowViewModel : ObservableObject
     public ModsPageViewModel Mods { get; } = new();
     public DiscoverPageViewModel Discover { get; } = new();
     public ProfilesPageViewModel Profiles { get; } = new();
+    public HammerLibraryPageViewModel Hammers { get; } = new();
     public SettingsPageViewModel Settings { get; } = new();
     public ICommand? ApplyChanges { get => _applyChanges; set => SetField(ref _applyChanges, value); }
     public ICommand? RevertChanges { get => _revertChanges; set => SetField(ref _revertChanges, value); }
@@ -107,8 +108,46 @@ public sealed class MainWindowViewModel : ObservableObject
         OnPropertyChanged(nameof(Mods));
         OnPropertyChanged(nameof(Discover));
         OnPropertyChanged(nameof(Profiles));
+        OnPropertyChanged(nameof(Hammers));
         OnPropertyChanged(nameof(Settings));
     }
+}
+
+public sealed class HammerLibraryPageViewModel : ObservableObject
+{
+    public string GameBuild { get; set; } = "Game not configured";
+    public string BuildStatus { get; set; } = "Connect Ragnarock to check compatibility.";
+    public string CountLabel { get; set; } = "No hammers added";
+    public string BuildLabel { get; set; } = "Build and deploy PAK";
+    public bool HasItems => Items.Count > 0;
+    public bool IsEmpty => !HasItems;
+    public bool CanBuild { get; set; }
+    public ObservableCollection<HammerLibraryRowViewModel> Items { get; } = [];
+    public ICommand? Import { get; set; }
+    public ICommand? Build { get; set; }
+    public ICommand? OpenFolder { get; set; }
+
+    public void RefreshState()
+    {
+        OnPropertyChanged(nameof(HasItems));
+        OnPropertyChanged(nameof(IsEmpty));
+    }
+}
+
+public sealed class HammerLibraryRowViewModel : ObservableObject
+{
+    private bool _enabled;
+    public string Id { get; init; } = "";
+    public string Name { get; init; } = "";
+    public string Author { get; init; } = "";
+    public string Version { get; init; } = "";
+    public string Description { get; init; } = "";
+    public string RowName { get; init; } = "";
+    public string MeshAssetPath { get; init; } = "";
+    public Avalonia.Media.Imaging.Bitmap? Thumbnail { get; init; }
+    public bool Enabled { get => _enabled; set => SetField(ref _enabled, value); }
+    public ICommand? ToggleEnabled { get; set; }
+    public ICommand? Remove { get; set; }
 }
 
 public sealed class DashboardViewModel : ObservableObject

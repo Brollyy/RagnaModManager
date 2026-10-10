@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "id": "rmm-custom-hammers",
+  "name": "RMM Custom Hammers",
+  "version": "0.0.0",
+  "author": "RagnaModManager",
+  "game": "ragnarock",
+  "description": "Custom hammers built from the Hammer Library.",
+  "affects": ["gameplay"],
+  "files": [
+    {
+      "type": "pak",
+      "source": "Files/RMM_CustomHammers_P.pak",
+      "loadOrder": 500
+    }
+  ]
+}

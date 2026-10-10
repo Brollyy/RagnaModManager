@@ -1,0 +1,18 @@
+{
+  "formatVersion": 1,
+  "id": "azure-blockhead-verified",
+  "name": "Azure Blockhead",
+  "author": "RMM Sample",
+  "version": "1.0.0",
+  "description": "Original low-poly cyan block hammer with authored mesh, surface, icon, silhouette, and symbol assets.",
+  "rowName": "RMM_AZURE_BLOCKHEAD_VERIFIED",
+  "displayName": "Azure Blockhead",
+  "meshAssetPath": "/Game/RMM/Hammers/azure-blockhead-runtime-verified/Mesh/SM_AzureBlockhead_Rotated",
+  "iconAssetPath": "/Game/RMM/Hammers/azure-blockhead-runtime-verified/UI/T_AzureBlockhead_Icon",
+  "silhouetteAssetPath": null,
+  "symbolAssetPath": null,
+  "shaderArchive": null,
+  "dataAssetPath": "/Game/Data/Hammers/DA_RMM_AZURE_BLOCKHEAD_VERIFIED",
+  "thumbnail": "Preview/azure-blockhead.png",
+  "assets": []
+}

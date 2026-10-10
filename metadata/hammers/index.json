@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "builds": {
+    "716567CAF7D1115A3763C943735B920BA993C0B1A60AE3ECB39856BC6BEDF422": {
+      "url": "https://raw.githubusercontent.com/Brollyy/RagnaModManager/master/metadata/hammers/builds/716567caf7d1115a3763c943735b920ba993c0b1a60ae3ecb39856bc6bedf422.zip",
+      "sha256": "87ED40119E80469F132014E2632F45EB4391DE472646A45EA7B361E07B5D573A"
+    }
+  }
+}
