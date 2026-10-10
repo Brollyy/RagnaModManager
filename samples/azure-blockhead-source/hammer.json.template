@@ -7,7 +7,7 @@
   "description": "Original low-poly cyan block hammer with authored mesh, surface, icon, silhouette, and symbol assets.",
   "rowName": "RMM_AZURE_BLOCKHEAD_VERIFIED",
   "displayName": "Azure Blockhead",
-  "meshAssetPath": "/Game/RMM/Hammers/azure-blockhead-runtime-verified/Mesh/SM_AzureBlockhead",
+  "meshAssetPath": "/Game/RMM/Hammers/azure-blockhead-runtime-verified/Mesh/SM_AzureBlockhead_Rotated",
   "iconAssetPath": "/Game/RMM/Hammers/azure-blockhead-runtime-verified/UI/T_AzureBlockhead_Icon",
   "silhouetteAssetPath": "/Game/RMM/Hammers/azure-blockhead-runtime-verified/UI/MI_AzureBlockhead_Silhouette",
   "symbolAssetPath": "/Game/RMM/Hammers/azure-blockhead-runtime-verified/UI/MI_AzureBlockhead_Symbol",

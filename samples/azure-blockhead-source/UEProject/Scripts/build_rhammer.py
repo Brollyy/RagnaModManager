@@ -12,6 +12,9 @@ SAMPLE_ROOT = Path(__file__).resolve().parents[2]
 TEMPLATE_PATH = SAMPLE_ROOT / "hammer.json.template"
 CONTENT_PACKAGE_ROOT = Path("RMM/Hammers/azure-blockhead-runtime-verified")
 COOKED_EXTENSIONS = {".uasset", ".uexp", ".ubulk", ".uptnl"}
+EXCLUDED_PACKAGE_PATHS = {
+    "/Game/RMM/Hammers/azure-blockhead-runtime-verified/Mesh/SM_AzureBlockhead",
+}
 
 
 def package_path_for(content_file, content_root):
@@ -89,6 +92,7 @@ def main():
         path
         for path in package_root.rglob("*")
         if path.is_file() and path.suffix.lower() in COOKED_EXTENSIONS
+        and package_path_for(path, content_root) not in EXCLUDED_PACKAGE_PATHS
     )
     package_assets = []
     package_files = set()

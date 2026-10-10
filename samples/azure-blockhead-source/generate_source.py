@@ -93,6 +93,10 @@ def prism_obj() -> str:
             (x0, y0, z0), (x1, y0, z0), (x1, y1, z0), (x0, y1, z0),
             (x0, y0, z1), (x1, y0, z1), (x1, y1, z1), (x0, y1, z1),
         ]
+        # Rotate each head component a quarter turn around the handle axis.
+        # The head's span should run across game-space Y after the OBJ import,
+        # while the shaft remains on the grip-centered Z axis.
+        points = [(y, -x, z) for x, y, z in points]
         start = len(vertices) + 1
         vertices.extend(points)
         uv_start = len(uvs) + 1
