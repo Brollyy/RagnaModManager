@@ -13,7 +13,9 @@ The [`UEProject/`](UEProject/README.md) folder contains the imported mesh, surfa
 
 ## Runtime-verified library icon sources
 
-- `T_RagnaBlockhead_Icon.png` — changing-room icon for the Ragna Blockhead library package.
-- `T_SummerCustom_Icon.png` — distinct changing-room icon for the Summer Custom library package.
+- `T_RagnaBlockhead_Preview.png` — transparent changing-room icon for the Ragna Blockhead library package.
+- `T_SummerCustom_Preview.png` — transparent changing-room icon for the Summer Custom library package.
+
+The Ragna Blockhead and Summer Custom images have transparent backgrounds so they composite over the changing-room backdrop. Reimport these PNGs as their existing `Texture2D` assets with `UEProject/Scripts/import_demo_hammer_icons.py`, then cook and repack those two library packages before deployment. This replaces the older opaque preview textures.
 
 Both were imported in UE 4.27 as `Texture2D` assets, cooked for `WindowsNoEditor`, added to their `.rhammer` manifests as `iconAssetPath` packages (including `.uasset` and `.uexp`), and rebuilt through RMM. RMM's two-row PAK mounted in Ragnarock, and both separate thumbnails were visible in the changing room. The cooked packages remain in the local RMM hammer library rather than this source repository.
