@@ -37,7 +37,6 @@ public sealed class HammerPackageFile
 
 public sealed record HammerLibraryEntry(HammerManifest Manifest, string InstalledPath, bool Enabled);
 public sealed record HammerLibraryStatus(IReadOnlyList<HammerLibraryEntry> Hammers, string GameBuild, string BuildStatus, string? GamePakPath);
-public sealed record HammerShaderPak(string PakPath, int ChunkId);
 
 /// <summary>Stores cooked, game-ready hammer packages imported as .rhammer ZIP archives.</summary>
 public sealed class HammerLibraryService
@@ -311,9 +310,9 @@ public sealed class HammerLibraryService
                     iconAsset.Imports[-export.ClassIndex.Index - 1].ObjectName.ToString().Equals("Texture2D", StringComparison.OrdinalIgnoreCase)))
                     return Result.Fail($"{manifest.Name}'s icon package contains no cooked Texture2D export.");
             }
-            if (manifest.SilhouetteAssetPath is not null && !PackageContainsMaterialInstance(root, manifest, manifest.SilhouetteAssetPath))
-                return Result.Fail($"{manifest.Name}'s silhouette package contains no cooked MaterialInstanceConstant export.");
-            if (manifest.SymbolAssetPath is not null && !PackageContainsMaterialInstance(root, manifest, manifest.SymbolAssetPath))
+            if (manifest.SilhouetteAssetPath is not null && !PackageContainsExportClass(root, manifest, manifest.SilhouetteAssetPath, "Material"))
+                return Result.Fail($"{manifest.Name}'s silhouette package contains no cooked Material export.");
+            if (manifest.SymbolAssetPath is not null && !PackageContainsExportClass(root, manifest, manifest.SymbolAssetPath, "MaterialInstanceConstant"))
                 return Result.Fail($"{manifest.Name}'s symbol package contains no cooked MaterialInstanceConstant export.");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidOperationException or ArgumentException or NotSupportedException or InvalidDataException or NullReferenceException)
@@ -345,14 +344,14 @@ public sealed class HammerLibraryService
         return manifest.Assets.Select(asset => asset.PackagePath).FirstOrDefault(paths.Contains);
     }
 
-    private static bool PackageContainsMaterialInstance(string root, HammerManifest manifest, string packagePath)
+    private static bool PackageContainsExportClass(string root, HammerManifest manifest, string packagePath, string expectedClass)
     {
         var source = manifest.Assets.Single(asset => asset.PackagePath.Equals(packagePath, StringComparison.OrdinalIgnoreCase) &&
             Path.GetExtension(asset.Source).Equals(".uasset", StringComparison.OrdinalIgnoreCase));
         var asset = new UAsset(Path.Combine(root, source.Source.Replace('/', Path.DirectorySeparatorChar)), EngineVersion.VER_UE4_27);
         return asset.Exports.Any(export => export.ClassIndex.Index < 0 &&
             -export.ClassIndex.Index <= asset.Imports.Count &&
-            asset.Imports[-export.ClassIndex.Index - 1].ObjectName.ToString().Equals("MaterialInstanceConstant", StringComparison.OrdinalIgnoreCase));
+            asset.Imports[-export.ClassIndex.Index - 1].ObjectName.ToString().Equals(expectedClass, StringComparison.OrdinalIgnoreCase));
     }
 
     private Dictionary<string, bool> ReadIndex()

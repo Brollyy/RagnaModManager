@@ -10,7 +10,7 @@ using UAssetAPI.UnrealTypes;
 
 namespace RagnaModManager.Core.Hammers;
 
-public sealed record HammerPakBuildResult(string PakPath, string Sha256, string GamePakSha256, int BaseRowCount, int AddedRowCount, IReadOnlyList<HammerShaderPak> ShaderPaks);
+public sealed record HammerPakBuildResult(string PakPath, string Sha256, string GamePakSha256, int BaseRowCount, int AddedRowCount);
 
 /// <summary>
 /// Merges rows into maintainer-prepared metadata for the exact installed game build,
@@ -148,6 +148,8 @@ public sealed class HammerPakBuildService
             using (var outputStream = File.Create(tempPak))
             using (var writer = new PakBuilder().Writer(outputStream, PakVersion.V11, "../../../"))
             {
+                var shaderPluginManifestEntries = new List<object>();
+                var writtenShaderLibraries = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 writer.WriteFile(DataTablePath, File.ReadAllBytes(tablePath));
                 writer.WriteFile(DataTablePath.Replace(".uasset", ".uexp", StringComparison.Ordinal), File.ReadAllBytes(Path.ChangeExtension(tablePath, ".uexp")));
                 foreach (var hammer in enabledHammers)
@@ -165,50 +167,67 @@ public sealed class HammerPakBuildService
                     var generatedDataAsset = generatedDataAssets[hammer.Manifest.Id];
                     writer.WriteFile(ToPakPath(hammer.Manifest.DataAssetPath, ".uasset"), File.ReadAllBytes(generatedDataAsset));
                     writer.WriteFile(ToPakPath(hammer.Manifest.DataAssetPath, ".uexp"), File.ReadAllBytes(Path.ChangeExtension(generatedDataAsset, ".uexp")));
+                    if (!string.IsNullOrWhiteSpace(hammer.Manifest.ShaderArchive))
+                    {
+                        var pluginName = GetShaderPluginName(hammer.Manifest.ShaderArchive);
+                        if (pluginName is null)
+                            return Result<HammerPakBuildResult>.Fail($"{hammer.Manifest.Name} has an invalid shader library name.");
+                        var archiveSource = Path.GetFullPath(Path.Combine(
+                            hammer.InstalledPath,
+                            hammer.Manifest.ShaderArchive.Replace('/', Path.DirectorySeparatorChar)));
+                        var hammerRoot = Path.GetFullPath(hammer.InstalledPath) + Path.DirectorySeparatorChar;
+                        if (!archiveSource.StartsWith(hammerRoot, StringComparison.Ordinal) || !File.Exists(archiveSource))
+                            return Result<HammerPakBuildResult>.Fail($"{hammer.Manifest.Name} is missing its cooked shader archive.");
+                        var archiveHash = Sha256(new[] { archiveSource });
+                        if (writtenShaderLibraries.TryGetValue(pluginName, out var writtenHash))
+                        {
+                            if (!writtenHash.Equals(archiveHash, StringComparison.OrdinalIgnoreCase))
+                                return Result<HammerPakBuildResult>.Fail($"Different cooked shader archives use the same Unreal library name '{pluginName}'. Re-cook them with unique project names.");
+                            continue;
+                        }
+
+                        writtenShaderLibraries.Add(pluginName, archiveHash);
+                        var pluginRoot = $"Ragnarock/Plugins/{pluginName}";
+                        var descriptorPath = $"{pluginRoot}/{pluginName}.uplugin";
+                        var archiveFileName = Path.GetFileName(hammer.Manifest.ShaderArchive);
+                        var archivePath = $"{pluginRoot}/Content/{archiveFileName}";
+                        var descriptor = new
+                        {
+                            FileVersion = 3,
+                            Version = 1,
+                            VersionName = "1.0.0",
+                            FriendlyName = $"{hammer.Manifest.DisplayName} Shader Library",
+                            Description = "Shader library for a custom Ragnarock hammer.",
+                            Category = "Other",
+                            EnabledByDefault = true,
+                            CanContainContent = true,
+                            IsBetaVersion = true,
+                            Installed = true
+                        };
+                        shaderPluginManifestEntries.Add(new
+                        {
+                            File = $"../../../{pluginRoot}/{pluginName}.uplugin",
+                            Descriptor = descriptor
+                        });
+                        writer.WriteFile(descriptorPath, JsonSerializer.SerializeToUtf8Bytes(descriptor, new JsonSerializerOptions { WriteIndented = true }));
+                        writer.WriteFile(archivePath, File.ReadAllBytes(archiveSource));
+                    }
                 }
+                if (shaderPluginManifestEntries.Count > 0)
+                    writer.WriteFile(
+                        "Ragnarock/Plugins/RMMCustomHammerShaders.upluginmanifest",
+                        JsonSerializer.SerializeToUtf8Bytes(new { Contents = shaderPluginManifestEntries }, new JsonSerializerOptions { WriteIndented = true }));
                 writer.WriteIndex();
             }
 
             VerifyBuiltPak(tempPak, baseRows.Count + enabledHammers.Count, enabledHammers);
             File.Copy(tempPak, outputPakPath, overwrite: true);
-            var shaderPaks = new List<HammerShaderPak>();
-            var shaderHammers = enabledHammers
-                .Where(hammer => !string.IsNullOrWhiteSpace(hammer.Manifest.ShaderArchive))
-                .OrderBy(hammer => hammer.Manifest.Id, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            if (shaderHammers.Count > 1000)
-                return Result<HammerPakBuildResult>.Fail("Too many custom shader archives are enabled for the reserved Ragnarock shader chunk range.");
-            for (var index = 0; index < shaderHammers.Count; index++)
-            {
-                var hammer = shaderHammers[index];
-                var chunkId = 10000 + index;
-                var chunkFileName = $"pakchunk{chunkId}-WindowsNoEditor.pak";
-                var tempShaderPak = Path.Combine(staging, chunkFileName);
-                var runtimeArchivePath = $"Ragnarock/Content/ShaderArchive-Global_Chunk{chunkId}-PCD3D_SM5.ushaderbytecode";
-                var shaderArchive = Path.GetFullPath(Path.Combine(
-                    hammer.InstalledPath,
-                    hammer.Manifest.ShaderArchive!.Replace('/', Path.DirectorySeparatorChar)));
-                var hammerRoot = Path.GetFullPath(hammer.InstalledPath) + Path.DirectorySeparatorChar;
-                if (!shaderArchive.StartsWith(hammerRoot, StringComparison.Ordinal) || !File.Exists(shaderArchive))
-                    return Result<HammerPakBuildResult>.Fail($"{hammer.Manifest.Name} is missing its cooked shader archive.");
-                using (var shaderStream = File.Create(tempShaderPak))
-                using (var writer = new PakBuilder().Writer(shaderStream, PakVersion.V11, "../../../"))
-                {
-                    writer.WriteFile(runtimeArchivePath, File.ReadAllBytes(shaderArchive));
-                    writer.WriteIndex();
-                }
-                VerifyShaderPak(tempShaderPak, runtimeArchivePath);
-                var outputShaderPak = Path.Combine(pakDirectory, chunkFileName);
-                File.Copy(tempShaderPak, outputShaderPak, overwrite: true);
-                shaderPaks.Add(new HammerShaderPak(outputShaderPak, chunkId));
-            }
             return Result<HammerPakBuildResult>.Ok(new HammerPakBuildResult(
                 outputPakPath,
-                Sha256(new[] { outputPakPath }.Concat(shaderPaks.Select(shaderPak => shaderPak.PakPath))),
+                Sha256(new[] { outputPakPath }),
                 gamePakSha256,
                 baseRows.Count,
-                enabledHammers.Count,
-                shaderPaks));
+                enabledHammers.Count));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException or NotSupportedException or JsonException)
         {
@@ -233,7 +252,7 @@ public sealed class HammerPakBuildService
         }
     }
 
-    private static bool TryCreateHammerDataAsset(
+    private bool TryCreateHammerDataAsset(
         string templatePath,
         HammerManifest manifest,
         string staging,
@@ -294,6 +313,7 @@ public sealed class HammerPakBuildService
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException or NotSupportedException or NullReferenceException)
         {
+            _logger.Error($"Could not prepare generated hammer data asset for '{manifest.Name}': {ex}");
             error = "RMM couldn't prepare the hammer data for this game version.";
             return false;
         }
@@ -375,7 +395,7 @@ public sealed class HammerPakBuildService
             false));
         property.Value = asset.AddImport(new Import(
             templateImport.ClassPackage,
-            new FName(asset, "MaterialInstanceConstant"),
+            templateImport.ClassName,
             packageIndex,
             new FName(asset, packagePath[(packagePath.LastIndexOf('/') + 1)..]),
             false));
@@ -383,6 +403,20 @@ public sealed class HammerPakBuildService
 
     private static string ToPakPath(string packagePath, string extension) =>
         "Ragnarock/Content/" + packagePath["/Game/".Length..] + extension;
+
+    private static string? GetShaderPluginName(string shaderArchive)
+    {
+        const string prefix = "ShaderArchive-";
+        const string suffix = "-PCD3D_SM5.ushaderbytecode";
+        var fileName = Path.GetFileName(shaderArchive);
+        if (!fileName.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+            !fileName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            return null;
+        var libraryName = fileName[prefix.Length..^suffix.Length];
+        return libraryName.Length > 0 && libraryName.All(character => char.IsAsciiLetterOrDigit(character) || character == '_')
+            ? libraryName
+            : null;
+    }
 
     private static string Sha256(IEnumerable<string> paths)
     {
@@ -396,14 +430,6 @@ public sealed class HammerPakBuildService
                 hash.AppendData(buffer, 0, read);
         }
         return Convert.ToHexString(hash.GetHashAndReset());
-    }
-
-    private static void VerifyShaderPak(string path, string archivePath)
-    {
-        using var stream = File.OpenRead(path);
-        using var reader = new PakBuilder().Reader(stream);
-        if (reader.GetVersion() != PakVersion.V11 || !reader.Files().Contains(archivePath, StringComparer.OrdinalIgnoreCase))
-            throw new InvalidDataException($"The generated shader PAK is missing {archivePath}.");
     }
 
     private static void VerifyBuiltPak(string path, int expectedRows, IReadOnlyList<HammerLibraryEntry> hammers)
@@ -431,6 +457,14 @@ public sealed class HammerPakBuildService
             if (!files.Contains(ToPakPath(hammer.Manifest.DataAssetPath, ".uasset")) ||
                 !files.Contains(ToPakPath(hammer.Manifest.DataAssetPath, ".uexp")))
                 throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s generated hammer data.");
+            if (!string.IsNullOrWhiteSpace(hammer.Manifest.ShaderArchive))
+            {
+                var pluginName = GetShaderPluginName(hammer.Manifest.ShaderArchive);
+                if (!files.Contains($"Ragnarock/Plugins/{pluginName}/{pluginName}.uplugin") ||
+                    !files.Contains($"Ragnarock/Plugins/{pluginName}/Content/{Path.GetFileName(hammer.Manifest.ShaderArchive)}") ||
+                    !files.Contains("Ragnarock/Plugins/RMMCustomHammerShaders.upluginmanifest"))
+                    throw new InvalidDataException($"The generated PAK is missing {hammer.Manifest.Name}'s plugin shader library.");
+            }
         }
         var tableBytes = reader.Get(stream, DataTablePath) ?? throw new InvalidDataException("Could not read merged DT_Hammers from generated PAK.");
         var expBytes = reader.Get(stream, DataTablePath.Replace(".uasset", ".uexp", StringComparison.Ordinal)) ?? throw new InvalidDataException("Could not read merged DT_Hammers export data from generated PAK.");
@@ -495,7 +529,8 @@ public sealed class HammerPakBuildService
             manifest.DataAssetPath[(manifest.DataAssetPath.LastIndexOf('/') + 1)..], StringComparison.Ordinal));
         var importedObject = ((ObjectPropertyData)export.Data.Single(item => item.Name.ToString().Equals(propertyName, StringComparison.Ordinal))).ToImport(asset);
         var importedPackage = importedObject.OuterIndex.Index < 0 ? asset.Imports[-importedObject.OuterIndex.Index - 1] : null;
-        if (importedObject.ClassName.ToString() != "MaterialInstanceConstant" || importedPackage is null ||
+        var expectedClass = propertyName.Equals("Silhouette", StringComparison.Ordinal) ? "Material" : "MaterialInstanceConstant";
+        if (importedObject.ClassName.ToString() != expectedClass || importedPackage is null ||
             !importedPackage.ObjectName.ToString().Equals(packagePath, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException($"Generated hammer data for {manifest.Name} does not reference its {propertyName} material correctly.");
     }

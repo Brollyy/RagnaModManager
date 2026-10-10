@@ -4,7 +4,7 @@ This guide covers a self-contained custom hammer package for RagnaModManager (RM
 
 The repository includes original source geometry, material art, and an icon for the [Azure Blockhead sample](../samples/azure-blockhead-source/README.md). Those source files are ready for the UE import/cook steps below; they are not mislabeled as cooked game assets.
 
-Ragnarock's inspected build uses UE 4.27 and a V11 PAK. Use the same engine version and cook for `WindowsNoEditor`, even when playing through Proton. The public RMM app does not import FBX/OBJ or cook Unreal assets; the creator must provide cooked UE assets. For materials, use a Windows UE 4.27 cooker: Linux UE builds cook Vulkan shader maps, while this game requests `PCD3D_SM5` shader maps at runtime.
+Ragnarock's inspected build uses UE 4.27 and a V11 PAK. Use the same engine version and cook for `WindowsNoEditor`, even when playing through Proton. The public RMM app does not import FBX/OBJ or cook Unreal assets; the creator must provide cooked UE assets. For materials, use a Windows UE 4.27 cooker: Linux UE builds cook Vulkan shader maps, while this game requests `PCD3D_SM5` shader maps at runtime. Set `bShareMaterialShaderCode=True` to create a shared shader archive. RMM places that archive in a content plugin and marks its descriptor `EnabledByDefault=true`. A live game log confirms that Ragnarock mounted the plugin, opened its `PCD3D_SM5` library, and set the Azure row as the selected changing-room avatar. A separate `Global_SC` experiment crashed during runtime and is not part of this route.
 
 ### Linux-to-Windows cooking
 
@@ -43,7 +43,7 @@ The installed `DT_Hammers` DataTable row has these fields:
 | `EntitlementId` | Empty for a selectable, non-DLC custom hammer |
 | `Data` | Reference to the hammer's data asset |
 
-The game hammer data asset is an instance of the shared `DA_Hammers_C` class. Its inspected fields are `Mesh`, `Silhouette`, and `Symbol`; the stock `DA_SummerHammer` references a Static Mesh and two Material Instances for these fields. The common class default object also supplies `DrumHitSound`, an FMOD `DrumHit` event. RMM preserves this class and its default when it generates each hammer data asset, so creators do not need to add a combo counter or a new sound class.
+The game hammer data asset is an instance of the shared `DA_Hammers_C` class. Its inspected fields are `Mesh`, `Silhouette`, and `Symbol`. In the stock `DA_DrumWarriorHammer`, `Silhouette` references a base `Material`, while `Symbol` references a `MaterialInstanceConstant`. The common class default object also supplies `DrumHitSound`, an FMOD `DrumHit` event. RMM preserves this class and its default when it generates each hammer data asset, so creators do not need to add a combo counter or a new sound class.
 
 There is no combo-meter field or combo asset in `DT_Hammers` or the custom hammer data asset schema inspected for this game build. The extracted `BP_HammerSelector` contains the `Silhouette` and `Symbol` references, while the shared hammer class default supplies `DrumHitSound`; none of these is a custom combo-counter asset. RMM creates each hammer data asset using the game's existing `DA_Hammers_C` class. Keep that parent class, provide a valid mesh, and leave `EntitlementId` empty; no extra combo asset or subclass is needed. The game's normal input and hit logic drives the combo meter for custom rows just as it does for stock rows. `DrumHitSound` is the shared hit sound, not the combo counter. A custom hit sound is outside the current RMM package format.
 
@@ -51,10 +51,10 @@ For complete custom presentation, include all four kinds of assets:
 
 1. A cooked `StaticMesh` and its custom material/texture dependency graph.
 2. A cooked `Texture2D` for the changing-room list icon.
-3. A cooked `MaterialInstanceConstant` for the `Silhouette` data asset property, plus its material and texture dependencies.
+3. A cooked base `Material` for the `Silhouette` data asset property, plus its texture dependencies.
 4. A cooked `MaterialInstanceConstant` for the `Symbol` data asset property, plus its material and texture dependencies.
 
-`Silhouette` and `Symbol` are `UMaterialInterface` references. This RMM format expects their assigned package exports to be `MaterialInstanceConstant` assets. Base Materials and textures can be shared between these instances if the visual design needs it, but every custom dependency must be included in the archive. A library `thumbnail` is only a desktop preview and does not become the in-game `Icon`.
+Although both properties use Unreal material references, their cooked target classes differ: `Silhouette` must reference a base `Material`, while `Symbol` must reference a `MaterialInstanceConstant`. RMM preserves those classes from the stock data asset template and rejects a package asset whose class does not match. Include every custom material and texture dependency in the archive. A library `thumbnail` is only a desktop preview and does not become the in-game `Icon`. In the current Azure sample, both fields are intentionally left at Ragnarock’s stock defaults. Runtime tests with the sample’s custom marker materials crashed on the render thread even after correcting the `Silhouette` class. Keep these overrides unset unless their specific cooked material graphs have been validated in-game.
 
 ## 1. Make the source model and texture art
 
@@ -71,15 +71,15 @@ Before export:
 
 Create the texture art for the body and optional normal, roughness, metallic, or mask maps. Keep the icon art as a separate square PNG with a transparent or solid background and a strong silhouette at small size. Create separate silhouette/symbol art if those in-game material effects should differ from the surface material.
 
-The Azure Blockhead UE project includes `Scripts/create_hammer_materials.py`, which imports its authored silhouette and symbol PNGs as `Texture2D` assets and creates a translucent unlit parent Material with one `MaterialInstanceConstant` per image. Run it in UE 4.27 with the Python Script Plugin enabled:
+The Azure Blockhead UE project includes `Scripts/create_hammer_materials.py`, which imports its authored base-color, silhouette, and symbol PNGs as `Texture2D` assets. It creates an opaque lit surface Material with the base-color texture connected to `Base Color`, a translucent unlit base Material for `Silhouette`, and a translucent unlit parent Material with a `MaterialInstanceConstant` for `Symbol`. Run it in UE 4.27 with the Python Script Plugin enabled:
 
 ```text
 UE4Editor-Cmd.exe <ProjectPath>/RMMAzureBlockhead.uproject -run=pythonscript -script=<ProjectPath>/Scripts/create_hammer_materials.py -unattended -nop4 -nullrhi
 ```
 
-The resulting paths are `UI/MI_AzureBlockhead_Silhouette` and `UI/MI_AzureBlockhead_Symbol`. For a different hammer, adapt the texture names and asset names in that script. These are starter material graphs; preview the instances in the game context and adjust them if Ragnarock's selector expects a different visual treatment.
+The resulting paths are `Materials/M_AzureBlockhead`, `UI/M_AzureBlockhead_Silhouette`, `UI/M_AzureBlockhead_Mark`, and `UI/MI_AzureBlockhead_Symbol`. The silhouette texture is the base Material's default texture; the symbol texture is set on its Material Instance. For a different hammer, adapt the texture names and asset names in that script. Preview both outputs in the game context and adjust them if Ragnarock's selector expects a different visual treatment.
 
-For the Azure sample, `generate_source.py` rotates the head assembly a quarter turn around the handle axis while leaving the handle geometry fixed. After regenerating the OBJ, run `Scripts/reimport_azure_mesh.py` in the UE project before cooking. It imports `Source/SM_RMM_AzureBlockhead_Rotated.obj` as `SM_AzureBlockhead_Rotated` and binds every section to the authored textured `M_AzureBlockhead` material. This avoids the OBJ importer's unresolved `HammerCyan`, `HammerGold`, and `HammerNavy` material references.
+For the Azure sample, `generate_source.py` rotates the head assembly a quarter turn around the handle axis while leaving the handle geometry fixed. After regenerating the OBJ and creating the material assets, run `Scripts/reimport_azure_mesh.py` in the UE project before cooking. It imports `Source/SM_RMM_AzureBlockhead.obj` as `SM_AzureBlockhead_Rotated` and writes the authored textured `M_AzureBlockhead` into every serialized Static Mesh material slot. This avoids the OBJ importer's unresolved `HammerCyan`, `HammerGold`, and `HammerNavy` material references. The script saves, reloads, and verifies the slot assignments and stops if any slot is empty or points to another material.
 
 ## 2. Import and author assets in UE 4.27
 
@@ -92,12 +92,11 @@ Content/RMM/Hammers/<hammer-id>/Materials/MI_<Hammer>
 Content/RMM/Hammers/<hammer-id>/Textures/T_<Hammer>_BaseColor
 Content/RMM/Hammers/<hammer-id>/UI/T_<Hammer>_Icon
 Content/RMM/Hammers/<hammer-id>/UI/M_<Hammer>_Silhouette
-Content/RMM/Hammers/<hammer-id>/UI/MI_<Hammer>_Silhouette
 Content/RMM/Hammers/<hammer-id>/UI/M_<Hammer>_Symbol
 Content/RMM/Hammers/<hammer-id>/UI/MI_<Hammer>_Symbol
 ```
 
-Import the FBX as a Static Mesh. Inspect scale, orientation, pivot, normals, material slots, UVs, and collision in the Static Mesh Editor. Set up the surface Material and Material Instances and assign them to the mesh sections. Import the icon and any silhouette/symbol textures as Texture assets. Build base Materials and create the two `MaterialInstanceConstant` assets assigned to `Silhouette` and `Symbol`.
+Import the FBX as a Static Mesh. Inspect scale, orientation, pivot, normals, material slots, UVs, and collision in the Static Mesh Editor. Set up the surface Material and Material Instances and assign them to the mesh sections. Import the icon and any silhouette/symbol textures as Texture assets. Create a base `Material` for `Silhouette`, and create a separate base Material plus a `MaterialInstanceConstant` for `Symbol`.
 
 Keep all custom dependencies in the project. Do not use a Material Instance whose parent, texture, or other referenced package is in the project unless that package is included in the hammer archive too. References to Ragnarock's stock content may resolve from the installed game, but a package intended to work independently should own its mesh and visual dependencies.
 
@@ -113,9 +112,12 @@ Make sure the project targets the game's shader format. A project-level Windows 
 [/Script/WindowsTargetPlatform.WindowsTargetSettings]
 !TargetedRHIs=ClearArray
 +TargetedRHIs=PCD3D_SM5
+
+[/Script/UnrealEd.ProjectPackagingSettings]
+bShareMaterialShaderCode=True
 ```
 
-Do not set the Windows target to `SF_VULKAN_SM5`; that is the Linux shader format. A WindowsNoEditor cook made by the Linux editor can still contain Vulkan shader maps if the project overrides `TargetedRHIs`, and Ragnarock will fall back to its default checker material.
+Do not set the Windows target to `SF_VULKAN_SM5`; that is the Linux shader format. A WindowsNoEditor cook made by the Linux editor can still contain Vulkan shader maps if the project overrides `TargetedRHIs`, and Ragnarock will fall back to its default checker material. The project must explicitly set `bShareMaterialShaderCode=True` before the cook so the archive contains the custom material shader maps.
 
 ```text
 UE4Editor-Cmd.exe <ProjectPath>/<ProjectName>.uproject -run=cook -targetplatform=WindowsNoEditor -cookall
@@ -141,7 +143,7 @@ Create `hammer.json` at the archive root. RMM derives the DataTable row name and
   "displayName": "My Hammer",
   "meshAssetPath": "/Game/RMM/Hammers/my-hammer/Mesh/SM_MyHammer",
   "iconAssetPath": "/Game/RMM/Hammers/my-hammer/UI/T_MyHammer_Icon",
-  "silhouetteAssetPath": "/Game/RMM/Hammers/my-hammer/UI/MI_MyHammer_Silhouette",
+  "silhouetteAssetPath": "/Game/RMM/Hammers/my-hammer/UI/M_MyHammer_Silhouette",
   "symbolAssetPath": "/Game/RMM/Hammers/my-hammer/UI/MI_MyHammer_Symbol",
   "shaderArchive": "Shaders/ShaderArchive-MyProject-PCD3D_SM5.ushaderbytecode",
   "dataAssetPath": "/Game/Data/Hammers/DA_RMM_MY_HAMMER",
@@ -154,16 +156,16 @@ Create `hammer.json` at the archive root. RMM derives the DataTable row name and
     { "source": "Assets/Textures/T_MyHammer_BaseColor.uasset", "packagePath": "/Game/RMM/Hammers/my-hammer/Textures/T_MyHammer_BaseColor" },
     { "source": "Assets/UI/T_MyHammer_Icon.uasset", "packagePath": "/Game/RMM/Hammers/my-hammer/UI/T_MyHammer_Icon" },
     { "source": "Assets/UI/M_MyHammer_Silhouette.uasset", "packagePath": "/Game/RMM/Hammers/my-hammer/UI/M_MyHammer_Silhouette" },
-    { "source": "Assets/UI/MI_MyHammer_Silhouette.uasset", "packagePath": "/Game/RMM/Hammers/my-hammer/UI/MI_MyHammer_Silhouette" },
+    { "source": "Assets/UI/M_MyHammer_Silhouette.uasset", "packagePath": "/Game/RMM/Hammers/my-hammer/UI/M_MyHammer_Silhouette" },
     { "source": "Assets/UI/M_MyHammer_Symbol.uasset", "packagePath": "/Game/RMM/Hammers/my-hammer/UI/M_MyHammer_Symbol" },
     { "source": "Assets/UI/MI_MyHammer_Symbol.uasset", "packagePath": "/Game/RMM/Hammers/my-hammer/UI/MI_MyHammer_Symbol" }
   ]
 }
 ```
 
-The example omits sidecar entries for brevity. Add an `assets` entry for every cooked sidecar and every transitive custom dependency, using the same `packagePath` as its `.uasset`. If the cooked materials use shared shader code, include the project `ShaderArchive-<Project>-PCD3D_SM5.ushaderbytecode` as `shaderArchive`; the example path is included in the `.rhammer` ZIP beside `hammer.json` and `Assets/`. The current RMM build puts each declared archive in a separate `pakchunk10000`–`pakchunk10999` shader PAK named `Global_Chunk<N>`. Although that follows UE4.27's chunk naming convention, the Ragnarock startup path does not load these early-mounted chunks when its base `Global` archive has already opened; see the runtime status below. ZIP `hammer.json`, the assets, shader archive, and optional preview into a `.zip`, then rename it to `.rhammer`.
+The example omits sidecar entries for brevity. Add an `assets` entry for every cooked sidecar and every transitive custom dependency, using the same `packagePath` as its `.uasset`. Include the project `ShaderArchive-<Project>-PCD3D_SM5.ushaderbytecode` as `shaderArchive`. RMM places it in a unique content plugin inside the main overlay PAK and generates a plugin descriptor with `EnabledByDefault=true`; it also writes the plugin manifest UE4.27 uses to discover the descriptor. The live test below confirms this route opens the archive in Ragnarock. ZIP `hammer.json`, all cooked assets, the shader archive, and the optional preview into a `.zip`, then rename it to `.rhammer`.
 
-For the Azure Blockhead sample, after a successful cook, run `python build_rhammer.py <Project>/Saved/Cooked/WindowsNoEditor/RMMAzureBlockhead/Content --output azure-blockhead-verified.rhammer` from `samples/azure-blockhead-source/UEProject/Scripts/`. The script requires `PCD3D_SM5` shader metadata containing compiled maps for the authored surface and marker materials, refuses a Vulkan cook, scans only the sample's unique `/Game/RMM/Hammers/azure-blockhead-runtime-verified` folder, includes `.uasset` and any `.uexp`, `.ubulk`, or `.uptnl` sidecars, maps those files into the manifest, and stops if any manifest reference is absent from the cook. It also includes the project's `ShaderArchive-<Project>-PCD3D_SM5.ushaderbytecode` in the `.rhammer`; cooked material shader-map IDs need this archive at runtime. Keep this content folder unique so its assets cannot replace or shadow assets supplied by another hammer package.
+For the Azure Blockhead sample, after a successful cook, run `python build_rhammer.py <Project>/Saved/Cooked/WindowsNoEditor/RMMAzureBlockhead/Content --output azure-blockhead.rhammer` from `samples/azure-blockhead-source/UEProject/Scripts/`. The script requires `PCD3D_SM5` shader metadata containing compiled maps for the authored surface and marker materials, refuses a Vulkan cook, scans only the sample's unique `/Game/RMM/Hammers/azure-blockhead-runtime-verified` folder, includes `.uasset` and any `.uexp`, `.ubulk`, or `.uptnl` sidecars, maps those files into the manifest, and stops if any manifest reference is absent from the cook. It also includes the project's `ShaderArchive-<Project>-PCD3D_SM5.ushaderbytecode` in the `.rhammer`; cooked material shader-map IDs need this archive at runtime. Keep this content folder unique so its assets cannot replace or shadow assets supplied by another hammer package.
 
 ## 5. Import and verify in RMM and Ragnarock
 
@@ -175,17 +177,19 @@ For the Azure Blockhead sample, after a successful cook, run `python build_rhamm
 
 ## Current RMM support and known limits
 
-RMM validates cooked Static Mesh, Texture2D, and Material Instance exports, copies the declared package files into its PAK, creates the hammer Data Asset, and merges the row into a matching `DT_Hammers`. At PAK build time it also checks each declared cooked package's `/Game/` imports against the enabled package collection and the installed game build. An unresolved project dependency stops the build with the missing package path. Source meshes and textures must be cooked before import. RMM does not invoke Unreal Editor or create cooked meshes/materials/textures.
+RMM validates cooked Static Mesh, Texture2D, base Material, and Material Instance exports against the stock property classes, copies the declared package files into its PAK, creates the hammer Data Asset, and merges the row into a matching `DT_Hammers`. At PAK build time it also checks each declared cooked package's `/Game/` imports against the enabled package collection and the installed game build. An unresolved project dependency stops the build with the missing package path. Source meshes and textures must be cooked before import. RMM does not invoke Unreal Editor or create cooked meshes/materials/textures.
 
 Stock build evidence used for this guide: UE 4.27 metadata; `DT_Hammers` row fields `Title`, `Description`, `Icon`, `EntitlementId`, and `Data`; `DA_SummerHammer` fields `Mesh`, `Silhouette`, and `Symbol`; `Default__DA_Hammers_C.DrumHitSound` references the shared FMOD event `DrumHit`.
 
-The Azure Blockhead sample was imported and cooked with the Windows source-built UE 4.27 editor. The rotated mesh cook completed with no missing material-package references and emitted `PCD3D_SM5` shader maps for the authored surface and UI marker materials. `build_rhammer.py` packages the rotated mesh and its dependencies and omits the obsolete pre-rotation mesh. Ragnarock resolves cooked material shader maps through `ShaderCodeLibrary`, so the `.rhammer` carries the project shader archive. The project content folder is `/Game/RMM/Hammers/azure-blockhead-runtime-verified`, deliberately distinct from the earlier development package folder.
+The Azure Blockhead sample was imported and cooked with the Windows source-built UE 4.27 editor. Its shared `PCD3D_SM5` archive contains 1,453 shaders. The RMM-generated plugin descriptor must set `EnabledByDefault=true`; otherwise Ragnarock does not mount the plugin or open the archive. `build_rhammer.py` packages the rotated mesh and its dependencies and omits the obsolete pre-rotation mesh. The project content folder is `/Game/RMM/Hammers/azure-blockhead-runtime-verified`; the package uses the stable `azure-blockhead` ID and `RMM_AZURE_BLOCKHEAD` row.
 
-**Runtime status:** the current Azure package is not fully verified. On 2026-10-10, Ragnarock mounted `pakchunk10000-WindowsNoEditor.pak` and logged it as chunk 10000, but startup created only the stock `Global` and `Ragnarock` shader libraries. It did not create `Global_Chunk10000`; both `M_AzureBlockhead` and `M_AzureBlockhead_Mark` then reported missing shader resources and fell back to the default material. In the changing room, the Azure mesh appeared sideways with checkerboard fallback surfaces. A corrected-material build placed the project archive at `Global_SC`; Ragnarock opened it and logged 1,453 shaders. It reached `Master_CR` and selected `RMM_AZURE_BLOCKHEAD_VERIFIED`, but the run later terminated with `EXCEPTION_ACCESS_VIOLATION` reading `0x18`. The crash report records 576 seconds since startup and the same callstack hash as the earlier failure; the final game log reports `MallocBinned2 Corruption Canary` and a RenderThread crash. The stack is unsymbolized, so this does not establish that the shader archive itself caused the failure, but the route is not safe to use as a verified fix. The experiment was removed from the builder and the previous deployed PAKs were restored. A PAK built from the active library settings contains one Azure row (alongside the two demo rows); the older `azure-blockhead` package is disabled, so the duplicate the user sees still needs a live list check against the exact deployed PAK.
+**Runtime status (2026-10-10):** The earlier PAK (SHA-256 `726f8ef812404bd155d140167aa4b52ae8d2a400a44ce679d37060089d8eb366`) crashed 23 seconds after launch with `EXCEPTION_ACCESS_VIOLATION reading 0x18` on `RenderThread 2`; its UI case had reported `passed` before the crash. Its generated data asset assigned a `MaterialInstanceConstant` to `Silhouette`, while stock `DA_DrumWarriorHammer.Silhouette` uses a base `Material`. Correcting that class alone did not stop the crash. A separate synthetic-VR run of the stable package ended with `GameThread timed out waiting for RenderThread after 120.00 secs`; its screenshot was taken before the timeout and is not a successful-run artifact. That result does not by itself establish that the stable package caused the renderer stall.
 
-UE4.27 source inspection explains the missing chunk: PAK callbacks that run before `FShaderLibrariesCollection` initializes are only recorded as pending. During startup, `FShaderLibrariesCollection::OpenLibrary` opens the existing `Global` archive and its optional `Global_SC` shared-cook archive. It replays known mounted chunks only when the base library fails to open. Ragnarock has the base `Global` archive, so the pending `Global_Chunk10000` is skipped. The `Global_SC` experiment proves that Ragnarock can open the project archive, but it is not a validated deployment path: the later crash included allocator-canary corruption on the render thread and an unsymbolized access violation. Keep shader delivery classified as unresolved until a repeatable run survives the changing room and gameplay without corruption.
+The stable PAK SHA-256 is `E455BFFD38D2AD10E3182FA9BBCFE0BAD0B84AFE3D4A1451C85794C11988FF76` (27 stock rows plus the Azure row), and that exact build is installed in the active game PAK location. In a fresh Flat-mode run using RagnaLoader's premade live hammer-card scan with coordinates mapped to the current window, the harness inspected 28 `FlatOneHammerSetting_C` widgets. Its fresh screenshot showed the selected Azure Blockhead card, its icon, and its 3D changing-room model. The game process remained alive after the scan. The model has visible texture artifacts. In-song model appearance, charge feedback, and combo behavior remain unverified.
 
-No Azure combo-display proof has been captured. A previous automated run had 98 misses; a later rapid-input run registered 194 hits and 22 misses but showed `Combos 0 + 0` on the Results Stats screen. The user also reported no charging indication during play. Those runs do not establish a working model or combo display. The latest `Global_SC` run ended with render-thread allocator corruption, so do not use it for the next gameplay check. First establish a stable shader/material delivery path and verify the corrected mesh and its surface in the changing room. Then capture Azure equipped during a consecutive note streak and confirm the live charge/combo indication and a nonzero combo in Results Stats. Ragnarock's shared `DA_Hammers_C` class has no per-hammer combo asset or field, so the display must come from the game's common gameplay path.
+Several older RagnaLoader cases returned `passed` without proving their hypothesis: some screenshots were captured on the initial card list, the custom-play case targeted stale transient widget IDs, and an earlier hammer-card scan inspected zero widgets while the game was still on a splash screen. Those screenshots are invalid evidence. The latest valid Flat hammer-card case logged `hammer card state scan inspected=28` and its new screenshot shows the Azure card and preview. A separate local-fixture case reached `race.started` but did not establish which hammer was equipped; its stats showed placeholder hit/miss values (`999`) and `combo=0`, so this is not evidence of Azure's gameplay model or combo behavior.
+
+No Azure combo-display proof has been captured. Prior synthetic-chart runs produced zero combo, and the gameplay screenshot did not identify Azure as equipped. The user also reported no charging indication during play. The shared `DA_Hammers_C` class has no per-hammer combo asset or field; combo and charge feedback should come from the game's common gameplay path. Verification still requires selecting this specific row, confirming its model is loaded in-song, hitting a consecutive streak, observing charge feedback, and confirming a nonzero combo in Results Stats.
 
 ## UE 4.27 references
 

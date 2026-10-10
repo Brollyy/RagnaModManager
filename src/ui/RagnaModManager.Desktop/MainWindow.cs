@@ -368,12 +368,6 @@ public partial class MainWindow : Window
             [
                 new ManifestFile { Type = "pak", Source = "Files/RMM_CustomHammers_P.pak", LoadOrder = 500 }
             ];
-            packageManifest.Files.AddRange(build.Value.ShaderPaks.Select(shaderPak => new ManifestFile
-            {
-                Type = "pak",
-                Source = "Files/" + Path.GetFileName(shaderPak.PakPath),
-                LoadOrder = 501
-            }));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or InvalidDataException)
         {
@@ -391,13 +385,6 @@ public partial class MainWindow : Window
             await using var pakOutput = pakEntry.Open();
             await using var pakInput = File.OpenRead(pakPath);
             await pakInput.CopyToAsync(pakOutput);
-            foreach (var shaderPak in build.Value.ShaderPaks)
-            {
-                var shaderEntry = archive.CreateEntry("Files/" + Path.GetFileName(shaderPak.PakPath), System.IO.Compression.CompressionLevel.NoCompression);
-                await using var shaderOutput = shaderEntry.Open();
-                await using var shaderInput = File.OpenRead(shaderPak.PakPath);
-                await shaderInput.CopyToAsync(shaderOutput);
-            }
         }
 
         var imported = new PackageImporter(_paths, _database, _logger).Import(packagePath);
