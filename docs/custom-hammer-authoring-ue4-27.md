@@ -150,9 +150,11 @@ Check each output separately:
 2. Equip it and start an offline song. Confirm the custom mesh appears in the player's hands during the race and that normal hits play the game's shared `DrumHit` sound.
 3. Test combo and charge using the normal drum bindings displayed in the game's Input settings. On the tested setup these are `Q`, `W`, `E`, `I`, `O`, and `P`; **One Key One Drum is not required**. Use a chart and timing that produce consecutive accurate hits. Confirm perfect-hit/combo progression in the Results Stats and observe the in-race charge feedback. A few hits, key presses, or a visible hammer alone do not prove the combo path works.
 
-### What makes combo work
+### Combo meter and charge
 
-In the inspected Ragnarock build, combo and charge are driven by the game's shared gameplay/input logic. The `DT_Hammers` row and hammer data asset do not contain a per-hammer combo meter or combo counter. RMM creates the hammer asset from the game's existing `DA_Hammers_C` class, which supplies the shared `DrumHitSound`; a custom subclass, combo texture, or meter asset is not part of the RMM package format. Therefore, keep the standard data class, provide a valid mesh and selectable hammer row, and test with ordinary accurate input. If hits register but perfect-hit/combo events do not, first validate timing and the game's common hit path with a stock hammer; do not infer success from the custom mesh loading.
+There is no per-hammer combo-meter texture, widget, or counter to add to the package. In the inspected game build, Ragnarock's shared input and gameplay systems calculate hit accuracy, combo, and charge. RMM creates each hammer from the game's standard `DA_Hammers_C` data-asset class, which also provides the shared `DrumHitSound` behavior.
+
+For a custom hammer, include the normal hammer assets and table entry: a unique row, a valid mesh, and its in-game icon. Keep the standard data-asset class. Then test with the normal drum bindings and a chart that allows accurate consecutive hits. Check perfect-hit/combo progression in Results and charge feedback during the race. A custom mesh appearing in the changing room or hands only proves that the visual assets loaded; it does not prove that hits or combo progression work. If the same chart does not produce perfect hits with a stock hammer, resolve the input or timing issue before diagnosing the custom package.
 
 ## Sample status: Azure Blockhead
 
