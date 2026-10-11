@@ -28,30 +28,32 @@ Ragnarock's PC build uses UE 4.27 and Direct3D shader format `PCD3D_SM5`. A Linu
 
 ## Step 1 — Prepare the model and artwork
 
-1. Model the hammer in Blender or another 3D editor. Put the pivot at the grip point, apply transforms, check face normals, and make UVs for every textured material.
-2. Compare the model's size, grip, and orientation with a Ragnarock hammer in UE. A mesh that looks upright in Blender can appear sideways in the game; correct the source mesh before cooking.
-3. Keep material slots intentional. Give differently colored parts their own material slots, or make sure each part's UVs sample the intended region of the same texture.
-4. Export the mesh as FBX or OBJ. Export only the mesh and material slots you intend to use.
-5. Make a square changing-room icon as a PNG. Use a transparent background if you want the game backdrop to show around the hammer. The icon is separate from the 3D mesh and from RMM's optional desktop thumbnail.
-6. Make the color and any optional normal, roughness, metallic, or mask textures. Keep the editable source files together with the project.
+1. Model the hammer in Blender or another 3D editor. Put the pivot at the point where the hand grips it, apply rotation and scale, check face normals, and make UVs for every textured surface. Keep the grip and head proportions close to the stock hammer so the object sits naturally in the hand.
+2. Compare the model's size, grip, and orientation with a Ragnarock hammer in UE. A mesh that looks upright in Blender can appear sideways in the game; correct the source mesh before cooking. The game expects a held-object orientation, not a changing-room-only presentation pose.
+3. Give the mesh a body material plus the exact gauge slots `M_JaugeManche` and `M_JaugeTete`, in that order. These slot names are case-sensitive and are used by the stock hammer setup. The body may use a texture atlas or its own material; the two gauge materials should be assigned to visible handle/head geometry.
+4. Export the mesh as FBX or OBJ with the material slots and UVs retained. Export only the mesh and slots you intend to ship. Keep the editable model and texture sources alongside the UE project.
+5. Make a square changing-room icon as a PNG. Preserve its alpha channel for a transparent background. The icon is imported as a `Texture2D`; it is separate from the 3D mesh and from RMM's optional desktop thumbnail.
+6. Create the color and any optional normal, roughness, metallic, or mask textures. Keep color textures and the icon as separate files so each can have the appropriate texture settings and be referenced independently.
 
-**You should have:** an exported mesh, its textures, and a separate square icon.
+**You should have:** an exported mesh with UVs and three ordered material slots, its source textures, and a separate square icon PNG.
 
 ## Step 2 — Import and set up assets in UE 4.27
 
 1. Create a blank UE 4.27 project. Put the hammer's content in a unique folder, for example `Content/RMM/Hammers/<hammer-id>/`. Use a stable, unique ID for each hammer so its cooked package paths cannot collide with another mod.
-2. Import the mesh as a **Static Mesh**. In its editor, check pivot, scale, orientation, UVs, material slots, and collision. Fix these here before moving on.
-3. Import the color textures as **Texture2D** assets. Create a surface **Material** (and any **Material Instance** assets you use), connect the texture parameters, and assign the right material to each mesh slot. For combo feedback, follow the stock slot and scalar-parameter contract described below; a material that only renders its base color will not show combo buildup.
-4. Import the square icon as a **Texture2D** asset. This is the texture RMM will use for the in-game hammer-list icon.
-5. Save the project and verify that the mesh and materials look correct in UE's preview. A material that looks right in the editor can still fail in Ragnarock if its Windows shader map is missing, so runtime validation is required.
+2. Import the mesh as a **Static Mesh**. In its editor, check pivot, scale, held orientation, UVs, collision, and the three material slot names/order. Assign a material to each slot and save the mesh. Fix lost or renamed slots here before cooking.
+3. Import the color textures as **Texture2D** assets. Create a surface **Material** (and any **Material Instance** assets you use), connect the texture parameters, and assign the right material to each mesh slot. Use the combo recipe below so the surface changes when the game updates its gauge parameters.
+4. Import the square icon PNG as a separate **Texture2D** asset and verify its transparency in the texture/material preview. This is the texture RMM will use for the in-game hammer-list icon.
+5. Save the project and verify the mesh and materials in UE's preview. A material that looks right in the editor can still fail in Ragnarock if its Windows shader map is missing, so runtime validation is required.
 
-**You should have:** a saved UE project whose mesh preview shows the intended shape, orientation, and materials.
+**Combo material recipe:** In the Material Editor, create scalar parameter nodes named exactly `handleGauge` and `circularGauge` (matching case). For a broad body response, add them, multiply by a tuning value that makes early progress noticeable, clamp the result to 0–1, and use it as the alpha of a `LinearInterpolate` between the resting surface color and an energized color. Connect the Lerp to **Base Color**. The Azure body uses a scale of 4.0 and an amber energized color. Put a visible `handleGauge` response on `M_JaugeManche`; put visible `handleGauge` and `circularGauge` response on `M_JaugeTete`. You can use distinct resting/energized colors for handle and head. Emissive Color can add glow, but should supplement a Base Color change so the effect remains visible without bloom. The game drives these parameter values at runtime; do not leave them as unconnected parameters or bake only the energized color into the texture.
+
+**You should have:** a saved UE project whose preview shows the intended shape and orientation, whose three slots have assigned materials, and whose combo parameters drive visible surface changes.
 
 ### Optional selector art
 
 Ragnarock's hammer data asset has `Silhouette` and `Symbol` properties in addition to `Mesh`. The inspected game build expects a base **Material** for `Silhouette` and a **Material Instance Constant** for `Symbol`. Their texture and parent-material dependencies must also be cooked and packaged. RMM can leave these fields at the stock defaults; they are optional for a basic custom hammer. Custom marker materials have crashed the game in sample testing, so treat these overrides as experimental and validate them separately before distributing them.
 
-The Azure project includes `Scripts/create_hammer_materials.py` and `Scripts/reimport_azure_mesh.py` as examples of creating UE materials and assigning the mesh's distinct color slots with UE's Python API. They are sample automation scripts, not prerequisites for other projects.
+The Azure project includes `Scripts/create_hammer_materials.py` and `Scripts/reimport_azure_mesh.py` as examples of importing source images, creating UE materials and assigning the mesh's distinct color slots with UE's Python API. They are sample automation scripts, not prerequisites for other projects. Enable UE's Python Editor Script Plugin, then run each through **File → Execute Python Script** or with the `-run=pythonscript -script="<path>"` commandlet form. Run material creation before mesh reimport. The sample scripts create their assets at the same package paths used by its manifest and archive builder; see its [UE project README](../samples/azure-blockhead-source/UEProject/README.md) for executable Windows commands.
 
 ## Step 3 — Configure and cook for Windows
 
@@ -82,7 +84,7 @@ Wait for the cook to finish. Inspect its log for errors and successful `PCD3D_SM
 
 ## Step 4 — Assemble the `.rhammer` archive
 
-An `.rhammer` is a ZIP archive with a `hammer.json` manifest, cooked UE assets, and the shared shader archive. RMM uses the manifest to create a Ragnarock hammer data asset and add a row to the game's hammer table.
+An `.rhammer` is a ZIP archive with a `hammer.json` manifest, cooked UE assets, and the shared shader archive. RMM uses the manifest to create a Ragnarock hammer data asset and add a row to the game's hammer table. The archive must carry your custom Static Mesh, in-game icon Texture2D, every material and texture they reference, each cooked sidecar, and the Windows shader archive. Source FBX/OBJ/PNG files and the UE project are authoring inputs; they do not replace the cooked runtime assets.
 
 Start from the example manifest at `samples/azure-blockhead-source/hammer.json.template`. Give your hammer a unique, permanent `id`; keep it unchanged in future updates because the game saves the selected hammer by its row name. Set the mesh and icon paths to the cooked package paths in your project. Leave `silhouetteAssetPath` and `symbolAssetPath` null unless you have validated those custom materials in the game.
 
@@ -118,7 +120,7 @@ Minimal manifest shape:
 }
 ```
 
-The example only shows `.uasset` files. Add one `assets` entry for **every** cooked file, including sidecars and every custom material or texture dependency. Each entry's `packagePath` is the UE object path without the file extension; all files for the same asset use the same `packagePath`. Include the project's `ShaderArchive-<Project>-PCD3D_SM5.ushaderbytecode` at the path named by `shaderArchive`. `thumbnail` is an optional RMM library preview; it does not set the in-game icon.
+The example only shows `.uasset` files. Add one `assets` entry for **every** cooked file, including sidecars and every custom material or texture dependency. Each entry's `packagePath` is the UE object path without the file extension; all files for the same asset use the same `packagePath`. Include the project's `ShaderArchive-<Project>-PCD3D_SM5.ushaderbytecode` at the path named by `shaderArchive`. A practical completeness check is to enumerate all cooked `.uasset`, `.uexp`, `.ubulk`, and `.uptnl` files under your hammer content folder, then confirm every one appears in the manifest and ZIP. Do not package only the mesh: UE material references must resolve at runtime. `thumbnail` is an optional RMM library preview; it does not set the in-game icon.
 
 To assemble the archive manually, create a folder with `hammer.json`, then copy in the cooked files under the matching `Assets/` paths, the shader archive under `Shaders/`, and the optional image under `Preview/`. Zip the **contents** of that folder and rename the `.zip` file to `.rhammer`.
 
@@ -164,11 +166,12 @@ Verify the two parts separately: first test accurate consecutive hits with a sto
 
 The source package is [here](../samples/azure-blockhead-source/). Its `generate_source.py` creates original low-poly mesh and PNG art; the UE project imports a separate cyan texture material and gold/navy slot materials. The checked-in `.rhammer` includes those cooked assets and the Windows `PCD3D_SM5` shader archive.
 
-The checked-in sample package loads in the changing room with its icon and cyan/gold/navy 3D preview. Its authored mesh uses the stock three-slot order. The body and gauge materials blend the surface color toward a bright energized color from the stock combo parameters, with an emissive response as additional feedback. The Azure sample has been checked in a race on the `RMM COMBO METER FIXTURE` custom song using the normal W keyboard binding. The stats hook recorded 33/40 hits (28 normal, 5 perfect, 7 misses, and one boost event), and the broad cyan body panels visibly shifted to bright yellow as combo built. Use a similar accurate-hit run to verify your own material response.
+The checked-in sample package loads in the changing room with its icon and cyan/gold/navy 3D preview. The source OBJ and PNG artwork, UE project scripts, current cooked mesh/material/Texture2D assets, manifest and D3D shader archive are all included in the repository. Its authored mesh uses the stock three-slot order. The body and gauge materials blend the surface color toward a bright energized color from the stock combo parameters, with an emissive response as additional feedback. The Azure sample has been checked in a race on the `RMM COMBO METER FIXTURE` custom song using the normal W keyboard binding. The stats hook recorded 33/40 hits (28 normal, 5 perfect, 7 misses, and one boost event), and the broad cyan body panels visibly shifted to bright yellow as combo built. Use a similar accurate-hit run to verify your own material response.
 
 ## References
 
 - [UE 4.27 FBX Static Mesh Pipeline](https://dev.epicgames.com/documentation/en-us/unreal-engine/fbx-static-mesh-pipeline?application_version=4.27)
 - [UE 4.27 Texture Import Guide](https://dev.epicgames.com/documentation/en-us/unreal-engine/texture-import-guide?application_version=4.27)
 - [UE 4.27 Content Cooking](https://dev.epicgames.com/documentation/unreal-engine/content-cooking?application_version=4.27)
+- [UE 4.27 Scripting the Editor using Python](https://dev.epicgames.com/documentation/en-us/unreal-engine/scripting-the-editor-using-python?application_version=4.27)
 - [Ragnarock FAQ](https://www.ragnarock-game.com/faq/)
