@@ -15,18 +15,23 @@ SURFACE_MATERIAL = (
     "M_AzureBlockhead"
 )
 SLOT_MATERIALS = {
-    "HammerCyan": SURFACE_MATERIAL,
-    "HammerGold": (
-        "/Game/RMM/Hammers/azure-blockhead-runtime-verified/Materials/"
-        "M_AzureBlockhead_Gold"
-    ),
-    "HammerNavy": (
+    "M_Character": SURFACE_MATERIAL,
+    "M_JaugeManche": (
         "/Game/RMM/Hammers/azure-blockhead-runtime-verified/Materials/"
         "M_AzureBlockhead_Navy"
+    ),
+    "M_JaugeTete": (
+        "/Game/RMM/Hammers/azure-blockhead-runtime-verified/Materials/"
+        "M_AzureBlockhead_Gold"
     ),
 }
 
 unreal.EditorAssetLibrary.make_directory(DESTINATION)
+asset_path = DESTINATION + "/" + ASSET_NAME
+if unreal.EditorAssetLibrary.does_asset_exist(asset_path):
+    if not unreal.EditorAssetLibrary.delete_asset(asset_path):
+        raise RuntimeError("Could not replace the previous Azure StaticMesh: " + asset_path)
+
 task = unreal.AssetImportTask()
 task.filename = SOURCE
 task.destination_path = DESTINATION
@@ -36,18 +41,24 @@ task.replace_existing = True
 task.save = True
 unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
 
-asset_path = DESTINATION + "/" + ASSET_NAME
 mesh = unreal.EditorAssetLibrary.load_asset(asset_path)
 if not mesh or mesh.get_class().get_name() != "StaticMesh":
     raise RuntimeError("UE did not import the corrected Azure StaticMesh: " + asset_path)
 
 slot_count = len(mesh.get_editor_property("static_materials"))
-if not slot_count:
-    raise RuntimeError("The imported Azure StaticMesh has no material slots")
+static_materials = mesh.get_editor_property("static_materials")
+slot_names = [str(slot.get_editor_property("material_slot_name")) for slot in static_materials]
+expected_slot_names = ["M_Character", "M_JaugeManche", "M_JaugeTete"]
+if slot_count != len(expected_slot_names) or slot_names != expected_slot_names:
+    raise RuntimeError(
+        "The Azure StaticMesh must preserve stock material slot order "
+        + ", ".join(expected_slot_names)
+        + "; received "
+        + ", ".join(slot_names)
+    )
 # Set the StaticMaterials array so assignments are serialized into the cook.
 # Applying the cyan atlas to every slot paints accent geometry with unrelated
 # atlas colors.
-static_materials = mesh.get_editor_property("static_materials")
 updated_static_materials = []
 for slot in static_materials:
     slot_name = str(slot.get_editor_property("material_slot_name"))

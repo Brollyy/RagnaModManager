@@ -6,7 +6,7 @@ This sample provides original source art and a UE 4.27 project for following the
 
 Run `python3 generate_source.py` to regenerate these editable files:
 
-- `Source/SM_RMM_AzureBlockhead.obj` and its `.mtl`: low-poly hammer mesh with cyan, gold, and navy material slots. The pivot is at the grip point.
+- `Source/SM_RMM_AzureBlockhead.obj` and its `.mtl`: low-poly hammer mesh with `M_Character`, `M_JaugeManche`, and `M_JaugeTete` slots in the same order used by stock meshes. The pivot is at the grip point.
 - `Source/T_RMM_AzureBlockhead_BaseColor.png`: color atlas used by the cyan mesh section.
 - `Source/T_RMM_AzureBlockhead_Icon.png`: separate changing-room icon.
 - `Source/T_RMM_AzureBlockhead_Silhouette.png` and `Source/T_RMM_AzureBlockhead_Symbol.png`: optional selector art. The sample package leaves the game's `Silhouette` and `Symbol` fields at their stock defaults because custom marker materials have not been validated safely in-game.
@@ -14,7 +14,7 @@ Run `python3 generate_source.py` to regenerate these editable files:
 ## Build the sample package
 
 1. Open `UEProject/RMMAzureBlockhead.uproject` in Unreal Engine 4.27 on Windows.
-2. Run `UEProject/Scripts/create_hammer_materials.py` and then `UEProject/Scripts/reimport_azure_mesh.py` with UE's Python Script Plugin. These scripts import the source textures, create surface/accent materials, and assign them to their matching mesh slots.
+2. Run `UEProject/Scripts/create_hammer_materials.py` and then `UEProject/Scripts/reimport_azure_mesh.py` with UE's Python Script Plugin. These scripts import the source textures, create surface/accent materials, and assign them to their matching mesh slots. The handle/head materials define and use the game's `handleGauge` and `circularGauge` scalar parameters to brighten the corresponding surfaces as combo builds.
 3. Cook for `WindowsNoEditor` with the project's `PCD3D_SM5` target and shared material shader code enabled.
 4. Run `build_rhammer.py` from `UEProject/Scripts/`, passing the cooked `Content` directory. The script checks shader metadata, packages cooked assets and sidecars, and includes the project's shader archive.
 

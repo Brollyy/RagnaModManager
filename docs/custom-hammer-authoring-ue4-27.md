@@ -41,7 +41,7 @@ Ragnarock's PC build uses UE 4.27 and Direct3D shader format `PCD3D_SM5`. A Linu
 
 1. Create a blank UE 4.27 project. Put the hammer's content in a unique folder, for example `Content/RMM/Hammers/<hammer-id>/`. Use a stable, unique ID for each hammer so its cooked package paths cannot collide with another mod.
 2. Import the mesh as a **Static Mesh**. In its editor, check pivot, scale, orientation, UVs, material slots, and collision. Fix these here before moving on.
-3. Import the color textures as **Texture2D** assets. Create a surface **Material** (and any **Material Instance** assets you use), connect the texture parameters, and assign the right material to each mesh slot.
+3. Import the color textures as **Texture2D** assets. Create a surface **Material** (and any **Material Instance** assets you use), connect the texture parameters, and assign the right material to each mesh slot. For combo feedback, follow the stock slot and scalar-parameter contract described below; a material that only renders its base color will not show combo buildup.
 4. Import the square icon as a **Texture2D** asset. This is the texture RMM will use for the in-game hammer-list icon.
 5. Save the project and verify that the mesh and materials look correct in UE's preview. A material that looks right in the editor can still fail in Ragnarock if its Windows shader map is missing, so runtime validation is required.
 
@@ -152,15 +152,19 @@ Check each output separately:
 
 ### Combo meter and charge
 
-There is no per-hammer combo-meter texture, widget, or counter to add to the package. In the inspected game build, Ragnarock's shared input and gameplay systems calculate hit accuracy, combo, and charge. RMM creates each hammer from the game's standard `DA_Hammers_C` data-asset class, which also provides the shared `DrumHitSound` behavior.
+The game calculates combo and charge in its shared gameplay code, but each hammer supplies the material response that makes buildup visible. In the inspected build, `BP_RagnarockHand`'s `UpdateHammerCombo` path calls `SetScalarParameterValue` with the names `circularGauge` and `handleGauge`. A stock hammer mesh has three material slots: the regular body, `M_JaugeManche` for the handle gauge, then `M_JaugeTete` for the head gauge. The corresponding stock head material supports both scalar parameters; the handle material supports `handleGauge`.
 
-For a custom hammer, include the normal hammer assets and table entry: a unique row, a valid mesh, and its in-game icon. Keep the standard data-asset class. Then test with the normal drum bindings and a chart that allows accurate consecutive hits. Check perfect-hit/combo progression in Results and charge feedback during the race. A custom mesh appearing in the changing room or hands only proves that the visual assets loaded; it does not prove that hits or combo progression work. If the same chart does not produce perfect hits with a stock hammer, resolve the input or timing issue before diagnosing the custom package.
+For a custom Static Mesh, keep the three slots in that order and use those exact, case-sensitive slot names. Put a material on `M_JaugeManche` that exposes a scalar parameter named `handleGauge`, and a material on `M_JaugeTete` that exposes `circularGauge` and `handleGauge`. Connect each parameter to a visible material response, such as Emissive Color or a masked fill texture. Merely declaring a parameter without connecting it to the material output is not enough. Assign the gauge materials to visible grip and head details so the changing response can be seen. The Azure sample uses emissive material graphs driven by these parameters.
+
+The names and slot order are based on the installed build's stock `BP_RagnarockHand`, `SM_Hammer_Default`, `MI_HandleGauge`, and `MI_HeadGauge` assets. Keep the standard `DA_Hammers_C` data-asset class; RMM creates that data asset and table row for each package. The hammer's DataTable row and icon do not control combo calculation or material response.
+
+Verify the two parts separately: first test accurate consecutive hits with a stock hammer and confirm the normal combo/charge behavior. Then equip only the custom hammer and repeat the same chart and inputs. Confirm that its handle/head material response changes as combo builds and resets when combo is lost. A custom mesh appearing in the changing room or hands proves only that its visual assets loaded. If the stock hammer does not respond under the same chart and inputs, resolve the gameplay/input issue before diagnosing the custom package.
 
 ## Sample status: Azure Blockhead
 
 The source package is [here](../samples/azure-blockhead-source/). Its `generate_source.py` creates original low-poly mesh and PNG art; the UE project imports a separate cyan texture material and gold/navy slot materials. The checked-in `.rhammer` includes those cooked assets and the Windows `PCD3D_SM5` shader archive.
 
-The checked-in sample package loads in the changing room with its icon and cyan/gold/navy 3D preview. The corrected material build has not yet been independently verified during a race. Combo progression and in-race charge feedback also remain unverified, so the sample is not yet fully runtime-validated. Use Step 6 to check these behaviors before distributing a custom hammer.
+The checked-in sample package loads in the changing room with its icon and cyan/gold/navy 3D preview. Its authored mesh now uses the stock three-slot order and includes emissive responses connected to the stock combo parameters. The corrected package still needs an in-race check to confirm the game updates those materials during combo progression; do not call it fully runtime-validated until that check passes.
 
 ## References
 

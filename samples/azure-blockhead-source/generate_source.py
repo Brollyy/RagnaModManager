@@ -137,18 +137,18 @@ def prism_obj() -> str:
                 faces.append((material, tri))
 
     # Tapered shaft and wrapped grip, all placed around the grip origin at Z=0.
-    add_prism("Shaft", "HammerCyan", -24, 28, 3.0, 4.0)
-    add_prism("Grip", "HammerNavy", -20, 1, 4.4, 4.4)
-    add_prism("GripBand_Lower", "HammerGold", -20, -17, 4.8, 4.8)
-    add_prism("GripBand_Upper", "HammerGold", -1, 2, 4.8, 4.8)
-    add_prism("Pommel", "HammerCyan", -27, -23, 5.2, 4.2)
+    add_prism("Shaft", "M_Character", -24, 28, 3.0, 4.0)
+    add_prism("Grip", "M_JaugeManche", -20, 1, 4.4, 4.4)
+    add_prism("GripBand_Lower", "M_JaugeTete", -20, -17, 4.8, 4.8)
+    add_prism("GripBand_Upper", "M_JaugeTete", -1, 2, 4.8, 4.8)
+    add_prism("Pommel", "M_Character", -27, -23, 5.2, 4.2)
 
     # Original box head and raised accent plates are modeled as separate material groups.
-    add_box("Head", "HammerCyan", (-17, -11, 27), (17, 11, 51))
-    add_box("LeftGoldPlate", "HammerGold", (-18, -12, 29), (-14, -12.1, 49))
-    add_box("RightGoldPlate", "HammerGold", (14, -12, 29), (18, -12.1, 49))
-    add_box("RuneBar", "HammerGold", (-2, -13, 34), (2, -13.1, 45))
-    add_box("RuneCross", "HammerGold", (-7, -13, 37), (7, -13.1, 41))
+    add_box("Head", "M_Character", (-17, -11, 27), (17, 11, 51))
+    add_box("LeftGoldPlate", "M_JaugeTete", (-18, -12, 29), (-14, -12.1, 49))
+    add_box("RightGoldPlate", "M_JaugeTete", (14, -12, 29), (18, -12.1, 49))
+    add_box("RuneBar", "M_JaugeTete", (-2, -13, 34), (2, -13.1, 45))
+    add_box("RuneCross", "M_JaugeTete", (-7, -13, 37), (7, -13.1, 41))
 
     lines = ["# Generated source mesh: Azure Blockhead", "mtllib T_RMM_AzureBlockhead.mtl", "o SM_RMM_AzureBlockhead"]
     lines.extend(f"v {x:.5f} {y:.5f} {z:.5f}" for x, y, z in vertices)
@@ -168,15 +168,15 @@ draw_silhouette(SOURCE / "T_RMM_AzureBlockhead_Silhouette.png")
 draw_symbol(SOURCE / "T_RMM_AzureBlockhead_Symbol.png")
 (SOURCE / "SM_RMM_AzureBlockhead.obj").write_text(prism_obj(), encoding="utf-8")
 (SOURCE / "T_RMM_AzureBlockhead.mtl").write_text(
-    """newmtl HammerCyan
+    """newmtl M_Character
 Kd 0.09 0.70 0.82
 map_Kd T_RMM_AzureBlockhead_BaseColor.png
 
-newmtl HammerGold
-Kd 1.00 0.70 0.18
-
-newmtl HammerNavy
+newmtl M_JaugeManche
 Kd 0.05 0.16 0.32
+
+newmtl M_JaugeTete
+Kd 1.00 0.70 0.18
 """,
     encoding="utf-8",
 )
