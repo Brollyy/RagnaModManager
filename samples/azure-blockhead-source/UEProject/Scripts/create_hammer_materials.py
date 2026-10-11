@@ -27,7 +27,9 @@ def import_texture(filename, asset_name, destination):
     return asset
 
 
-def connect_combo_glow(material, gauge_parameters, base_color, energized_color_value):
+def connect_combo_glow(
+    material, gauge_parameters, base_color, energized_color_value, surface_scale=1.0
+):
     """Make the gauge slot change surface color as well as emit light."""
     gauge_nodes = []
     for index, gauge_parameter in enumerate(gauge_parameters):
@@ -59,13 +61,54 @@ def connect_combo_glow(material, gauge_parameters, base_color, energized_color_v
     energized_color.set_editor_property(
         "constant", unreal.LinearColor(*energized_color_value, 1.0)
     )
+    surface_gauge = total_gauge
+    if surface_scale != 1.0:
+        scale = unreal.MaterialEditingLibrary.create_material_expression(
+            material, unreal.MaterialExpressionConstant, 100, 20
+        )
+        scale.set_editor_property("r", surface_scale)
+        amplified = unreal.MaterialEditingLibrary.create_material_expression(
+            material, unreal.MaterialExpressionMultiply, 220, 20
+        )
+        for source, input_name in ((total_gauge, "A"), (scale, "B")):
+            if not unreal.MaterialEditingLibrary.connect_material_expressions(
+                source, "", amplified, input_name
+            ):
+                raise RuntimeError("Could not amplify the Azure body combo response")
+        zero = unreal.MaterialEditingLibrary.create_material_expression(
+            material, unreal.MaterialExpressionConstant, 220, 180
+        )
+        zero.set_editor_property("r", 0.0)
+        one = unreal.MaterialEditingLibrary.create_material_expression(
+            material, unreal.MaterialExpressionConstant, 220, 300
+        )
+        one.set_editor_property("r", 1.0)
+        lower_clamped = unreal.MaterialEditingLibrary.create_material_expression(
+            material, unreal.MaterialExpressionMax, 360, -120
+        )
+        upper_clamped = unreal.MaterialEditingLibrary.create_material_expression(
+            material, unreal.MaterialExpressionMin, 500, -120
+        )
+        if not all(
+            unreal.MaterialEditingLibrary.connect_material_expressions(
+                source, "", destination, input_name
+            )
+            for source, destination, input_name in (
+                (amplified, lower_clamped, "A"),
+                (zero, lower_clamped, "B"),
+                (lower_clamped, upper_clamped, "A"),
+                (one, upper_clamped, "B"),
+            )
+        ):
+            raise RuntimeError("Could not clamp the Azure body combo response")
+        surface_gauge = upper_clamped
     surface_shift = unreal.MaterialEditingLibrary.create_material_expression(
         material, unreal.MaterialExpressionLinearInterpolate, 360, 20
     )
     for source, input_name in (
         (base_color, "A"),
         (energized_color, "B"),
-        (total_gauge, "Alpha"),
+        (surface_gauge, "Alpha"),
     ):
         if not unreal.MaterialEditingLibrary.connect_material_expressions(
             source, "", surface_shift, input_name
@@ -134,10 +177,17 @@ def create_surface_material(base_color):
     )
     sample.set_editor_property("parameter_name", "BaseColor")
     sample.set_editor_property("texture", base_color)
-    if not unreal.MaterialEditingLibrary.connect_material_property(
-        sample, "RGB", unreal.MaterialProperty.MP_BASE_COLOR
-    ):
-        raise RuntimeError("Could not connect the Azure base-color texture to the surface material")
+    # The game writes combo scalars to the hammer's material slots. The stock
+    # meshes reserve separate grip/head gauge slots, but those accents are
+    # small on Azure; also drive the broad body surface so buildup is obvious
+    # during play.
+    connect_combo_glow(
+        material,
+        ("circularGauge", "handleGauge"),
+        sample,
+        (1.0, 0.72, 0.18),
+        surface_scale=4.0,
+    )
     unreal.MaterialEditingLibrary.recompile_material(material)
     unreal.EditorAssetLibrary.save_asset(path, only_if_is_dirty=False)
     unreal.log("AZURE_SURFACE_MATERIAL_READY " + path + " texture=" + str(base_color))

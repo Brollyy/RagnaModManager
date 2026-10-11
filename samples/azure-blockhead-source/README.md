@@ -14,7 +14,7 @@ Run `python3 generate_source.py` to regenerate these editable files:
 ## Build the sample package
 
 1. Open `UEProject/RMMAzureBlockhead.uproject` in Unreal Engine 4.27 on Windows.
-2. Run `UEProject/Scripts/create_hammer_materials.py` and then `UEProject/Scripts/reimport_azure_mesh.py` with UE's Python Script Plugin. These scripts import the source textures, create surface/accent materials, and assign them to their matching mesh slots. The handle/head materials define the game's `handleGauge` and `circularGauge` scalar parameters and blend the surface toward a bright energized color as combo builds. Emissive output adds a second response but is not the only indication.
+2. Run `UEProject/Scripts/create_hammer_materials.py` and then `UEProject/Scripts/reimport_azure_mesh.py` with UE's Python Script Plugin. These scripts import the source textures, create surface/accent materials, and assign them to their matching mesh slots. The body and handle/head materials define the game's `handleGauge` and `circularGauge` scalar parameters and blend visible surfaces toward a bright energized color as combo builds. The body scales and clamps the gauge values so early buildup is visible across a large surface. Emissive output adds a second response but is not the only indication.
 3. Cook for `WindowsNoEditor` with the project's `PCD3D_SM5` target and shared material shader code enabled.
 4. Run `build_rhammer.py` from `UEProject/Scripts/`, passing the cooked `Content` directory. The script checks shader metadata, packages cooked assets and sidecars, and includes the project's shader archive.
 
@@ -22,9 +22,9 @@ See the full guide for the Windows cook setup, manifest fields, RMM import/deplo
 
 ## Verification status
 
-The checked-in package and deployed PAK load in the changing room: the Azure row, icon, and corrected 3D preview were visible together. The package SHA-256 is `c18dcde615aff0c5a6040d719c2bd8117c69c6a90a82d36e0426f37c07382301`; the deployed PAK SHA-256 is `d804d90c8d87986f0e37b7beb296f292a3b05abac75a0b4133556f704fb22f28`.
+The latest checked-in package SHA-256 is `7915d30ad735da682b21b2d9ad3cddc5c12d63c75d04b6518e4a2943184008d4`. The deployed PAK SHA-256 is `b18adc2a75a9010923233ff02f298e31045cd57f0c6ac544fbfb4ae2c70806d3`. The package and deployed PAK were verified to match these hashes. The Azure row, icon, and 3D preview loaded in the changing room.
 
-Earlier race testing showed the Azure model in both hands, but the corrected material build has not yet been independently verified during a race. Combo progression and in-race charge feedback also remain unverified. Do not treat the sample as fully runtime-validated until those checks pass using the normal keyboard bindings and accurate hits.
+Combo feedback was verified in a race on the `RMM COMBO METER FIXTURE` custom song with only Azure enabled and the normal W keyboard binding. The RagnaLoader stats hook recorded 33 hits out of 40 (28 normal, 5 perfect, 7 misses, and one boost event). During the song, the large cyan body panels visibly shifted to bright yellow as combo built. This confirms both the stock combo material parameters reach the custom hammer and the body material responds visibly.
 
 ## Related icon samples
 
