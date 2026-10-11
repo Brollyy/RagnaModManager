@@ -27,8 +27,8 @@ def import_texture(filename, asset_name, destination):
     return asset
 
 
-def connect_combo_glow(material, gauge_parameters, emissive_color):
-    """Make this gauge slot respond to BP_RagnarockHand's scalar parameters."""
+def connect_combo_glow(material, gauge_parameters, base_color, energized_color_value):
+    """Make the gauge slot change surface color as well as emit light."""
     gauge_nodes = []
     for index, gauge_parameter in enumerate(gauge_parameters):
         gauge = unreal.MaterialEditingLibrary.create_material_expression(
@@ -53,6 +53,29 @@ def connect_combo_glow(material, gauge_parameters, emissive_color):
                 raise RuntimeError("Could not combine Azure combo gauge parameters")
         total_gauge = combined
 
+    energized_color = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionConstant3Vector, 100, 640
+    )
+    energized_color.set_editor_property(
+        "constant", unreal.LinearColor(*energized_color_value, 1.0)
+    )
+    surface_shift = unreal.MaterialEditingLibrary.create_material_expression(
+        material, unreal.MaterialExpressionLinearInterpolate, 360, 20
+    )
+    for source, input_name in (
+        (base_color, "A"),
+        (energized_color, "B"),
+        (total_gauge, "Alpha"),
+    ):
+        if not unreal.MaterialEditingLibrary.connect_material_expressions(
+            source, "", surface_shift, input_name
+        ):
+            raise RuntimeError("Could not connect the Azure combo surface response")
+    if not unreal.MaterialEditingLibrary.connect_material_property(
+        surface_shift, "", unreal.MaterialProperty.MP_BASE_COLOR
+    ):
+        raise RuntimeError("Could not connect combo response to Base Color")
+
     strength = unreal.MaterialEditingLibrary.create_material_expression(
         material, unreal.MaterialExpressionConstant, 100, 100
     )
@@ -63,7 +86,7 @@ def connect_combo_glow(material, gauge_parameters, emissive_color):
     glow_color = unreal.MaterialEditingLibrary.create_material_expression(
         material, unreal.MaterialExpressionConstant3Vector, 100, 440
     )
-    glow_color.set_editor_property("constant", unreal.LinearColor(*emissive_color, 1.0))
+    glow_color.set_editor_property("constant", unreal.LinearColor(*energized_color_value, 1.0))
     glow = unreal.MaterialEditingLibrary.create_material_expression(
         material, unreal.MaterialExpressionMultiply, 520, 330
     )
@@ -121,7 +144,7 @@ def create_surface_material(base_color):
     return material
 
 
-def create_color_material(name, color, gauge_parameters, emissive_color):
+def create_color_material(name, color, gauge_parameters, energized_color_value):
     """Create a simple authored material for a distinct OBJ material slot."""
     path = MATERIAL_FOLDER + "/" + name
     material = (
@@ -146,11 +169,7 @@ def create_color_material(name, color, gauge_parameters, emissive_color):
     color_expression.set_editor_property("constant", unreal.LinearColor(*color, 1.0))
     # Constant3Vector exposes its sole output without a named pin in UE 4.27;
     # an empty output name selects that first output.
-    if not unreal.MaterialEditingLibrary.connect_material_property(
-        color_expression, "", unreal.MaterialProperty.MP_BASE_COLOR
-    ):
-        raise RuntimeError("Could not connect " + name + " to Base Color")
-    connect_combo_glow(material, gauge_parameters, emissive_color)
+    connect_combo_glow(material, gauge_parameters, color_expression, energized_color_value)
     unreal.MaterialEditingLibrary.recompile_material(material)
     unreal.EditorAssetLibrary.save_asset(path, only_if_is_dirty=False)
     unreal.log("AZURE_SLOT_MATERIAL_READY " + path)
@@ -229,13 +248,13 @@ create_color_material(
     "M_AzureBlockhead_Gold",
     (0.92, 0.56, 0.06),
     ("circularGauge", "handleGauge"),
-    (1.0, 0.52, 0.08),
+    (1.0, 0.72, 0.18),
 )
 create_color_material(
     "M_AzureBlockhead_Navy",
     (0.01, 0.07, 0.18),
     ("handleGauge",),
-    (0.08, 0.68, 1.0),
+    (0.12, 0.82, 1.0),
 )
 create_mark_material("M_AzureBlockhead_Silhouette", silhouette)
 parent = create_mark_material("M_AzureBlockhead_Mark", symbol)

@@ -14,7 +14,7 @@ Run `python3 generate_source.py` to regenerate these editable files:
 ## Build the sample package
 
 1. Open `UEProject/RMMAzureBlockhead.uproject` in Unreal Engine 4.27 on Windows.
-2. Run `UEProject/Scripts/create_hammer_materials.py` and then `UEProject/Scripts/reimport_azure_mesh.py` with UE's Python Script Plugin. These scripts import the source textures, create surface/accent materials, and assign them to their matching mesh slots. The handle/head materials define and use the game's `handleGauge` and `circularGauge` scalar parameters to brighten the corresponding surfaces as combo builds.
+2. Run `UEProject/Scripts/create_hammer_materials.py` and then `UEProject/Scripts/reimport_azure_mesh.py` with UE's Python Script Plugin. These scripts import the source textures, create surface/accent materials, and assign them to their matching mesh slots. The handle/head materials define the game's `handleGauge` and `circularGauge` scalar parameters and blend the surface toward a bright energized color as combo builds. Emissive output adds a second response but is not the only indication.
 3. Cook for `WindowsNoEditor` with the project's `PCD3D_SM5` target and shared material shader code enabled.
 4. Run `build_rhammer.py` from `UEProject/Scripts/`, passing the cooked `Content` directory. The script checks shader metadata, packages cooked assets and sidecars, and includes the project's shader archive.
 
