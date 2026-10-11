@@ -1,21 +1,31 @@
-# Azure Blockhead source assets
+# Azure Blockhead sample
 
-These are original source assets for the UE 4.27 authoring guide. They are generated locally by `generate_source.py` and do not reuse Ragnarock's mesh or icon assets:
+This sample provides original source art and a UE 4.27 project for following the [custom hammer authoring guide](../../docs/custom-hammer-authoring-ue4-27.md).
 
-- `SM_RMM_AzureBlockhead.obj` — low-poly head, shaft, grip bands, gold plates, and rune geometry. The pivot is at the intended grip point.
-- `T_RMM_AzureBlockhead.mtl` and `T_RMM_AzureBlockhead_BaseColor.png` — source surface material and color texture.
-- `T_RMM_AzureBlockhead_Icon.png` — separate in-game changing-room icon source.
-- `T_RMM_AzureBlockhead_Silhouette.png` and `T_RMM_AzureBlockhead_Symbol.png` — source art for optional custom `Silhouette` and `Symbol` materials.
+## Source files
 
-Run `python3 generate_source.py` to regenerate the files. In UE 4.27, run `UEProject/Scripts/create_hammer_materials.py` to import the base-color, silhouette, and symbol textures and create the authored surface/marker materials; then run `UEProject/Scripts/reimport_azure_mesh.py` to import the rotated Static Mesh and assign the surface material to each mesh slot. Cook for `WindowsNoEditor` on Windows. The Windows cook is required for game-compatible `PCD3D_SM5` material shaders. The sample sets `bShareMaterialShaderCode=True`; RMM packages the resulting project shader archive in an enabled content plugin so Ragnarock can load the custom shader maps.
+Run `python3 generate_source.py` to regenerate these editable files:
 
-The [`UEProject/`](UEProject/README.md) folder contains the imported mesh, surface material, base-color and icon textures, plus optional source-authored marker materials. The [`azure-blockhead.rhammer`](azure-blockhead.rhammer) archive includes the cooked mesh and its texture/material dependencies, icon, marker art, and Windows UE 4.27 shader archive. Its manifest leaves `Silhouette` and `Symbol` at the stock data-asset defaults: runtime probes with custom marker overrides crashed in Ragnarock, including one using the correct base `Material` class for `Silhouette`. The stable RMM PAK has SHA-256 `EAFB6F00608A2100093092DA40FCF71E9A6DB26B182DEBB1C3C7F5D01EB978AA`. A fresh Flat-mode RagnaLoader premade hammer-card case inspected 28 live widgets and captured the selected Azure icon and 3D changing-room model. A separate run waited for `Boat.OnStartSong` and showed the cyan Azure Blockhead meshes in both hands during the race. Texture artifacts remain visible. Charging feedback and combo progression are still unverified; see the runtime status in the UE 4.27 authoring guide for the fixture input results.
+- `Source/SM_RMM_AzureBlockhead.obj` and its `.mtl`: low-poly hammer mesh with cyan, gold, and navy material slots. The pivot is at the grip point.
+- `Source/T_RMM_AzureBlockhead_BaseColor.png`: color atlas used by the cyan mesh section.
+- `Source/T_RMM_AzureBlockhead_Icon.png`: separate changing-room icon.
+- `Source/T_RMM_AzureBlockhead_Silhouette.png` and `Source/T_RMM_AzureBlockhead_Symbol.png`: optional selector art. The sample package leaves the game's `Silhouette` and `Symbol` fields at their stock defaults because custom marker materials have not been validated safely in-game.
 
-## Runtime-verified library icon sources
+## Build the sample package
 
-- `T_RagnaBlockhead_Preview.png` — transparent changing-room icon for the Ragna Blockhead library package.
-- `T_SummerCustom_Preview.png` — transparent changing-room icon for the Summer Custom library package.
+1. Open `UEProject/RMMAzureBlockhead.uproject` in Unreal Engine 4.27 on Windows.
+2. Run `UEProject/Scripts/create_hammer_materials.py` and then `UEProject/Scripts/reimport_azure_mesh.py` with UE's Python Script Plugin. These scripts import the source textures, create surface/accent materials, and assign them to their matching mesh slots.
+3. Cook for `WindowsNoEditor` with the project's `PCD3D_SM5` target and shared material shader code enabled.
+4. Run `build_rhammer.py` from `UEProject/Scripts/`, passing the cooked `Content` directory. The script checks shader metadata, packages cooked assets and sidecars, and includes the project's shader archive.
 
-The Ragna Blockhead and Summer Custom images have transparent backgrounds so they composite over the changing-room backdrop. Reimport these PNGs as their existing `Texture2D` assets with `UEProject/Scripts/import_demo_hammer_icons.py`, then cook and repack those two library packages before deployment. This replaces the older opaque preview textures.
+See the full guide for the Windows cook setup, manifest fields, RMM import/deploy steps, and game verification. The checked-in [`azure-blockhead.rhammer`](azure-blockhead.rhammer) includes the corrected cyan/gold/navy material assignments, mesh, icon, dependencies, and D3D shader archive.
 
-Both were imported in UE 4.27 as `Texture2D` assets, cooked for `WindowsNoEditor`, added to their `.rhammer` manifests as `iconAssetPath` packages (including `.uasset` and `.uexp`), and rebuilt through RMM. RMM's two-row PAK mounted in Ragnarock, and both separate thumbnails were visible in the changing room. The cooked packages remain in the local RMM hammer library rather than this source repository.
+## Verification status
+
+The checked-in package and deployed PAK load in the changing room: the Azure row, icon, and corrected 3D preview were visible together. The package SHA-256 is `c18dcde615aff0c5a6040d719c2bd8117c69c6a90a82d36e0426f37c07382301`; the deployed PAK SHA-256 is `d804d90c8d87986f0e37b7beb296f292a3b05abac75a0b4133556f704fb22f28`.
+
+Earlier race testing showed the Azure model in both hands, but the corrected material build has not yet been independently verified during a race. Combo progression and in-race charge feedback also remain unverified. Do not treat the sample as fully runtime-validated until those checks pass using the normal keyboard bindings and accurate hits.
+
+## Related icon samples
+
+`T_RagnaBlockhead_Preview.png` and `T_SummerCustom_Preview.png` are transparent icon sources for the Ragna Blockhead and Summer Custom library packages. Their imported Texture2D assets and `.rhammer` packages are local to the RMM hammer library, not part of this sample archive.

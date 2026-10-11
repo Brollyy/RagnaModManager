@@ -94,6 +94,8 @@ def main():
                 compiled_materials.update(shader_map.get("Assets", []))
         required_materials = {
             "/Game/RMM/Hammers/azure-blockhead-runtime-verified/Materials/M_AzureBlockhead",
+            "/Game/RMM/Hammers/azure-blockhead-runtime-verified/Materials/M_AzureBlockhead_Gold",
+            "/Game/RMM/Hammers/azure-blockhead-runtime-verified/Materials/M_AzureBlockhead_Navy",
             "/Game/RMM/Hammers/azure-blockhead-runtime-verified/UI/M_AzureBlockhead_Silhouette",
             "/Game/RMM/Hammers/azure-blockhead-runtime-verified/UI/M_AzureBlockhead_Mark",
         }

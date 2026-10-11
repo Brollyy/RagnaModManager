@@ -60,6 +60,41 @@ def create_surface_material(base_color):
     return material
 
 
+def create_color_material(name, color):
+    """Create a simple authored material for a distinct OBJ material slot."""
+    path = MATERIAL_FOLDER + "/" + name
+    material = (
+        unreal.EditorAssetLibrary.load_asset(path)
+        if unreal.EditorAssetLibrary.does_asset_exist(path)
+        else None
+    )
+    if not material:
+        material = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
+            name, MATERIAL_FOLDER, unreal.Material, unreal.MaterialFactoryNew()
+        )
+    material.set_editor_property("material_domain", unreal.MaterialDomain.MD_SURFACE)
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_OPAQUE)
+    material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_DEFAULT_LIT)
+    unreal.MaterialEditingLibrary.delete_all_material_expressions(material)
+    color_expression = unreal.MaterialEditingLibrary.create_material_expression(
+        material,
+        unreal.MaterialExpressionConstant3Vector,
+        -400,
+        0,
+    )
+    color_expression.set_editor_property("constant", unreal.LinearColor(*color, 1.0))
+    # Constant3Vector exposes its sole output without a named pin in UE 4.27;
+    # an empty output name selects that first output.
+    if not unreal.MaterialEditingLibrary.connect_material_property(
+        color_expression, "", unreal.MaterialProperty.MP_BASE_COLOR
+    ):
+        raise RuntimeError("Could not connect " + name + " to Base Color")
+    unreal.MaterialEditingLibrary.recompile_material(material)
+    unreal.EditorAssetLibrary.save_asset(path, only_if_is_dirty=False)
+    unreal.log("AZURE_SLOT_MATERIAL_READY " + path)
+    return material
+
+
 def create_mark_material(name, texture):
     path = UI_FOLDER + "/" + name
     material = (
@@ -128,6 +163,8 @@ base_color = import_texture(
     "T_RMM_AzureBlockhead_BaseColor.png", "T_RMM_AzureBlockhead_BaseColor", MESH_FOLDER
 )
 create_surface_material(base_color)
+create_color_material("M_AzureBlockhead_Gold", (0.92, 0.56, 0.06))
+create_color_material("M_AzureBlockhead_Navy", (0.01, 0.07, 0.18))
 create_mark_material("M_AzureBlockhead_Silhouette", silhouette)
 parent = create_mark_material("M_AzureBlockhead_Mark", symbol)
 create_instance("MI_AzureBlockhead_Symbol", parent, symbol)
