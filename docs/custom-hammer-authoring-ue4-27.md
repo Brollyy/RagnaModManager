@@ -1,8 +1,19 @@
-# Make a custom Ragnarock hammer for RMM
+# Custom hammer guide for Ragnarock and RMM
 
 This guide takes you from an original model and image files to a hammer that RagnaModManager (RMM) can install. The example project is [Azure Blockhead](../samples/azure-blockhead-source/README.md); its mesh, textures, icon, UE 4.27 project, and packaging script are included in this repository.
 
-The workflow has four parts: make the source art, import and cook it in UE 4.27, package the cooked files as `.rhammer`, then import and test the package with RMM and Ragnarock. RMM does not import FBX/OBJ files or cook UE assets for you.
+Follow the steps in order: prepare the art, import it into UE 4.27, cook it for Windows, package it as `.rhammer`, then install and check it in Ragnarock. RMM installs a finished package; it does not import FBX/OBJ files or cook UE assets.
+
+## At a glance
+
+1. Prepare the hammer model, textures, and icon.
+2. Import the assets and assign materials in UE 4.27.
+3. Cook the project for Windows.
+4. Assemble the `.rhammer` package.
+5. Import and deploy it with RMM.
+6. Check the icon, preview, race model, and normal-hit behavior in game.
+
+The [Azure Blockhead sample](../samples/azure-blockhead-source/README.md) provides source art and a UE project you can use to follow along.
 
 ## Before you start
 
@@ -15,7 +26,7 @@ You need:
 
 Ragnarock's PC build uses UE 4.27 and Direct3D shader format `PCD3D_SM5`. A Linux UE cooker may produce Vulkan shader maps instead, even if asked to cook for Windows. Those maps do not work in the game. On a Linux-only computer, run UE 4.27 in a Windows VM, a Windows cloud machine, or a Windows CI runner, then copy the `.rhammer` back to Linux. The Azure sample's [UE project README](../samples/azure-blockhead-source/UEProject/README.md) describes its Windows setup. If building UE 4.27 from source, use Visual Studio 2019 and build both `UE4Editor` and `ShaderCompileWorker` before cooking.
 
-## Step 1: Make the model and artwork
+## Step 1 — Prepare the model and artwork
 
 1. Model the hammer in Blender or another 3D editor. Put the pivot at the grip point, apply transforms, check face normals, and make UVs for every textured material.
 2. Compare the model's size, grip, and orientation with a Ragnarock hammer in UE. A mesh that looks upright in Blender can appear sideways in the game; correct the source mesh before cooking.
@@ -24,7 +35,9 @@ Ragnarock's PC build uses UE 4.27 and Direct3D shader format `PCD3D_SM5`. A Linu
 5. Make a square changing-room icon as a PNG. Use a transparent background if you want the game backdrop to show around the hammer. The icon is separate from the 3D mesh and from RMM's optional desktop thumbnail.
 6. Make the color and any optional normal, roughness, metallic, or mask textures. Keep the editable source files together with the project.
 
-## Step 2: Import and set up assets in UE 4.27
+**You should have:** an exported mesh, its textures, and a separate square icon.
+
+## Step 2 — Import and set up assets in UE 4.27
 
 1. Create a blank UE 4.27 project. Put the hammer's content in a unique folder, for example `Content/RMM/Hammers/<hammer-id>/`. Use a stable, unique ID for each hammer so its cooked package paths cannot collide with another mod.
 2. Import the mesh as a **Static Mesh**. In its editor, check pivot, scale, orientation, UVs, material slots, and collision. Fix these here before moving on.
@@ -32,13 +45,15 @@ Ragnarock's PC build uses UE 4.27 and Direct3D shader format `PCD3D_SM5`. A Linu
 4. Import the square icon as a **Texture2D** asset. This is the texture RMM will use for the in-game hammer-list icon.
 5. Save the project and verify that the mesh and materials look correct in UE's preview. A material that looks right in the editor can still fail in Ragnarock if its Windows shader map is missing, so runtime validation is required.
 
+**You should have:** a saved UE project whose mesh preview shows the intended shape, orientation, and materials.
+
 ### Optional selector art
 
 Ragnarock's hammer data asset has `Silhouette` and `Symbol` properties in addition to `Mesh`. The inspected game build expects a base **Material** for `Silhouette` and a **Material Instance Constant** for `Symbol`. Their texture and parent-material dependencies must also be cooked and packaged. RMM can leave these fields at the stock defaults; they are optional for a basic custom hammer. Custom marker materials have crashed the game in sample testing, so treat these overrides as experimental and validate them separately before distributing them.
 
 The Azure project includes `Scripts/create_hammer_materials.py` and `Scripts/reimport_azure_mesh.py` as examples of creating UE materials and assigning the mesh's distinct color slots with UE's Python API. They are sample automation scripts, not prerequisites for other projects.
 
-## Step 3: Configure and cook for Windows
+## Step 3 — Configure and cook for Windows
 
 In `Config/DefaultEngine.ini`, set the Windows target to the game's shader format:
 
@@ -63,7 +78,9 @@ UE4Editor-Cmd.exe C:\path\to\Project.uproject -run=cook -targetplatform=WindowsN
 
 Wait for the cook to finish. Inspect its log for errors and successful `PCD3D_SM5` material shader compilation. The output is under the project's cooked `WindowsNoEditor` content directory. Keep every file for an asset together: in addition to `.uasset`, UE may produce `.uexp`, `.ubulk`, or `.uptnl` sidecars. Do not rename cooked assets.
 
-## Step 4: Assemble the `.rhammer` archive
+**You should have:** a `WindowsNoEditor` cooked content folder and the project's `PCD3D_SM5` shader archive.
+
+## Step 4 — Assemble the `.rhammer` archive
 
 An `.rhammer` is a ZIP archive with a `hammer.json` manifest, cooked UE assets, and the shared shader archive. RMM uses the manifest to create a Ragnarock hammer data asset and add a row to the game's hammer table.
 
@@ -111,15 +128,21 @@ For the Azure sample, the packaging script validates the cooked directory, requi
 python build_rhammer.py C:\path\to\Saved\Cooked\WindowsNoEditor\RMMAzureBlockhead\Content --output ..\..\azure-blockhead.rhammer
 ```
 
-Run it from `samples/azure-blockhead-source/UEProject/Scripts/`. For a different hammer, adapt the script's content folder, required manifest paths, and output name, or assemble the ZIP using the manifest rules above. Before importing, open the `.rhammer` as a ZIP and confirm it contains `hammer.json`, all referenced cooked files and sidecars, the shader archive, and any optional thumbnail.
+Run it from `samples/azure-blockhead-source/UEProject/Scripts/`. For a different hammer, adapt the script's content folder, required manifest paths, and output name, or assemble the ZIP using the manifest rules above.
 
-## Step 5: Import and deploy with RMM
+Before importing, open the `.rhammer` as a ZIP and confirm it contains `hammer.json`, every referenced cooked asset and sidecar, and the shader archive. The optional `Preview/` image is for RMM's library only; `iconAssetPath` is the in-game icon.
+
+**You should have:** one `.rhammer` file with no missing manifest references.
+
+## Step 5 — Import and deploy with RMM
 
 1. In RMM, import the `.rhammer` into the hammer library. Fix any missing-file, invalid-class, duplicate-path, or invalid-reference errors; do not work around them by removing dependencies.
 2. Enable the hammer and build the custom-hammer PAK for the installed Ragnarock version. RMM validates the game build and checks that the package's referenced UE assets are present.
 3. Deploy the PAK through RMM. If you are diagnosing a problem, leave only the hammer under test enabled so the selected row and visible model are unambiguous.
 
-## Step 6: Verify it in Ragnarock
+**You should have:** the hammer enabled in RMM and deployed to the game.
+
+## Step 6 — Check it in Ragnarock
 
 Check each output separately:
 
@@ -131,11 +154,11 @@ Check each output separately:
 
 In the inspected Ragnarock build, combo and charge are driven by the game's shared gameplay/input logic. The `DT_Hammers` row and hammer data asset do not contain a per-hammer combo meter or combo counter. RMM creates the hammer asset from the game's existing `DA_Hammers_C` class, which supplies the shared `DrumHitSound`; a custom subclass, combo texture, or meter asset is not part of the RMM package format. Therefore, keep the standard data class, provide a valid mesh and selectable hammer row, and test with ordinary accurate input. If hits register but perfect-hit/combo events do not, first validate timing and the game's common hit path with a stock hammer; do not infer success from the custom mesh loading.
 
-## Azure Blockhead sample status
+## Sample status: Azure Blockhead
 
 The source package is [here](../samples/azure-blockhead-source/). Its `generate_source.py` creates original low-poly mesh and PNG art; the UE project imports a separate cyan texture material and gold/navy slot materials. The checked-in `.rhammer` includes those cooked assets and the Windows `PCD3D_SM5` shader archive.
 
-The corrected sample archive SHA-256 is `c18dcde615aff0c5a6040d719c2bd8117c69c6a90a82d36e0426f37c07382301`. The deployed PAK SHA-256 is `d804d90c8d87986f0e37b7beb296f292a3b05abac75a0b4133556f704fb22f28`. A live changing-room screenshot confirms that the Azure row, icon, and corrected cyan/gold/navy 3D preview load. Earlier race testing showed the Azure model in both hands, but the corrected material build has not yet been independently verified in a race. Combo progression and in-race charge feedback remain unverified; they must pass Step 6 before the sample can be called fully validated.
+The checked-in sample package loads in the changing room with its icon and cyan/gold/navy 3D preview. The corrected material build has not yet been independently verified during a race. Combo progression and in-race charge feedback also remain unverified, so the sample is not yet fully runtime-validated. Use Step 6 to check these behaviors before distributing a custom hammer.
 
 ## References
 
