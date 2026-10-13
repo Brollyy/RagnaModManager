@@ -22,9 +22,16 @@ public sealed class HammerTableMetadataManifest
     public List<string> ExistingAssetPackagePaths { get; set; } = [];
 }
 
+public sealed record HammerMetadataSelection(
+    string DirectoryPath,
+    string InstalledGamePakSha256,
+    string MetadataGamePakSha256,
+    DateTimeOffset PublishedAt,
+    bool IsExactBuild);
+
 public sealed class HammerTableMetadataRegistry
 {
-    private const string IndexUrl = "https://raw.githubusercontent.com/Brollyy/RagnaModManager/master/metadata/hammers/index.json";
+    private const string IndexUrl = "https://raw.githubusercontent.com/Brollyy/RagnaModManager-AssetMeta/master/index.json";
     private const long MaxArchiveBytes = 256L * 1024 * 1024;
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     private readonly AppPaths _paths;
@@ -45,31 +52,50 @@ public sealed class HammerTableMetadataRegistry
 
     public string GetCachedMetadataPath(string gamePakSha256) => Path.Combine(_paths.HammerMetadata, gamePakSha256.ToLowerInvariant());
 
-    public async Task<Result<string>> EnsureAvailableAsync(string gamePakPath, CancellationToken cancellationToken = default)
+    public async Task<Result<HammerMetadataSelection>> EnsureAvailableAsync(string gamePakPath, CancellationToken cancellationToken = default)
     {
         try
         {
-            var gamePakSha256 = GetInstalledBuildHash(gamePakPath);
-            var cacheDirectory = GetCachedMetadataPath(gamePakSha256);
-            if (TryValidateCache(cacheDirectory, gamePakSha256, out _)) return Result<string>.Ok(cacheDirectory);
+            var installedPakSha256 = GetInstalledBuildHash(gamePakPath);
+            var exactCacheDirectory = GetCachedMetadataPath(installedPakSha256);
+            if (TryValidateCache(exactCacheDirectory, installedPakSha256, out _))
+                return Result<HammerMetadataSelection>.Ok(new(
+                    exactCacheDirectory, installedPakSha256, installedPakSha256, DateTimeOffset.MinValue, true));
 
             using var indexResponse = await _httpClient.GetAsync(IndexUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (!indexResponse.IsSuccessStatusCode)
-                return Result<string>.Fail("RMM couldn't check hammer compatibility right now. Try again later.");
+                return Result<HammerMetadataSelection>.Fail("RMM couldn't check hammer compatibility right now. Try again later.");
             var indexBytes = await ReadBoundedAsync(indexResponse.Content, 2 * 1024 * 1024, cancellationToken);
-            if (indexBytes.Length > 2 * 1024 * 1024) return Result<string>.Fail("The hammer compatibility list is invalid.");
+            if (indexBytes.Length > 2 * 1024 * 1024) return Result<HammerMetadataSelection>.Fail("The hammer compatibility list is invalid.");
             var index = JsonSerializer.Deserialize<HammerMetadataIndex>(indexBytes, JsonOptions);
-            if (index?.SchemaVersion != 1 || !index.Builds.TryGetValue(gamePakSha256, out var entry))
-                return Result<string>.Fail("This Ragnarock update isn't in RMM's compatibility list yet. Wait for a matching update before building a hammer package.");
+            if (index?.SchemaVersion != 1 || index.Assets is null ||
+                !index.Assets.TryGetValue("hammers", out var builds) || builds is null || builds.Count == 0)
+                return Result<HammerMetadataSelection>.Fail("The hammer compatibility list is invalid or has no published data.");
+
+            var orderedBuilds = builds.OrderByDescending(build => build.PublishedAt).ToList();
+            if (orderedBuilds.Any(build => !IsSha256(build.GamePakSha256) || !IsSha256(build.Sha256) ||
+                    build.PublishedAt == DateTimeOffset.MinValue ||
+                    !Uri.TryCreate(build.Url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps))
+                return Result<HammerMetadataSelection>.Fail("The hammer compatibility list contains invalid entries.");
+
+            var exactBuild = orderedBuilds.FirstOrDefault(build =>
+                string.Equals(build.GamePakSha256, installedPakSha256, StringComparison.OrdinalIgnoreCase));
+            var entry = exactBuild ?? orderedBuilds[0];
+            var isExactBuild = exactBuild is not null;
+            var metadataPakSha256 = entry.GamePakSha256.ToUpperInvariant();
+            var cacheDirectory = GetCachedMetadataPath(metadataPakSha256);
+            if (TryValidateCache(cacheDirectory, metadataPakSha256, out _))
+                return Result<HammerMetadataSelection>.Ok(new(
+                    cacheDirectory, installedPakSha256, metadataPakSha256, entry.PublishedAt, isExactBuild));
             if (!Uri.TryCreate(entry.Url, UriKind.Absolute, out var archiveUri) || archiveUri.Scheme != Uri.UriSchemeHttps)
-                return Result<string>.Fail("The hammer compatibility list contains an invalid download link.");
+                return Result<HammerMetadataSelection>.Fail("The hammer compatibility list contains an invalid download link.");
 
             using var archiveResponse = await _httpClient.GetAsync(archiveUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
             if (!archiveResponse.IsSuccessStatusCode || archiveResponse.Content.Headers.ContentLength > MaxArchiveBytes)
-                return Result<string>.Fail("RMM couldn't download the matching hammer compatibility data.");
+                return Result<HammerMetadataSelection>.Fail("RMM couldn't download the latest hammer compatibility data.");
             var archiveBytes = await ReadBoundedAsync(archiveResponse.Content, MaxArchiveBytes, cancellationToken);
             if (archiveBytes.LongLength > MaxArchiveBytes || !FixedTimeHashEquals(entry.Sha256, SHA256.HashData(archiveBytes)))
-                return Result<string>.Fail("The downloaded hammer compatibility data failed its integrity check.");
+                return Result<HammerMetadataSelection>.Fail("The downloaded hammer compatibility data failed its integrity check.");
 
             var staging = Path.Combine(_paths.HammerMetadata, ".metadata-" + Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(staging);
@@ -78,20 +104,20 @@ public sealed class HammerTableMetadataRegistry
                 using var memory = new MemoryStream(archiveBytes, writable: false);
                 using var archive = new ZipArchive(memory, ZipArchiveMode.Read);
                 if (archive.Entries.Count > 8 || archive.Entries.Sum(item => item.Length) > MaxArchiveBytes)
-                    return Result<string>.Fail("The downloaded hammer compatibility data is too large.");
+                    return Result<HammerMetadataSelection>.Fail("The downloaded hammer compatibility data is too large.");
                 foreach (var item in archive.Entries)
                 {
                     var path = item.FullName.Replace('\\', '/');
                     if (Path.IsPathRooted(path) || path.Contains(':') || path.Split('/').Any(part => part is ".." or "."))
-                        return Result<string>.Fail("The downloaded hammer compatibility data is invalid.");
+                        return Result<HammerMetadataSelection>.Fail("The downloaded hammer compatibility data is invalid.");
                     var target = Path.GetFullPath(Path.Combine(staging, path.Replace('/', Path.DirectorySeparatorChar)));
                     if (!target.StartsWith(Path.GetFullPath(staging) + Path.DirectorySeparatorChar, StringComparison.Ordinal))
-                        return Result<string>.Fail("The downloaded hammer compatibility data is invalid.");
+                        return Result<HammerMetadataSelection>.Fail("The downloaded hammer compatibility data is invalid.");
                     Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                     item.ExtractToFile(target);
                 }
-                if (!TryValidateCache(staging, gamePakSha256, out _))
-                    return Result<string>.Fail("The downloaded hammer compatibility data doesn't match this Ragnarock update.");
+                if (!TryValidateCache(staging, metadataPakSha256, out _))
+                    return Result<HammerMetadataSelection>.Fail("The downloaded hammer compatibility data doesn't match its published game build.");
                 if (Directory.Exists(cacheDirectory)) Directory.Delete(cacheDirectory, recursive: true);
                 Directory.Move(staging, cacheDirectory);
             }
@@ -100,15 +126,16 @@ public sealed class HammerTableMetadataRegistry
                 if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
             }
 
-            if (!TryValidateCache(cacheDirectory, gamePakSha256, out _))
-                return Result<string>.Fail("The matching hammer compatibility data couldn't be installed.");
-            return Result<string>.Ok(cacheDirectory);
+            if (!TryValidateCache(cacheDirectory, metadataPakSha256, out _))
+                return Result<HammerMetadataSelection>.Fail("The latest hammer compatibility data couldn't be installed.");
+            return Result<HammerMetadataSelection>.Ok(new(
+                cacheDirectory, installedPakSha256, metadataPakSha256, entry.PublishedAt, isExactBuild));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or UnauthorizedAccessException or InvalidDataException or JsonException or ArgumentException or InvalidOperationException)
         {
             _logger.Error($"Could not retrieve hammer compatibility metadata: {ex}");
-            return Result<string>.Fail("RMM couldn't retrieve hammer compatibility data. Check your connection and try again.");
+            return Result<HammerMetadataSelection>.Fail("RMM couldn't retrieve hammer compatibility data. Check your connection and try again.");
         }
     }
 
@@ -170,14 +197,18 @@ public sealed class HammerTableMetadataRegistry
         catch (FormatException) { return false; }
     }
 
+    private static bool IsSha256(string? value) => value is { Length: 64 } && value.All(Uri.IsHexDigit);
+
     private sealed class HammerMetadataIndex
     {
         public int SchemaVersion { get; set; }
-        public Dictionary<string, HammerMetadataIndexEntry> Builds { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, List<HammerMetadataIndexEntry>> Assets { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
     private sealed class HammerMetadataIndexEntry
     {
+        public string GamePakSha256 { get; set; } = "";
+        public DateTimeOffset PublishedAt { get; set; }
         public string Url { get; set; } = "";
         public string Sha256 { get; set; } = "";
     }

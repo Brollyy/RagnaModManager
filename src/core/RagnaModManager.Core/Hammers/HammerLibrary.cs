@@ -228,7 +228,7 @@ public sealed class HammerLibraryService
             ? "Enable at least one hammer to add it to Ragnarock."
             : File.Exists(metadataPath)
                 ? "Matching game data is ready. RMM will check it again before building."
-                : "RMM will check for matching game data before building. New game updates may need a compatibility update first.";
+                : "RMM checks for matching game data before building. If this update isn't listed, you can choose whether to build with the latest published data.";
         return new HammerLibraryStatus(entries, "Ragnarock detected", buildStatus, pakPath);
     }
 

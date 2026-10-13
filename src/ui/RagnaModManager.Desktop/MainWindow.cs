@@ -341,6 +341,19 @@ public partial class MainWindow : Window
             SetStatus(metadata.Error ?? "RMM could not check this game update.", error: true);
             return;
         }
+        if (!metadata.Value.IsExactBuild)
+        {
+            var metadataDate = metadata.Value.PublishedAt.ToString("yyyy-MM-dd");
+            var continueWithLatest = await Confirm(
+                "This game update isn't listed yet",
+                $"RMM will use the latest published hammer data from {metadataDate} (game build {metadata.Value.MetadataGamePakSha256[..12]}). Hammers added to Ragnarock after that data was published, including DLC hammers, may not appear. Continue with this data?",
+                "Continue with latest data");
+            if (!continueWithLatest)
+            {
+                SetStatus("Hammer build cancelled.");
+                return;
+            }
+        }
         SetStatus("Preparing your enabled hammers...");
         var build = await Task.Run(() => new HammerPakBuildService(_logger).Build(game.InstallPath, enabled, metadata.Value, pakPath));
         if (!build.Success || build.Value is null)
@@ -398,7 +411,9 @@ public partial class MainWindow : Window
         _database.SetProfileMod(active.Id, packageId, true, existing?.Priority ?? 500, packageVersion);
         _changesPending = true;
         ShowDashboard(5);
-        SetStatus($"Built and registered {build.Value.AddedRowCount} custom hammers. Applying the profile to Ragnarock now.");
+        SetStatus(build.Value.UsesLatestMetadata
+            ? $"Built and registered {build.Value.AddedRowCount} custom hammers with the latest published compatibility data. Applying the profile to Ragnarock now."
+            : $"Built and registered {build.Value.AddedRowCount} custom hammers. Applying the profile to Ragnarock now.");
         DeployActiveProfile();
     }
 

@@ -10,10 +10,17 @@ using UAssetAPI.UnrealTypes;
 
 namespace RagnaModManager.Core.Hammers;
 
-public sealed record HammerPakBuildResult(string PakPath, string Sha256, string GamePakSha256, int BaseRowCount, int AddedRowCount);
+public sealed record HammerPakBuildResult(
+    string PakPath,
+    string Sha256,
+    string GamePakSha256,
+    int BaseRowCount,
+    int AddedRowCount,
+    string MetadataGamePakSha256,
+    bool UsesLatestMetadata);
 
 /// <summary>
-/// Merges rows into maintainer-prepared metadata for the exact installed game build,
+/// Merges rows into maintainer-prepared metadata for the exact or latest published game build,
 /// then creates a UE4.27 / PAK V11 overlay. This service never decrypts the game PAK.
 /// </summary>
 public sealed class HammerPakBuildService
@@ -25,12 +32,13 @@ public sealed class HammerPakBuildService
     public Result<HammerPakBuildResult> Build(
         string gameRoot,
         IReadOnlyList<HammerLibraryEntry> enabledHammers,
-        string metadataDirectory,
+        HammerMetadataSelection metadataSelection,
         string outputPakPath)
     {
         if (enabledHammers.Count == 0) return Result<HammerPakBuildResult>.Fail("Enable at least one custom hammer before building.");
         var gamePakPath = Path.Combine(gameRoot, "Ragnarock", "Content", "Paks", "Ragnarock-WindowsNoEditor.pak");
         if (!File.Exists(gamePakPath)) return Result<HammerPakBuildResult>.Fail("The installed Ragnarock data PAK could not be found.");
+        var metadataDirectory = metadataSelection.DirectoryPath;
         var metadataTablePath = Path.Combine(metadataDirectory, DataTablePath.Replace('/', Path.DirectorySeparatorChar));
         if (!File.Exists(metadataTablePath)) return Result<HammerPakBuildResult>.Fail("Matching hammer compatibility data is not available for this game update.");
 
@@ -44,10 +52,13 @@ public sealed class HammerPakBuildService
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (metadata is null || metadata.FormatVersion != 1 || metadata.PakVersion != 11 ||
                 !string.Equals(metadata.EngineVersion, "UE4.27", StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(metadata.GamePakSha256, gamePakSha256, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(metadata.GamePakSha256, metadataSelection.MetadataGamePakSha256, StringComparison.OrdinalIgnoreCase) ||
+                !string.Equals(metadataSelection.InstalledGamePakSha256, gamePakSha256, StringComparison.OrdinalIgnoreCase) ||
                 metadata.ExistingAssetPackagePaths is null || metadata.ExistingAssetPackagePaths.Count == 0 ||
                 !FileSha256Matches(metadataTablePath, metadata.TableSha256))
                 return Result<HammerPakBuildResult>.Fail("The hammer compatibility data doesn't match this game update. No PAK was built.");
+            if (!metadataSelection.IsExactBuild)
+                _logger.Warning($"Building with latest published hammer compatibility data from game build {metadata.GamePakSha256} for unlisted installed build {gamePakSha256}.");
             var exportSourcePath = Path.ChangeExtension(metadataTablePath, ".uexp");
             if (!FileSha256Matches(exportSourcePath, metadata.ExportSha256) ||
                 string.IsNullOrWhiteSpace(metadata.DataAssetTemplatePath) ||
@@ -227,7 +238,9 @@ public sealed class HammerPakBuildService
                 Sha256(new[] { outputPakPath }),
                 gamePakSha256,
                 baseRows.Count,
-                enabledHammers.Count));
+                enabledHammers.Count,
+                metadata.GamePakSha256,
+                !metadataSelection.IsExactBuild));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or ArgumentException or NotSupportedException or JsonException)
         {
