@@ -156,7 +156,8 @@ Check each output separately:
 
 1. Open the changing room. Confirm the list entry has the custom icon, then select it and confirm the 3D preview is the custom mesh with the intended orientation and materials.
 2. Equip it and start an offline song. Confirm the custom mesh appears in the player's hands during the race and that normal hits play the game's shared `DrumHit` sound.
-3. Use a Standard chart with a steady sequence of notes. First test it with a stock hammer; then repeat the same chart and keyboard bindings with only the custom hammer enabled in RMM. Keep the game's normal keyboard input mode; do not switch to **One Key One Drum**. Before starting, verify that the highlighted song row, author, duration, and difficulty are the chart you intend to play. Confirm that accurate hits build the blue stage, further hits build the gold stage, and a deliberate miss clears both gauges. Take a fresh screenshot at each stage and check the results screen for hits and combo activity. A selected preview or visible race model alone does not prove the combo path works.
+3. In **Settings → Input**, check which keyboard key is assigned to each drum. Use the key for the lane and timing of each chart note; do not infer that input is working just because keys are being pressed. Keep the game's normal keyboard input mode; do not switch to **One Key One Drum**.
+4. Use a Standard chart with a steady sequence of notes. First test it with a stock hammer; then repeat the same chart and keyboard bindings with only the custom hammer enabled in RMM. Before starting, verify that the highlighted song row, author, duration, and difficulty are the chart you intend to play. Check the local Stats screen: if it reports no hits or no combo, the run is not valid evidence about the hammer's materials. Once the stock hammer builds combo under those inputs, confirm that the custom hammer builds the blue stage, advances to gold, and clears both gauges after a deliberate miss. Capture each stage during the race. A selected preview or visible race model alone does not prove the combo path works.
 
 ### Combo meter and charge
 
@@ -177,9 +178,23 @@ Verify the two parts separately: first run the RagnaLoader combo-fixture case (o
 
 ## Sample status: Azure Blockhead
 
-The public [RagnaModManager Hammer Samples repository](https://github.com/Brollyy/RagnaModManager-HammerSamples/tree/master/azure-blockhead-source) contains an earlier Azure source project and `.rhammer`; its default branch does not yet contain the refreshed package and bar-material recipe described here. The refreshed local sample's `generate_source.py` creates the low-poly mesh, padded base-color texture, icon, and gauge ramp. Its UE project imports those textures, creates the body and two gauge materials, assigns the three stock-compatible material slots, and cooks the assets for Windows `PCD3D_SM5`.
+The public [RagnaModManager Hammer Samples repository](https://github.com/Brollyy/RagnaModManager-HammerSamples/tree/master/azure-blockhead-source) contains an earlier Azure source project and package. The refreshed source and package described here are local and are not yet in that public repository.
 
-The refreshed local `.rhammer` was cooked for Windows `PCD3D_SM5`, includes the mesh, icon, body and gauge materials, their textures and sidecars, and the shader archive, and passes ZIP integrity and manifest-reference checks. It has been imported into RMM with Azure as the only enabled custom hammer and deployed as a PAK. Fresh captures showed Azure selected on the Changing Room pedestal and its model loaded in a race. The exact RMM combo fixture was visually confirmed in Race Info (`RMM COMBO METER FIXTURE`, `RMM Test`, `0:30`) and then started; RagnaLoader recorded a fresh `Boat.OnStartSong`. Captures during gameplay show the Azure model and blue/yellow effects around the drum area. A stock-hammer control with the same fixture and keyboard sequence showed the same effects, so they are game hit feedback rather than proof of Azure's combo material response. The Azure head bars remained too dark to confirm the requested blue-to-gold fill or its reset. The live custom stage behavior remains unverified and needs further work. Do not treat the material graph, a successful cook, a race start, or model visibility as proof of runtime combo behavior; complete the stock-versus-custom race check in Step 6 before describing the meter as working.
+The local `generate_source.py` produces the low-poly mesh, padded base-color atlas, icon, and grayscale gauge ramp. The UE 4.27 project imports them, creates the fixed body material and two gauge materials, assigns the three stock-compatible material slots, then cooks for Windows `PCD3D_SM5`. Cylinder side faces have distinct UVs through the seam to avoid stretching a face across the atlas.
+
+**Package and deployment**
+
+- The `.rhammer` contains the custom mesh, in-game icon Texture2D, body and gauge materials, cooked texture assets and sidecars, plus the shader archive. ZIP integrity and manifest references were checked.
+- The installed library mesh sidecar matches the package. Azure is enabled; both demo hammers are disabled.
+- RMM rebuilt and deployed the PAK. The generated and installed PAK SHA-256 values match: `523c68e85c97a03b00f8c141d91df08d30726f7206403ac8aaa7ebeb9c40103b`.
+
+**Runtime verification still needed**
+
+- Earlier captures from the previous package showed Azure's icon and model in the Changing Room. The refreshed package has not been confirmed there.
+- Ragnarock stalls on a black screen at `PRELOAD Main category favorites`. The same startup stall occurred with the PAK removed, with all UE4SS mods disabled, and with a clean temporary SaveGames folder. The original save, UE4SS settings, and PAK have been restored. Steam validation repaired four missing game files, but the stall persisted afterward.
+- The blue first stage, gold second stage, miss reset, and current texture quality remain unverified. A prior keyboard attempt produced 0 hits, 40 misses, and 0 combos, so it is not evidence about the gauge materials.
+
+Do not describe the combo meter as working until Step 6 confirms both stages and the reset during a race with valid hits and a deliberate miss.
 
 ## References
 
