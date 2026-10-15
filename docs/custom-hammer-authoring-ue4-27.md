@@ -190,10 +190,10 @@ The local `generate_source.py` produces the low-poly mesh, padded base-color atl
 
 **Runtime verification status**
 
-- The refreshed package was deployed and Ragnarock launched through the RagnaLoader case runner. The keyboard-selector case reported `passed`, but its captured image remained on the Avatar tab; it does not verify Azure selection or the revised gauge geometry. A later catalog visual case did not reach its steps because the game opened at 948×472 while the case requires 948×988.
-- On the RMM Combo Meter Fixture in the normal six-key layout, a synchronized uninterrupted keyboard pass recorded 40 hits and 0 misses. The local Stats tab reported 0% perfects and `0 (0 blue + 0 gold)` combos, so this pass does not prove that combo levels were reached.
+- The refreshed package was deployed, and a RagnaLoader UI-runner capture shows **Azure Blockhead selected in the Changing Room**. Its custom mesh appears upright with its colored surfaces and the correct item label. This verifies the refreshed mesh and material appearance in the preview; it does not verify its race model or combo behavior. The capture is `/tmp/ragna-loader-azure-hammer-selected-472.png` from the local verification run.
+- A previous run on the RMM Combo Meter Fixture in the normal six-key layout recorded 40 hits and 0 misses, but the local Stats tab reported 0% perfects and `0 (0 blue + 0 gold)` combos. That pass does not prove combo levels were reached.
 - A read-only UE4SS snapshot during that pass found Azure hammer material instances with `handleGauge=1.0` and `circularGauge=0.3333`. This confirms that the game writes gauge parameter values to the hammer's dynamic materials, but does not prove that the intended stages render visibly.
-- In-race captures still show a very dark head and no clearly distinguishable blue first stage, gold second stage, or reset after a miss. The current texture and gauge visibility also need review. A stock-hammer baseline with the same fixture and timing is still needed to confirm the input sequence reaches the stock combo stages.
+- Blue buildup, the transition to gold, and the visual reset after a dropped combo remain unverified. Fixture navigation also varies between launches, so confirm the highlighted song name, artist, duration, and difficulty in the live list and race dialog before starting a run. A stock-hammer baseline with the same fixture and timing is still needed to confirm the input sequence reaches the stock combo stages.
 
 Do not describe the combo meter as working until Step 6 confirms both stages and the reset during a race with valid hits and a deliberate miss, and the same input sequence builds combo on a stock hammer.
 
