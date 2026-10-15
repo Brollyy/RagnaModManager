@@ -1,0 +1,13 @@
+# Azure Blockhead UE 4.27 project
+
+Open `RMMAzureBlockhead.uproject` in UE 4.27 on Windows. Generated editor `Content/` assets are not checked in; the authored assets are regenerated from the adjacent original OBJ and PNGs at the package paths used by the manifest. Its Windows target is explicitly `PCD3D_SM5`, matching Ragnarock on PC.
+
+The OBJ, MTL, and PNG files in the parent `Source/` directory are the editable source art. Run `Scripts/create_hammer_materials.py` to import the padded body-color atlas, linear gauge ramp, and in-game icon. The ramp uses grayscale compression, disabled sRGB and mip generation, bilinear filtering, and clamped UV addressing. The optional selector PNGs stay in `Source/`; the default project does not import or package them because custom selector materials caused crashes in sample testing. The script builds a fixed body material, a blue `handleGauge` material for the handle bar, and a two-stage head-bar material that fills blue from `handleGauge` and gold from `circularGauge`. Then run `Scripts/reimport_azure_mesh.py` to import `SM_RMM_AzureBlockhead.obj` as the game-oriented Static Mesh and assign those materials to its `M_Character`, `M_JaugeManche`, and `M_JaugeTete` slots. The project enables both the **Python Editor Script Plugin** and **Editor Scripting Utilities** plugin, which the automation uses. If you are enabling plugins in another project, enable both and restart the editor before running the scripts in order. You can use UE's File → Execute Python Script menu, or run the commandlet from `Scripts/` in a Windows Command Prompt (replace the UE install path if needed):
+
+```bat
+set UE427=C:\Program Files\Epic Games\UE_4.27
+"%UE427%\Engine\Binaries\Win64\UE4Editor-Cmd.exe" "..\RMMAzureBlockhead.uproject" -run=pythonscript -script="%CD%\create_hammer_materials.py"
+"%UE427%\Engine\Binaries\Win64\UE4Editor-Cmd.exe" "..\RMMAzureBlockhead.uproject" -run=pythonscript -script="%CD%\reimport_azure_mesh.py"
+```
+
+Running both scripts recreates the editor assets under `Content/RMM/Hammers/azure-blockhead/`; the cooked `.rhammer` sample is in the parent directory. A Windows `PCD3D_SM5` cook produces the shared shader archive, which `build_rhammer.py` validates and includes. Its default archive excludes the unused selector materials and textures. The v9 package was deployed, and a Changing Room capture showed its upright mesh, colors, and item name. Its race model, blue and gold combo stages, and reset after a dropped combo remain unverified. Follow the [full authoring guide](../../../docs/custom-hammer-authoring-ue4-27.md) for cooking, archive assembly, deployment, and the required stock-versus-custom in-game checks.

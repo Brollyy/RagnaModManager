@@ -1,6 +1,6 @@
 # Custom hammer guide for Ragnarock and RMM
 
-This guide takes you from an original model and image files to a hammer that RagnaModManager (RMM) can install. The [Azure Blockhead sample](https://github.com/Brollyy/RagnaModManager-HammerSamples/tree/master/azure-blockhead-source) includes source art, a UE 4.27 project, build scripts, and a finished package.
+This guide takes you from an original model and image files to a hammer that RagnaModManager (RMM) can install. The in-repository [Azure Blockhead sample](../samples/azure-blockhead/README.md) includes source art, a UE 4.27 project, build scripts, and a cooked package.
 
 Follow the steps in order: prepare the art, import it into UE 4.27, cook it for Windows, package it as `.rhammer`, then install and check it in Ragnarock. RMM installs a finished package; it does not import FBX/OBJ files or cook UE assets.
 
@@ -13,7 +13,7 @@ Follow the steps in order: prepare the art, import it into UE 4.27, cook it for 
 5. Import and deploy it with RMM.
 6. Check the icon, preview, race model, and normal-hit behavior in game.
 
-The [Azure Blockhead sample](https://github.com/Brollyy/RagnaModManager-HammerSamples/tree/master/azure-blockhead-source) provides source art and a UE project you can use to follow along.
+The [Azure Blockhead sample](../samples/azure-blockhead/README.md) provides source art and a UE project you can use to follow along.
 
 ## Before you start
 
@@ -24,7 +24,7 @@ You need:
 - A Windows UE cooker that can produce `WindowsNoEditor` assets and `PCD3D_SM5` shaders.
 - RMM, an installed copy of Ragnarock, and a way to deploy its PAK overlay.
 
-Ragnarock's PC build uses UE 4.27 and Direct3D shader format `PCD3D_SM5`. A Linux UE cooker may produce Vulkan shader maps instead, even if asked to cook for Windows. Those maps do not work in the game. On a Linux-only computer, run UE 4.27 in a Windows VM, a Windows cloud machine, or a Windows CI runner, then copy the `.rhammer` back to Linux. The Azure sample's [UE project README](https://github.com/Brollyy/RagnaModManager-HammerSamples/blob/master/azure-blockhead-source/UEProject/README.md) describes its Windows setup.
+Ragnarock's PC build uses UE 4.27 and Direct3D shader format `PCD3D_SM5`. A Linux UE cooker may produce Vulkan shader maps instead, even if asked to cook for Windows. Those maps do not work in the game. On a Linux-only computer, run UE 4.27 in a Windows VM, a Windows cloud machine, or a Windows CI runner, then copy the `.rhammer` back to Linux. The Azure sample's [UE project README](../samples/azure-blockhead/UEProject/README.md) describes its Windows setup.
 
 ## Step 1 — Prepare the model and artwork
 
@@ -59,7 +59,7 @@ The game drives these parameters on dynamic materials, so keep the exact, case-s
 
 Ragnarock's hammer data asset has `Silhouette` and `Symbol` properties in addition to `Mesh`. The inspected game build expects a base **Material** for `Silhouette` and a **Material Instance Constant** for `Symbol`. Their texture and parent-material dependencies must also be cooked and packaged if you choose to override them. RMM can leave these fields at the stock defaults; they are optional for a basic custom hammer. Custom marker materials have crashed the game in sample testing, so treat these overrides as experimental and validate them separately before distributing them. The Azure sample keeps the optional silhouette and symbol PNGs as source art only; its default UE project and `.rhammer` omit those assets and leave both manifest fields null.
 
-The Azure sample includes `Scripts/create_hammer_materials.py` and `Scripts/reimport_azure_mesh.py` as examples of importing source images, creating UE materials and assigning the mesh's distinct color slots with UE's Python API. They are sample automation scripts, not prerequisites for other projects. Enable the **Python Editor Script Plugin** and **Editor Scripting Utilities** plugin, then run each through **File → Execute Python Script** or with the `-run=pythonscript -script="<path>"` commandlet form. Run material creation before mesh reimport. The sample scripts create their assets at the same package paths used by its manifest and archive builder; see its [UE project README](https://github.com/Brollyy/RagnaModManager-HammerSamples/blob/master/azure-blockhead-source/UEProject/README.md) for executable Windows commands.
+The Azure sample includes `Scripts/create_hammer_materials.py` and `Scripts/reimport_azure_mesh.py` as examples of importing source images, creating UE materials and assigning the mesh's distinct color slots with UE's Python API. They are sample automation scripts, not prerequisites for other projects. Enable the **Python Editor Script Plugin** and **Editor Scripting Utilities** plugin, then run each through **File → Execute Python Script** or with the `-run=pythonscript -script="<path>"` commandlet form. Run material creation before mesh reimport. The sample scripts create their assets at the same package paths used by its manifest and archive builder; see its [UE project README](../samples/azure-blockhead/UEProject/README.md) for executable Windows commands.
 
 ## Step 3 — Configure and cook for Windows
 
@@ -92,7 +92,7 @@ Wait for the cook to finish. Inspect its log for errors and successful `PCD3D_SM
 
 An `.rhammer` is a ZIP archive with a `hammer.json` manifest, cooked UE assets, and the shared shader archive. RMM uses the manifest to create a Ragnarock hammer data asset and add a row to the game's hammer table. The archive must carry your custom Static Mesh, in-game icon Texture2D, every material and texture they reference, each cooked sidecar, and the Windows shader archive. Source FBX/OBJ/PNG files and the UE project are authoring inputs; they do not replace the cooked runtime assets.
 
-Start from the example manifest in the [Azure sample repository](https://github.com/Brollyy/RagnaModManager-HammerSamples/blob/master/azure-blockhead-source/hammer.json.template). Give your hammer a unique, permanent `id`; keep it unchanged in future updates because the game saves the selected hammer by its row name. Set the mesh and icon paths to the cooked package paths in your project. Leave `silhouetteAssetPath` and `symbolAssetPath` null unless you have validated those custom materials in the game.
+Start from the example [Azure manifest template](../samples/azure-blockhead/hammer.json.template). Give your hammer a unique, permanent `id`; keep it unchanged in future updates because the game saves the selected hammer by its row name. Set the mesh and icon paths to the cooked package paths in your project. Leave `silhouetteAssetPath` and `symbolAssetPath` null unless you have validated those custom materials in the game.
 
 Minimal manifest shape:
 
@@ -133,10 +133,10 @@ To assemble the archive manually, create a folder with `hammer.json`, then copy 
 For the Azure sample, its packaging script validates the cooked directory, required asset paths, and Windows shader metadata, then collects the cooked files and archive:
 
 ```bat
-python build_rhammer.py C:\path\to\Saved\Cooked\WindowsNoEditor\RMMAzureBlockhead\Content --output ..\..\azure-blockhead.rhammer
+python build_rhammer.py C:\path\to\Saved\Cooked\WindowsNoEditor\RMMAzureBlockhead\Content --output ..\..\AzureBlockhead-v9.rhammer
 ```
 
-Run it from `azure-blockhead-source/UEProject/Scripts/` in the sample repository. For a different hammer, adapt the script's content folder, required manifest paths, and output name, or assemble the ZIP using the manifest rules above.
+Run it from `samples/azure-blockhead/UEProject/Scripts/`. For a different hammer, adapt the script's content folder, required manifest paths, and output name, or assemble the ZIP using the manifest rules above.
 
 Before importing, open the `.rhammer` as a ZIP and confirm it contains `hammer.json`, every referenced cooked asset and sidecar, and the shader archive. The optional `Preview/` image is for RMM's library only; `iconAssetPath` is the in-game icon.
 
@@ -178,7 +178,7 @@ Verify the two parts separately with the same Standard chart and six-key binding
 
 ## Sample status: Azure Blockhead
 
-The public [RagnaModManager Hammer Samples repository](https://github.com/Brollyy/RagnaModManager-HammerSamples/tree/master/azure-blockhead-source) contains an earlier Azure source project and package. The refreshed source and package described here are local and are not yet in that public repository.
+The [Azure Blockhead sample directory](../samples/azure-blockhead/README.md) contains the refreshed source art, UE 4.27 project, build scripts, manifest template, and v9 `.rhammer` package used for this guide.
 
 The local `generate_source.py` produces the low-poly mesh, padded base-color atlas, icon, and grayscale gauge ramp. The UE 4.27 project imports them, creates the fixed body material and two gauge materials, assigns the three stock-compatible material slots, then cooks for Windows `PCD3D_SM5`. Cylinder side faces have distinct UVs through the seam to avoid stretching a face across the atlas.
 
