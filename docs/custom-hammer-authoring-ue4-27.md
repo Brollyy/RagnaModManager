@@ -184,13 +184,13 @@ The local `generate_source.py` produces the low-poly mesh, padded base-color atl
 
 **Package and deployment**
 
-- The `.rhammer` contains the custom mesh, in-game icon Texture2D, body and gauge materials, cooked texture assets and sidecars, plus the shader archive. ZIP integrity and manifest references were checked.
+- The refreshed Windows `PCD3D_SM5` cook was packaged as `AzureBlockhead-v9.rhammer`; it contains 16 cooked package files, and the package builder's ZIP and manifest-reference checks passed. This revision widens the visible gauge-bar geometry.
 - The installed library mesh sidecar matches the package. Azure is enabled; both demo hammers are disabled.
-- RMM rebuilt and deployed the PAK. The generated and installed PAK SHA-256 values match: `523c68e85c97a03b00f8c141d91df08d30726f7206403ac8aaa7ebeb9c40103b`.
+- RMM rebuilt and deployed the PAK. The generated and installed PAK SHA-256 values match: `ea12bf990cd2fe0cf7a2cc2efbb667f0fa4e7efcf0a166c6b1afc4e56aebba01`.
 
 **Runtime verification status**
 
-- The refreshed package was loaded in Ragnarock. Azure appeared selected in the Changing Room, and its model appeared in the race hands.
+- The refreshed package was deployed and Ragnarock launched through the RagnaLoader case runner. The keyboard-selector case reported `passed`, but its captured image remained on the Avatar tab; it does not verify Azure selection or the revised gauge geometry. A later catalog visual case did not reach its steps because the game opened at 948×472 while the case requires 948×988.
 - On the RMM Combo Meter Fixture in the normal six-key layout, a synchronized uninterrupted keyboard pass recorded 40 hits and 0 misses. The local Stats tab reported 0% perfects and `0 (0 blue + 0 gold)` combos, so this pass does not prove that combo levels were reached.
 - A read-only UE4SS snapshot during that pass found Azure hammer material instances with `handleGauge=1.0` and `circularGauge=0.3333`. This confirms that the game writes gauge parameter values to the hammer's dynamic materials, but does not prove that the intended stages render visibly.
 - In-race captures still show a very dark head and no clearly distinguishable blue first stage, gold second stage, or reset after a miss. The current texture and gauge visibility also need review. A stock-hammer baseline with the same fixture and timing is still needed to confirm the input sequence reaches the stock combo stages.
