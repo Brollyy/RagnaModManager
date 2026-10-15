@@ -123,6 +123,8 @@ def prism_obj() -> str:
         gauge_uv: bool = False,
         gauge_uv_axis: str = "x",
     ) -> None:
+        if any(low > high for low, high in zip(lo, hi)):
+            raise ValueError(f"Box {name} has reversed bounds: {lo!r} .. {hi!r}")
         x0, y0, z0 = lo
         x1, y1, z1 = hi
         source_points = [
@@ -246,27 +248,31 @@ def prism_obj() -> str:
     # Keep a copy on each broad face: the in-race hammer camera sees the back
     # of the mesh, while the changing-room preview sees the authored front.
     # Stock gauge bars remain visible from both of those views.
-    add_box("HandleGaugeBar_Front", "M_JaugeManche", (-2.5, -5.8, 2), (2.5, -4.2, 22), gauge_uv=True, gauge_uv_axis="z")
-    add_box("HandleGaugeBar_Back", "M_JaugeManche", (-2.5, 4.2, 2), (2.5, 5.8, 22), gauge_uv=True, gauge_uv_axis="z")
+    # Keep these raised surfaces fully clear of the cylindrical shaft so
+    # their hidden faces cannot intersect it and create shadow speckling.
+    add_box("HandleGaugeBar_Front", "M_JaugeManche", (-2.5, -5.8, 2), (2.5, -4.5, 22), gauge_uv=True, gauge_uv_axis="z")
+    add_box("HandleGaugeBar_Back", "M_JaugeManche", (-2.5, 4.5, 2), (2.5, 5.8, 22), gauge_uv=True, gauge_uv_axis="z")
     # The OBJ import rotates source X onto game-space Y and source Y onto
     # game-space -X. Place the head meters on the two broad +/-X faces, with
     # U running along the head width so the blue/gold stages fill left to
     # right. Putting these at source X +/-17 would put them on the end caps.
     add_box(
-        "HeadGaugeBar_Front", "M_JaugeTete", (-14, -12.8, 43), (14, -10.4, 48.5),
+        "HeadGaugeBar_Front", "M_JaugeTete", (-14, -13.0, 43), (14, -12.0, 48.5),
         gauge_uv=True, gauge_uv_axis="x"
     )
     add_box(
-        "HeadGaugeBar_Back", "M_JaugeTete", (-14, 10.4, 43), (14, 12.8, 48.5),
+        "HeadGaugeBar_Back", "M_JaugeTete", (-14, 12.0, 43), (14, 13.0, 48.5),
         gauge_uv=True, gauge_uv_axis="x"
     )
 
     # The box head and gold decorations stay visually fixed during a combo.
     add_box("Head", "M_Character", (-17, -11, 27), (17, 11, 51))
-    add_box("LeftGoldPlate", "M_Character", (-18, -12, 29), (-14, -12.1, 49), region="gold")
-    add_box("RightGoldPlate", "M_Character", (14, -12, 29), (18, -12.1, 49), region="gold")
-    add_box("RuneBar", "M_Character", (-2, -13, 34), (2, -13.1, 45), region="ice")
-    add_box("RuneCross", "M_Character", (-7, -13, 37), (7, -13.1, 41), region="gold")
+    # Bounds stay ordered so the exported face winding and normals point
+    # outward. Place these details just beyond the front gauge strip.
+    add_box("LeftGoldPlate", "M_Character", (-18, -12.0, 29), (-14, -11.9, 49), region="gold")
+    add_box("RightGoldPlate", "M_Character", (14, -12.0, 29), (18, -11.9, 49), region="gold")
+    add_box("RuneBar", "M_Character", (-2, -13.1, 34), (2, -13.0, 45), region="ice")
+    add_box("RuneCross", "M_Character", (-7, -13.1, 37), (7, -13.0, 41), region="gold")
 
     lines = [
         "# Generated source mesh: Azure Blockhead",

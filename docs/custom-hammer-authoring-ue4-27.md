@@ -59,7 +59,7 @@ The game drives these parameters on dynamic materials, so keep the exact, case-s
 
 Ragnarock's hammer data asset has `Silhouette` and `Symbol` properties in addition to `Mesh`. The inspected game build expects a base **Material** for `Silhouette` and a **Material Instance Constant** for `Symbol`. Their texture and parent-material dependencies must also be cooked and packaged if you choose to override them. RMM can leave these fields at the stock defaults; they are optional for a basic custom hammer. Custom marker materials have crashed the game in sample testing, so treat these overrides as experimental and validate them separately before distributing them. The Azure sample keeps the optional silhouette and symbol PNGs as source art only; its default UE project and `.rhammer` omit those assets and leave both manifest fields null.
 
-The Azure sample includes `Scripts/create_hammer_materials.py` and `Scripts/reimport_azure_mesh.py` as examples of importing source images, creating UE materials and assigning the mesh's distinct color slots with UE's Python API. They are sample automation scripts, not prerequisites for other projects. Enable the **Python Editor Script Plugin** and **Editor Scripting Utilities** plugin, then run each through **File → Execute Python Script** or with the `-run=pythonscript -script="<path>"` commandlet form. Run material creation before mesh reimport. The sample scripts create their assets at the same package paths used by its manifest and archive builder; see its [UE project README](../samples/azure-blockhead/UEProject/README.md) for executable Windows commands.
+The Azure sample includes `Scripts/create_hammer_materials.py` and `Scripts/reimport_azure_mesh.py` as examples of importing source images, creating UE materials and assigning the mesh's distinct color slots with UE's Python API. They are sample automation scripts, not prerequisites for other projects. Enable the **Python Editor Script Plugin** and **Editor Scripting Utilities** plugin, then run each through **File → Execute Python Script** or with the `-run=pythonscript -script="<path>"` commandlet form. Run material creation before mesh reimport. The sample generator rejects boxes with reversed bounds because inverted winding can cause incorrect normals and lighting artifacts; ensure separate gauge geometry does not intersect the hammer body. The sample scripts create their assets at the same package paths used by its manifest and archive builder; see its [UE project README](../samples/azure-blockhead/UEProject/README.md) for executable Windows commands.
 
 ## Step 3 — Configure and cook for Windows
 
@@ -133,7 +133,7 @@ To assemble the archive manually, create a folder with `hammer.json`, then copy 
 For the Azure sample, its packaging script validates the cooked directory, required asset paths, and Windows shader metadata, then collects the cooked files and archive. This example assumes the shell is in `samples/azure-blockhead/UEProject/Scripts/` and that the Windows cook was copied to the indicated path:
 
 ```bat
-python build_rhammer.py C:\path\to\Saved\Cooked\WindowsNoEditor\RMMAzureBlockhead\Content --output ..\..\AzureBlockhead-v11.rhammer
+python build_rhammer.py C:\path\to\Saved\Cooked\WindowsNoEditor\RMMAzureBlockhead\Content --output ..\..\AzureBlockhead-v12.rhammer
 ```
 
 Run it from `samples/azure-blockhead/UEProject/Scripts/`. For a different hammer, adapt the script's content folder, required manifest paths, and output name, or assemble the ZIP using the manifest rules above.
