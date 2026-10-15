@@ -15,6 +15,8 @@ CONTENT_PACKAGE_ROOT = Path("RMM/Hammers/azure-blockhead")
 COOKED_EXTENSIONS = {".uasset", ".uexp", ".ubulk", ".uptnl"}
 EXCLUDED_PACKAGE_PATHS = {
     "/Game/RMM/Hammers/azure-blockhead/Mesh/SM_AzureBlockhead",
+    "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead_HandleGauge",
+    "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead_HeadGauge",
     "/Game/RMM/Hammers/azure-blockhead/UI/MI_AzureBlockhead_Silhouette",
     "/Game/RMM/Hammers/azure-blockhead/UI/MI_AzureBlockhead_Symbol",
     "/Game/RMM/Hammers/azure-blockhead/UI/M_AzureBlockhead_Mark",
@@ -26,13 +28,9 @@ REQUIRED_PACKAGE_ASSETS = {
     "/Game/RMM/Hammers/azure-blockhead/Mesh/SM_AzureBlockhead_Rotated",
     "/Game/RMM/Hammers/azure-blockhead/Mesh/T_RMM_AzureBlockhead_BaseColor",
     "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead",
-    "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead_HandleGauge",
-    "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead_HeadGauge",
 }
 REQUIRED_SHADER_MATERIALS = {
     "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead",
-    "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead_HandleGauge",
-    "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead_HeadGauge",
 }
 
 

@@ -4,7 +4,7 @@
   "name": "Azure Blockhead",
   "author": "RMM Sample",
   "version": "1.0.0",
-  "description": "Original low-poly cyan block hammer with authored mesh, materials, icon, and two-stage combo gauge.",
+  "description": "Authored cyan block head on Ragnarock's stock handle and combo gauge.",
   "rowName": "RMM_AZURE_BLOCKHEAD_VERIFIED",
   "displayName": "Azure Blockhead",
   "meshAssetPath": "/Game/RMM/Hammers/azure-blockhead/Mesh/SM_AzureBlockhead_Rotated",

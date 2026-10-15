@@ -1,4 +1,4 @@
-"""Import the corrected Azure Blockhead mesh into the Windows UE4.27 project."""
+"""Import the four-UV-channel Azure Blockhead FBX into the Windows UE4.27 project."""
 
 import os
 import unreal
@@ -6,7 +6,7 @@ import unreal
 
 PROJECT_ROOT = os.path.abspath(unreal.Paths.project_dir())
 SOURCE = os.path.normpath(
-    os.path.join(os.path.dirname(PROJECT_ROOT), "Source", "SM_RMM_AzureBlockhead.obj")
+    os.path.join(os.path.dirname(PROJECT_ROOT), "Source", "SM_RMM_AzureBlockhead.fbx")
 )
 DESTINATION = "/Game/RMM/Hammers/azure-blockhead/Mesh"
 ASSET_NAME = "SM_AzureBlockhead_Rotated"
@@ -16,14 +16,11 @@ SURFACE_MATERIAL = (
 )
 SLOT_MATERIALS = {
     "M_Character": SURFACE_MATERIAL,
-    "M_JaugeManche": (
-        "/Game/RMM/Hammers/azure-blockhead/Materials/"
-        "M_AzureBlockhead_HandleGauge"
-    ),
-    "M_JaugeTete": (
-        "/Game/RMM/Hammers/azure-blockhead/Materials/"
-        "M_AzureBlockhead_HeadGauge"
-    ),
+    # Temporary editor stand-ins are created at these game paths by
+    # create_stock_gauge_refs.py. The final .rhammer omits them so Ragnarock's
+    # stock material instances supply the exact live combo response.
+    "M_JaugeManche": "/Game/Meshes/Hammers/DefaultHammer/MI_HandleGauge",
+    "M_JaugeTete": "/Game/Meshes/Hammers/DefaultHammer/MI_HeadGauge",
 }
 
 unreal.EditorAssetLibrary.make_directory(DESTINATION)
@@ -39,6 +36,21 @@ task.destination_name = ASSET_NAME
 task.automated = True
 task.replace_existing = True
 task.save = True
+# The UE-exported donor round-trips through Blender as meters with its front
+# axis reversed relative to Ragnarock's cooked mesh. Normalize units and roll
+# on import so the preserved stock gauge planes land back on the stock bounds.
+fbx_options = unreal.FbxImportUI()
+fbx_options.import_mesh = True
+fbx_options.static_mesh_import_data.set_editor_property(
+    "import_uniform_scale", 0.01
+)
+fbx_options.static_mesh_import_data.set_editor_property(
+    "import_rotation", unreal.Rotator(0.0, 0.0, 180.0)
+)
+task.options = fbx_options
+unreal.log(
+    "AZURE_FBX_NORMALIZATION scale=0.01 roll=180 degrees"
+)
 unreal.AssetToolsHelpers.get_asset_tools().import_asset_tasks([task])
 
 mesh = unreal.EditorAssetLibrary.load_asset(asset_path)

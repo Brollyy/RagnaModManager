@@ -27,8 +27,8 @@ def import_texture(filename, asset_name, destination):
     return asset
 
 
-def create_gauge_material(name, parameter, second_parameter=None):
-    """Make a dark track with stock blue first-stage and gold second-stage fill."""
+def create_gauge_material(name, parameter, second_parameter=None, full_combo_marker=False):
+    """Create the stock-style two-stage handle fill or full-combo head marker."""
     path = MATERIAL_FOLDER + "/" + name
     material = (
         unreal.EditorAssetLibrary.load_asset(path)
@@ -40,7 +40,8 @@ def create_gauge_material(name, parameter, second_parameter=None):
             name, MATERIAL_FOLDER, unreal.Material, unreal.MaterialFactoryNew()
         )
     material.set_editor_property("material_domain", unreal.MaterialDomain.MD_SURFACE)
-    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_OPAQUE)
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_MASKED)
+    material.set_editor_property("opacity_mask_clip_value", 0.1)
     material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     unreal.MaterialEditingLibrary.delete_all_material_expressions(material)
 
@@ -89,7 +90,24 @@ def create_gauge_material(name, parameter, second_parameter=None):
         connect(zero, "", node, "A < B")
         return node
 
-    if second_parameter:
+    if full_combo_marker:
+        # circularGauge reaches 1 only when the combo gauge completes. Keep
+        # the head mark dark below that point, then light the whole mark at once.
+        gauge = scalar(parameter, -520, -100)
+        one = constant(1.0, -300, 120)
+        zero = constant(0.0, -300, 240)
+        filled = expression(unreal.MaterialExpressionIf, 100, 80)
+        connect(gauge, "", filled, "A")
+        connect(one, "", filled, "B")
+        connect(one, "", filled, "A > B")
+        connect(one, "", filled, "A == B")
+        connect(zero, "", filled, "A < B")
+        lit_color = expression(unreal.MaterialExpressionVectorParameter, -80, 500)
+        lit_color.set_editor_property("parameter_name", "mainColor")
+        lit_color.set_editor_property(
+            "default_value", unreal.LinearColor(1.0, 0.400337, 0.0, 1.0)
+        )
+    elif second_parameter:
         second_gauge = scalar(second_parameter, -520, 40)
         half = constant(0.5, -300, 220)
         two = constant(2.0, -300, 340)
@@ -136,23 +154,21 @@ def create_gauge_material(name, parameter, second_parameter=None):
             "default_value", unreal.LinearColor(0.030109, 0.079745, 0.320833, 1.0)
         )
 
-    track_color = expression(unreal.MaterialExpressionConstant3Vector, -80, 360)
-    track_color.set_editor_property("constant", unreal.LinearColor(0.008, 0.018, 0.035, 1.0))
     # Stock gauges expose a `glow` scalar and use emissive output for active
-    # fills. An unlit output keeps both the dark track and active colors stable
-    # under scene shadows, including on a thin planar gauge surface.
+    # fills. Mask the unfilled surface so the stock head marker does not show
+    # as a dark patch over the authored hammer head when combo is empty.
     glow = scalar("glow", 520, 620, 34.242756)
     emissive_fill = expression(unreal.MaterialExpressionMultiply, 520, 460)
     connect(lit_color, "", emissive_fill, "A")
     connect(glow, "", emissive_fill, "B")
-    emissive_surface = expression(unreal.MaterialExpressionLinearInterpolate, 760, 460)
-    connect(track_color, "", emissive_surface, "A")
-    connect(emissive_fill, "", emissive_surface, "B")
-    connect(filled, "", emissive_surface, "Alpha")
     if not unreal.MaterialEditingLibrary.connect_material_property(
-        emissive_surface, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR
+        emissive_fill, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR
     ):
         raise RuntimeError("Could not connect the Azure gauge fill to Emissive Color")
+    if not unreal.MaterialEditingLibrary.connect_material_property(
+        filled, "", unreal.MaterialProperty.MP_OPACITY_MASK
+    ):
+        raise RuntimeError("Could not connect the Azure gauge fill to Opacity Mask")
     unreal.MaterialEditingLibrary.recompile_material(material)
     unreal.EditorAssetLibrary.save_asset(path, only_if_is_dirty=False)
     unreal.log("AZURE_GAUGE_MATERIAL_READY " + path + " parameter=" + parameter)
@@ -223,11 +239,9 @@ unreal.EditorAssetLibrary.save_asset(
     MESH_FOLDER + "/T_RMM_AzureBlockhead_BaseColor", only_if_is_dirty=False
 )
 create_surface_material(base_color)
-create_gauge_material("M_AzureBlockhead_HandleGauge", "handleGauge")
 create_gauge_material(
-    "M_AzureBlockhead_HeadGauge",
-    "handleGauge",
-    second_parameter="circularGauge",
+    "M_AzureBlockhead_HandleGauge", "handleGauge", second_parameter="circularGauge"
 )
+create_gauge_material("M_AzureBlockhead_HeadGauge", "circularGauge", full_combo_marker=True)
 unreal.EditorAssetLibrary.save_directory(CONTENT_ROOT, only_if_is_dirty=False, recursive=True)
 unreal.log("AZURE_HAMMER_MATERIALS_READY")

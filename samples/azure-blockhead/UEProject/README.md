@@ -1,13 +1,47 @@
 # Azure Blockhead UE 4.27 project
 
-Open `RMMAzureBlockhead.uproject` in UE 4.27 on Windows. Generated editor `Content/` assets are not checked in; the authored assets are regenerated from the adjacent original OBJ and PNGs at the package paths used by the manifest. Its Windows target is explicitly `PCD3D_SM5`, matching Ragnarock on PC.
+Open `RMMAzureBlockhead.uproject` in UE 4.27 on Windows. Generated editor `Content/` assets are not checked in. The source FBX is built from the stock Default Hammer export plus an authored Azure head; textures and the icon are generated locally. The project targets `PCD3D_SM5`, matching Ragnarock on PC.
 
-The OBJ, MTL, and PNG files in the parent `Source/` directory are the editable source art. Run `Scripts/create_hammer_materials.py` to import the body-color atlas and in-game icon. The gauge materials compare their scalar parameters directly against the mesh's U coordinate, avoiding a separate coordinate-ramp texture. The body atlas keeps a normal mip chain and uses inset UV islands. The optional selector PNGs stay in `Source/`; the default project does not import or package them because custom selector materials caused crashes in sample testing. The script builds a fixed body material, a `handleGauge` handle-bar material, and a two-stage head-bar material driven by `handleGauge` and `circularGauge`. The gauge materials use the stock default hammer's blue `centerColor` `(0.030109, 0.079745, 0.320833)` and orange `mainColor` `(1.0, 0.400337, 0.0)`. Then run `Scripts/reimport_azure_mesh.py` to import `SM_RMM_AzureBlockhead.obj` as the game-oriented Static Mesh and assign those materials to its `M_Character`, `M_JaugeManche`, and `M_JaugeTete` slots. The mesh generator creates valid UV area on every gauge face and splits vertices at hard box edges so UE can calculate stable tangents and flat normals. It also flips atlas V coordinates to account for PNG's top-left pixel origin versus OBJ's bottom-left UV origin. The project enables both the **Python Editor Script Plugin** and **Editor Scripting Utilities** plugin, which the automation uses. If you are enabling plugins in another project, enable both and restart the editor before running the scripts in order. You can use UE's File → Execute Python Script menu, or run the commandlet from `Scripts/` in a Windows Command Prompt (replace the UE install path if needed):
+The source mesh uses the stock Default Hammer as a donor for the grip, handle, gauge geometry and all four UV channels, pivot, and section layout. The mesh retains the stock gauge material references. Temporary stand-ins are created at the stock paths while cooking in UE; the final package excludes them so the running game resolves the mesh to Ragnarock's own gauge instances.
+
+## Prepare the source
+
+Export `/Game/Meshes/Hammers/DefaultHammer/SM_Hammer_Default` from the installed game as FBX, preserving all four UV channels and the three material section names. Generate the source artwork:
+
+```bat
+python ..\..\generate_source.py
+```
+
+The generated source artwork lives in `../Source/`. From Blender, run the stock-based mesh builder to preserve the gauge UV channels and replace the head:
+
+```bat
+blender --background --python build_stock_based_azure_fbx.py -- C:\path\to\SM_Hammer_Default.fbx ..\Source\SM_RMM_AzureBlockhead.fbx
+```
+
+For your own hammer, replace the authored Azure head with your design in Blender. Preserve the stock handle, handle gauge, head marker, material slots, pivot, scale, orientation, and every UV channel.
+
+## Create UE assets and cook
+
+The project enables **Python Editor Script Plugin** and **Editor Scripting Utilities**. From this `Scripts/` directory, run the scripts in order:
 
 ```bat
 set UE427=C:\Program Files\Epic Games\UE_4.27
 "%UE427%\Engine\Binaries\Win64\UE4Editor-Cmd.exe" "..\RMMAzureBlockhead.uproject" -run=pythonscript -script="%CD%\create_hammer_materials.py"
+"%UE427%\Engine\Binaries\Win64\UE4Editor-Cmd.exe" "..\RMMAzureBlockhead.uproject" -run=pythonscript -script="%CD%\create_stock_gauge_refs.py"
 "%UE427%\Engine\Binaries\Win64\UE4Editor-Cmd.exe" "..\RMMAzureBlockhead.uproject" -run=pythonscript -script="%CD%\reimport_azure_mesh.py"
+"%UE427%\Engine\Binaries\Win64\UE4Editor-Cmd.exe" "..\RMMAzureBlockhead.uproject" -run=cook -targetplatform=WindowsNoEditor -cookall
 ```
 
-Running both scripts recreates the editor assets under `Content/RMM/Hammers/azure-blockhead/`; the cooked `.rhammer` samples are in the parent directory. A clean Windows `PCD3D_SM5` cook produces the shared shader archive, which `build_rhammer.py` validates and includes. Its default archive excludes the unused selector materials and textures. V16 is the latest package: it uses dedicated planar gauge faces offset from the body, a fixed unlit body material, and UV-based blue/gold meter materials. It was cooked, packaged, imported into RMM, and deployed. Its icon, upright preview, and head gauge track are visible in `../Verification/ChangingRoom-v16.png`. The latest exact-fixture run recorded 0 hits and 40 misses while the race view showed stock hammers, so it does not verify the input mapping, in-race Azure selection, or blue/gold/reset behavior. Follow the [full authoring guide](../../../docs/custom-hammer-authoring-ue4-27.md) for cooking, archive assembly, deployment, and the stock-versus-custom in-game checks.
+`create_hammer_materials.py` imports the body texture and icon and creates the Azure body material plus temporary gauge parent materials. `create_stock_gauge_refs.py` creates editor-only material instances at the game's stock gauge paths. `reimport_azure_mesh.py` imports the donor-based mesh, checks the three stock section names and order, and assigns the body material plus those stock paths. Review the cook log: each slot must reload with its intended material path and the cook must complete for `WindowsNoEditor` / `PCD3D_SM5`.
+
+## Package
+
+Use the package builder to assemble the `.rhammer` from the Windows cook. For example, still from this directory:
+
+```bat
+python build_rhammer.py "..\Saved\Cooked\WindowsNoEditor\RMMAzureBlockhead\Content" --output "..\..\AzureBlockhead-v33.rhammer"
+```
+
+The builder checks the cooked body material, mesh, texture, icon, PCD3D shader metadata, and shader archive. The temporary gauge materials are excluded from the `.rhammer`; at runtime the stock material paths resolve inside Ragnarock. Keep the manifest and builder paths aligned if you change the package's unique content root.
+
+For RMM import, deployment, and in-game validation, follow the [full authoring guide](../../../docs/custom-hammer-authoring-ue4-27.md).
