@@ -188,14 +188,14 @@ The local `generate_source.py` produces the low-poly mesh, padded base-color atl
 - The installed library mesh sidecar matches the package. Azure is enabled; both demo hammers are disabled.
 - RMM rebuilt and deployed the PAK. The generated and installed PAK SHA-256 values match: `523c68e85c97a03b00f8c141d91df08d30726f7206403ac8aaa7ebeb9c40103b`.
 
-**Runtime verification still needed**
+**Runtime verification status**
 
-- Earlier captures from the previous package showed Azure's icon and model in the Changing Room. The refreshed package has not been confirmed there.
-- Ragnarock stalls on a black screen at `PRELOAD Main category favorites`. The same startup stall occurred with the PAK removed, with all UE4SS mods disabled, with a clean temporary SaveGames folder, and with the RMM combo test chart temporarily removed from CustomSongs. The original save and test chart, UE4SS settings, and PAK have been restored. Steam validation repaired four missing game files, but the stall persisted afterward.
-- A further run with the entire `CustomSongs` directory temporarily moved aside also stayed black. A fresh Steam launch remained black after nearly four minutes with the game process using CPU; no menu appeared. The original `CustomSongs` directory has been restored.
-- The blue first stage, gold second stage, miss reset, and current texture quality remain unverified. A prior keyboard attempt produced 0 hits, 40 misses, and 0 combos, so it is not evidence about the gauge materials.
+- The refreshed package was loaded in Ragnarock. Azure appeared selected in the Changing Room, and its model appeared in the race hands.
+- On the RMM Combo Meter Fixture in the normal six-key layout, a synchronized uninterrupted keyboard pass recorded 40 hits and 0 misses. The local Stats tab reported 0% perfects and `0 (0 blue + 0 gold)` combos, so this pass does not prove that combo levels were reached.
+- A read-only UE4SS snapshot during that pass found Azure hammer material instances with `handleGauge=1.0` and `circularGauge=0.3333`. This confirms that the game writes gauge parameter values to the hammer's dynamic materials, but does not prove that the intended stages render visibly.
+- In-race captures still show a very dark head and no clearly distinguishable blue first stage, gold second stage, or reset after a miss. The current texture and gauge visibility also need review. A stock-hammer baseline with the same fixture and timing is still needed to confirm the input sequence reaches the stock combo stages.
 
-Do not describe the combo meter as working until Step 6 confirms both stages and the reset during a race with valid hits and a deliberate miss.
+Do not describe the combo meter as working until Step 6 confirms both stages and the reset during a race with valid hits and a deliberate miss, and the same input sequence builds combo on a stock hammer.
 
 ## References
 
