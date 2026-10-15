@@ -22,16 +22,6 @@ def write_base_color(path: Path) -> None:
     image.save(path)
 
 
-def write_gauge_ramp(path: Path) -> None:
-    image = Image.new("RGB", (256, 4))
-    pixels = image.load()
-    for x in range(image.width):
-        value = round(255 * x / (image.width - 1))
-        for y in range(image.height):
-            pixels[x, y] = (value, value, value)
-    image.save(path)
-
-
 def draw_icon(path: Path) -> None:
     image = Image.new("RGBA", (256, 256), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
@@ -294,7 +284,6 @@ def prism_obj() -> str:
 
 
 write_base_color(SOURCE / "T_RMM_AzureBlockhead_BaseColor.png")
-write_gauge_ramp(SOURCE / "T_RMM_AzureBlockhead_GaugeRamp.png")
 draw_icon(SOURCE / "T_RMM_AzureBlockhead_Icon.png")
 draw_silhouette(SOURCE / "T_RMM_AzureBlockhead_Silhouette.png")
 draw_symbol(SOURCE / "T_RMM_AzureBlockhead_Symbol.png")

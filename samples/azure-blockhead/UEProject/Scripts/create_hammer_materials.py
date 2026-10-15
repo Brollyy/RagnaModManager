@@ -27,7 +27,7 @@ def import_texture(filename, asset_name, destination):
     return asset
 
 
-def create_gauge_material(name, parameter, ramp_texture, second_parameter=None):
+def create_gauge_material(name, parameter, second_parameter=None):
     """Make a dark track with stock blue first-stage and gold second-stage fill."""
     path = MATERIAL_FOLDER + "/" + name
     material = (
@@ -67,11 +67,16 @@ def create_gauge_material(name, parameter, ramp_texture, second_parameter=None):
         return node
 
     gauge = scalar(parameter, -520, -100)
-    # This grayscale texture encodes the bar's U coordinate in its red channel.
-    # Sampling it avoids a fragile editor-only TextureCoordinate graph pin.
-    ramp = expression(unreal.MaterialExpressionTextureSampleParameter2D, -520, 120)
-    ramp.set_editor_property("parameter_name", "GaugeRamp")
-    ramp.set_editor_property("texture", ramp_texture)
+    texcoord = expression(unreal.MaterialExpressionTextureCoordinate, -520, 120)
+    texcoord.set_editor_property("coordinate_index", 0)
+    u_coordinate = expression(unreal.MaterialExpressionComponentMask, -320, 120)
+    u_coordinate.set_editor_property("r", True)
+    u_coordinate.set_editor_property("g", False)
+    u_coordinate.set_editor_property("b", False)
+    u_coordinate.set_editor_property("a", False)
+    # UE 4.27's Python editor API does not expose a stable name for the
+    # ComponentMask input pin, so connect to the first pins on both nodes.
+    connect(texcoord, "", u_coordinate, "")
     zero = constant(0.0, -300, 500)
     one = constant(1.0, -300, 620)
 
@@ -89,10 +94,10 @@ def create_gauge_material(name, parameter, ramp_texture, second_parameter=None):
         half = constant(0.5, -300, 220)
         two = constant(2.0, -300, 340)
         first_position = expression(unreal.MaterialExpressionMultiply, -100, 260)
-        connect(ramp, "R", first_position, "A")
+        connect(u_coordinate, "", first_position, "A")
         connect(two, "", first_position, "B")
         shifted_position = expression(unreal.MaterialExpressionSubtract, -100, 420)
-        connect(ramp, "R", shifted_position, "A")
+        connect(u_coordinate, "", shifted_position, "A")
         connect(half, "", shifted_position, "B")
         second_position = expression(unreal.MaterialExpressionMultiply, 80, 420)
         connect(shifted_position, "", second_position, "A")
@@ -101,7 +106,7 @@ def create_gauge_material(name, parameter, ramp_texture, second_parameter=None):
         second_fill = threshold(second_gauge, second_position, "", 100, 100)
 
         filled = expression(unreal.MaterialExpressionIf, 300, 80)
-        connect(ramp, "R", filled, "A")
+        connect(u_coordinate, "", filled, "A")
         connect(half, "", filled, "B")
         connect(second_fill, "", filled, "A > B")
         connect(first_fill, "", filled, "A == B")
@@ -118,13 +123,13 @@ def create_gauge_material(name, parameter, ramp_texture, second_parameter=None):
             "default_value", unreal.LinearColor(1.0, 0.400337, 0.0, 1.0)
         )
         lit_color = expression(unreal.MaterialExpressionIf, 300, 380)
-        connect(ramp, "R", lit_color, "A")
+        connect(u_coordinate, "", lit_color, "A")
         connect(half, "", lit_color, "B")
         connect(second_color_node, "", lit_color, "A > B")
         connect(first_color, "", lit_color, "A == B")
         connect(first_color, "", lit_color, "A < B")
     else:
-        filled = threshold(gauge, ramp, "R", 100, 80)
+        filled = threshold(gauge, u_coordinate, "", 100, 80)
         lit_color = expression(unreal.MaterialExpressionVectorParameter, -80, 520)
         lit_color.set_editor_property("parameter_name", "centerColor")
         lit_color.set_editor_property(
@@ -206,26 +211,11 @@ for obsolete in (
     UI_FOLDER + "/M_AzureBlockhead_Silhouette",
     UI_FOLDER + "/T_AzureBlockhead_Silhouette",
     UI_FOLDER + "/T_AzureBlockhead_Symbol",
+    UI_FOLDER + "/T_AzureBlockhead_GaugeRamp",
 ):
     if unreal.EditorAssetLibrary.does_asset_exist(obsolete):
         unreal.EditorAssetLibrary.delete_asset(obsolete)
 icon = import_texture("T_RMM_AzureBlockhead_Icon.png", "T_AzureBlockhead_Icon", UI_FOLDER)
-gauge_ramp = import_texture(
-    "T_RMM_AzureBlockhead_GaugeRamp.png", "T_AzureBlockhead_GaugeRamp", UI_FOLDER
-)
-gauge_ramp.set_editor_property("srgb", False)
-gauge_ramp.set_editor_property(
-    "compression_settings", unreal.TextureCompressionSettings.TC_GRAYSCALE
-)
-gauge_ramp.set_editor_property(
-    "mip_gen_settings", unreal.TextureMipGenSettings.TMGS_NO_MIPMAPS
-)
-gauge_ramp.set_editor_property("filter", unreal.TextureFilter.TF_BILINEAR)
-gauge_ramp.set_editor_property("address_x", unreal.TextureAddress.TA_CLAMP)
-gauge_ramp.set_editor_property("address_y", unreal.TextureAddress.TA_CLAMP)
-unreal.EditorAssetLibrary.save_asset(
-    UI_FOLDER + "/T_AzureBlockhead_GaugeRamp", only_if_is_dirty=False
-)
 base_color = import_texture(
     "T_RMM_AzureBlockhead_BaseColor.png", "T_RMM_AzureBlockhead_BaseColor", MESH_FOLDER
 )
@@ -239,13 +229,10 @@ unreal.EditorAssetLibrary.save_asset(
     MESH_FOLDER + "/T_RMM_AzureBlockhead_BaseColor", only_if_is_dirty=False
 )
 create_surface_material(base_color)
-create_gauge_material(
-    "M_AzureBlockhead_HandleGauge", "handleGauge", gauge_ramp
-)
+create_gauge_material("M_AzureBlockhead_HandleGauge", "handleGauge")
 create_gauge_material(
     "M_AzureBlockhead_HeadGauge",
     "handleGauge",
-    gauge_ramp,
     second_parameter="circularGauge",
 )
 unreal.EditorAssetLibrary.save_directory(CONTENT_ROOT, only_if_is_dirty=False, recursive=True)

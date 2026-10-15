@@ -28,7 +28,6 @@ REQUIRED_PACKAGE_ASSETS = {
     "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead",
     "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead_HandleGauge",
     "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead_HeadGauge",
-    "/Game/RMM/Hammers/azure-blockhead/UI/T_AzureBlockhead_GaugeRamp",
 }
 REQUIRED_SHADER_MATERIALS = {
     "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead",
