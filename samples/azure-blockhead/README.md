@@ -23,6 +23,8 @@ This sample contains the editable assets, UE 4.27 project, build scripts, and a 
 
 The included v9 archive SHA-256 is `61fad0f119cdfa6e424441ea719064efc767bdbb6d3948861033e870cda0d68f`.
 
+The [Changing Room capture](Verification/ChangingRoom-v9.png) shows the custom icon, selected Azure entry, and 3D preview from the deployed v9 package.
+
 ## Combo materials
 
 The body material stays fixed. `M_JaugeManche` responds to the `handleGauge` scalar and fills the dedicated handle bar blue. `M_JaugeTete` uses `handleGauge` for the blue first half and `circularGauge` for the gold second half of its dedicated head bar. Both use a dark unfilled track. The game writes these parameters to the hammer's dynamic materials.
