@@ -133,7 +133,7 @@ To assemble the archive manually, create a folder with `hammer.json`, then copy 
 For the Azure sample, its packaging script validates the cooked directory, required asset paths, and Windows shader metadata, then collects the cooked files and archive. This example assumes the shell is in `samples/azure-blockhead/UEProject/Scripts/` and that the Windows cook was copied to the indicated path:
 
 ```bat
-python build_rhammer.py C:\path\to\Saved\Cooked\WindowsNoEditor\RMMAzureBlockhead\Content --output ..\..\AzureBlockhead-v13.rhammer
+python build_rhammer.py C:\path\to\Saved\Cooked\WindowsNoEditor\RMMAzureBlockhead\Content --output ..\..\MyHammer.rhammer
 ```
 
 Run it from `samples/azure-blockhead/UEProject/Scripts/`. For a different hammer, adapt the script's content folder, required manifest paths, and output name, or assemble the ZIP using the manifest rules above.
@@ -170,7 +170,7 @@ The game calculates combo and charge in its shared gameplay code, but each hamme
 
 The default mesh also has its fixed body material. The extracted Summer Hammer DLC head-gauge instance contains both combo parameter names. Stock material assets expose other properties too, including gauge textures, colors, and glow controls; those tune each hammer's artwork and are not additional combo-driver names. Stock and DLC hammers can use hammer-specific gauge materials and textures, so inspect their material instances rather than copying another hammer's artwork blindly. The observed progression is blue up to the first combo level, then gold toward the next; a dropped combo clears the fill back to the dark track while leaving the body surface unchanged.
 
-For a custom Static Mesh, keep those three slots in that order and use the exact, case-sensitive names. Put a `handleGauge` response only on the blue handle bar. On the head bar, use `handleGauge` for the blue first half and `circularGauge` for the gold second half. The Azure sample authors this response on dedicated bar surfaces while keeping its body material fixed. Its upright square model has now been seen in the race, but the current captures do not clearly prove the stock-like blue-to-gold progression. The simple ramp materials are an example implementation, not copies of the stock material graphs or their hammer-specific art. Verify both stages and the reset during a race. Merely declaring the parameters or connecting them to whole-body color/emission does not reproduce the stock gauge.
+For a custom Static Mesh, keep those three slots in that order and use the exact, case-sensitive names. Put a `handleGauge` response only on the blue handle bar. On the head bar, use `handleGauge` for the blue first half and `circularGauge` for the gold second half. The Azure sample authors this response on dedicated bar surfaces while keeping its body material fixed. Its v16 upright preview shows the track and no longer shows the earlier diagonal hatching, but the latest race used stock hammers and produced no valid hits, so it does not prove the custom in-race mesh or meter. The sample's UV-threshold materials are an example implementation, not copies of the stock material graphs or hammer-specific art. Verify both stages and reset during a race. Merely declaring the parameters or connecting them to whole-body color/emission does not reproduce the stock gauge.
 
 The names and slot order are based on the installed build's stock `BP_RagnarockHand`, `SM_Hammer_Default`, `MI_HandleGauge`, and `MI_HeadGauge` assets. Keep the standard `DA_Hammers_C` data-asset class; RMM creates that data asset and table row for each package. The hammer's DataTable row and icon do not control combo calculation or material response.
 
@@ -178,22 +178,22 @@ Verify the two parts separately with the same Standard chart and six-key binding
 
 ## Sample status: Azure Blockhead
 
-The [Azure Blockhead sample directory](../samples/azure-blockhead/README.md) contains the generated source art, UE 4.27 project, build scripts, manifest template, and current v13 `.rhammer` package used for this guide.
+The [Azure Blockhead sample directory](../samples/azure-blockhead/README.md) contains the generated source art, UE 4.27 project, build scripts, manifest template, and latest v16 `.rhammer` package used for this guide.
 
 The local `generate_source.py` produces the low-poly mesh, padded base-color atlas, and icon. The UE 4.27 project imports them, creates the fixed body material and two gauge materials, assigns the three stock-compatible material slots, then cooks for Windows `PCD3D_SM5`. Gauge fill uses UV0 U directly; no grayscale ramp texture is needed. Cylinder side faces have distinct UVs through the seam to avoid stretching a face across the atlas.
 
 **Package and deployment**
 
-- V13 was cooked for Windows `PCD3D_SM5` and packaged as `AzureBlockhead-v13.rhammer`; its 14 cooked package files and shared shader archive pass the packager's manifest-reference and ZIP CRC checks. Its gauge materials compare combo scalars directly against UV0 U. The v13 package SHA-256 is `cad0d91186f993762b6760bc27425498436fcc54e4fe8aabd6add4a95eb3dd95`.
-- The installed library has Azure enabled and both demo hammers disabled. RMM built and deployed the PAK from exact-build compatibility data. The generated and installed PAK SHA-256 values match: `0038557ce3148dd587b836f74ac579e4f55aac349b276dddd6abdec6f109a43a`.
+- V16 was cooked with Windows UE 4.27 for `PCD3D_SM5`, packaged, and passed a ZIP integrity check. The `.rhammer` SHA-256 is `4a85e285a7854e6bd1047a558eeda7c3adb027279d7a92408a64568ce2d32558`. Its sample package includes the authored mesh, icon, fixed body material, gauge materials, referenced textures, cooked sidecars, and shader archive.
+- The v16 package was imported into RMM and deployed. The latest PAK deployment used Azure as the only enabled custom hammer and completed through RMM; a matching current PAK hash has not yet been recorded.
 
 **Runtime verification status**
 
-- The v13 icon and upright model appear in the [Changing Room capture](../samples/azure-blockhead/Verification/ChangingRoom-v13.png). Both cyan custom models appear in the [race capture](../samples/azure-blockhead/Verification/Race-Azure-v13-texture.png). Black diagonal artifacts remain on the heads.
+- The v16 icon and upright model appear in the [Changing Room capture](../samples/azure-blockhead/Verification/ChangingRoom-v16.png), including its dark head gauge track. The older [v13 race capture](../samples/azure-blockhead/Verification/Race-Azure-v13-texture.png) shows the earlier version only and retains black diagonal head artifacts.
 - A stock-hammer control on the same fixture shows the stock blue handle indicator during play and absent after a pause. Azure's captures show localized light on its gauge bars while playing and a visual change after a pause, but they do not clearly distinguish the blue and gold stages. See the [stock active](../samples/azure-blockhead/Verification/Race-stock-active.png), [stock after pause](../samples/azure-blockhead/Verification/Race-stock-after-pause.png), and [Azure after pause](../samples/azure-blockhead/Verification/Race-Azure-after-pause.png) captures.
 - The Input settings UI inspected during v11 verification exposed controller glyphs but no keyboard lane mapping. A separate scan with candidate keyboard layouts produced scattered hits and many misses, with no combo-trigger callback; those inputs are not valid combo evidence.
 - A read-only UE4SS snapshot during that pass found Azure hammer material instances with `handleGauge=1.0` and `circularGauge=0.3333`. This confirms that the game writes gauge parameter values to the hammer's dynamic materials, but does not prove that the intended stages render visibly.
-- The single-lane local-chart test produced 33 hits and 1,092 misses, so it does not prove combo response. Combo buildup, the blue-to-gold transition, and reset after a drop remain unverified. Establish a keyboard mapping that gives sustained hits on a stock hammer, confirm the selected chart metadata, then repeat that exact chart and mapping with only Azure enabled.
+- The latest run selected the exact local `RMM Combo Meter Fixture` (40 beat events) but produced 0 hits and 40 misses after sending `W` at the chart interval. The race screen showed stock hammers. This does not prove the keyboard mapping, equipped hammer, or combo response. Establish input that yields sustained hits with a stock hammer, explicitly equip Azure, and repeat the same fixture before judging its meter.
 
 Do not describe the combo meter as working until Step 6 confirms both stages and the reset during a race with valid hits and a deliberate miss, and the same input sequence builds combo on a stock hammer.
 

@@ -41,7 +41,7 @@ def create_gauge_material(name, parameter, second_parameter=None):
         )
     material.set_editor_property("material_domain", unreal.MaterialDomain.MD_SURFACE)
     material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_OPAQUE)
-    material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_DEFAULT_LIT)
+    material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     unreal.MaterialEditingLibrary.delete_all_material_expressions(material)
 
     def expression(expression_class, x, y):
@@ -138,27 +138,19 @@ def create_gauge_material(name, parameter, second_parameter=None):
 
     track_color = expression(unreal.MaterialExpressionConstant3Vector, -80, 360)
     track_color.set_editor_property("constant", unreal.LinearColor(0.008, 0.018, 0.035, 1.0))
-    surface = expression(unreal.MaterialExpressionLinearInterpolate, 520, 260)
-    connect(track_color, "", surface, "A")
-    connect(lit_color, "", surface, "B")
-    connect(filled, "", surface, "Alpha")
-    if not unreal.MaterialEditingLibrary.connect_material_property(
-        surface, "", unreal.MaterialProperty.MP_BASE_COLOR
-    ):
-        raise RuntimeError("Could not connect the Azure gauge bar to Base Color")
-
-    # Stock gauge materials expose a `glow` scalar and use emissive output for
-    # the active fill. Keep the empty track lit only by scene lighting so it
-    # stays dark, while the blue/gold section remains legible in the race.
+    # Stock gauges expose a `glow` scalar and use emissive output for active
+    # fills. An unlit output keeps both the dark track and active colors stable
+    # under scene shadows, including on a thin planar gauge surface.
     glow = scalar("glow", 520, 620, 34.242756)
     emissive_fill = expression(unreal.MaterialExpressionMultiply, 520, 460)
     connect(lit_color, "", emissive_fill, "A")
-    connect(filled, "", emissive_fill, "B")
-    emissive_strength = expression(unreal.MaterialExpressionMultiply, 760, 460)
-    connect(emissive_fill, "", emissive_strength, "A")
-    connect(glow, "", emissive_strength, "B")
+    connect(glow, "", emissive_fill, "B")
+    emissive_surface = expression(unreal.MaterialExpressionLinearInterpolate, 760, 460)
+    connect(track_color, "", emissive_surface, "A")
+    connect(emissive_fill, "", emissive_surface, "B")
+    connect(filled, "", emissive_surface, "Alpha")
     if not unreal.MaterialEditingLibrary.connect_material_property(
-        emissive_strength, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR
+        emissive_surface, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR
     ):
         raise RuntimeError("Could not connect the Azure gauge fill to Emissive Color")
     unreal.MaterialEditingLibrary.recompile_material(material)
@@ -179,7 +171,9 @@ def create_surface_material(base_color):
         )
     material.set_editor_property("material_domain", unreal.MaterialDomain.MD_SURFACE)
     material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_OPAQUE)
-    material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_DEFAULT_LIT)
+    # Keep the painted body color stable under UE's race shadows. The raised
+    # gauge bars have their own lit materials and provide the combo response.
+    material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
     unreal.MaterialEditingLibrary.delete_all_material_expressions(material)
     sample = unreal.MaterialEditingLibrary.create_material_expression(
         material,
@@ -190,9 +184,9 @@ def create_surface_material(base_color):
     sample.set_editor_property("parameter_name", "BaseColor")
     sample.set_editor_property("texture", base_color)
     if not unreal.MaterialEditingLibrary.connect_material_property(
-        sample, "RGB", unreal.MaterialProperty.MP_BASE_COLOR
+        sample, "RGB", unreal.MaterialProperty.MP_EMISSIVE_COLOR
     ):
-        raise RuntimeError("Could not connect the Azure body texture")
+        raise RuntimeError("Could not connect the Azure unlit body texture")
     unreal.MaterialEditingLibrary.recompile_material(material)
     unreal.EditorAssetLibrary.save_asset(path, only_if_is_dirty=False)
     unreal.log("AZURE_SURFACE_MATERIAL_READY " + path + " texture=" + str(base_color))

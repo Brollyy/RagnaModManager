@@ -185,6 +185,33 @@ def prism_obj() -> str:
             ]
             faces.append((material, pairs))
 
+    def add_gauge_face(
+        material: str,
+        source_y: float,
+        x_min: float,
+        x_max: float,
+        z_min: float,
+        z_max: float,
+        outward_sign: int,
+        vertical_fill: bool = False,
+    ) -> None:
+        """Add one planar, UV-mapped gauge surface on a visible hammer face."""
+        start = len(vertices) + 1
+        points = [
+            (x_min, source_y, z_min),
+            (x_max, source_y, z_min),
+            (x_max, source_y, z_max),
+            (x_min, source_y, z_max),
+        ]
+        vertices.extend((y, -x, z) for x, y, z in points)
+        uv_start = len(uvs) + 1
+        if vertical_fill:
+            uvs.extend(((0.01, 0.01), (0.01, 0.99), (0.99, 0.99), (0.99, 0.01)))
+        else:
+            uvs.extend(((0.01, 0.05), (0.99, 0.05), (0.99, 0.95), (0.01, 0.95)))
+        corners = [0, 1, 2, 3] if outward_sign < 0 else [3, 2, 1, 0]
+        faces.append((material, [(start + i, uv_start + i) for i in corners]))
+
     def add_prism(name: str, material: str, z0: float, z1: float, radius0: float, radius1: float, region: str = "cyan", sides: int = 8) -> None:
         import math
 
@@ -238,22 +265,16 @@ def prism_obj() -> str:
     # Keep a copy on each broad face: the in-race hammer camera sees the back
     # of the mesh, while the changing-room preview sees the authored front.
     # Stock gauge bars remain visible from both of those views.
-    # Keep these raised surfaces fully clear of the cylindrical shaft so
-    # their hidden faces cannot intersect it and create shadow speckling.
-    add_box("HandleGaugeBar_Front", "M_JaugeManche", (-2.5, -5.8, 2), (2.5, -4.5, 22), gauge_uv=True, gauge_uv_axis="z")
-    add_box("HandleGaugeBar_Back", "M_JaugeManche", (-2.5, 4.5, 2), (2.5, 5.8, 22), gauge_uv=True, gauge_uv_axis="z")
+    # Set the bars just outside the shaft so they stay visible without
+    # floating far enough away to cast detached shadows onto the body.
+    add_gauge_face("M_JaugeManche", -4.3, -1.6, 1.6, 2, 22, -1, vertical_fill=True)
+    add_gauge_face("M_JaugeManche", 4.3, -1.6, 1.6, 2, 22, 1, vertical_fill=True)
     # The OBJ import rotates source X onto game-space Y and source Y onto
     # game-space -X. Place the head meters on the two broad +/-X faces, with
     # U running along the head width so the blue/gold stages fill left to
     # right. Putting these at source X +/-17 would put them on the end caps.
-    add_box(
-        "HeadGaugeBar_Front", "M_JaugeTete", (-14, -13.0, 43), (14, -12.0, 48.5),
-        gauge_uv=True, gauge_uv_axis="x"
-    )
-    add_box(
-        "HeadGaugeBar_Back", "M_JaugeTete", (-14, 12.0, 43), (14, 13.0, 48.5),
-        gauge_uv=True, gauge_uv_axis="x"
-    )
+    add_gauge_face("M_JaugeTete", -12.2, -13, 13, 46, 48.6, -1)
+    add_gauge_face("M_JaugeTete", 12.2, -13, 13, 46, 48.6, 1)
 
     # The box head and gold decorations stay visually fixed during a combo.
     add_box("Head", "M_Character", (-17, -11, 27), (17, 11, 51))
