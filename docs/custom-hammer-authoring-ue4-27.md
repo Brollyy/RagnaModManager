@@ -130,10 +130,10 @@ The example only shows `.uasset` files. Add one `assets` entry for **every** coo
 
 To assemble the archive manually, create a folder with `hammer.json`, then copy in the cooked files under the matching `Assets/` paths, the shader archive under `Shaders/`, and the optional image under `Preview/`. Zip the **contents** of that folder and rename the `.zip` file to `.rhammer`.
 
-For the Azure sample, its packaging script validates the cooked directory, required asset paths, and Windows shader metadata, then collects the cooked files and archive:
+For the Azure sample, its packaging script validates the cooked directory, required asset paths, and Windows shader metadata, then collects the cooked files and archive. This example assumes the shell is in `samples/azure-blockhead/UEProject/Scripts/` and that the Windows cook was copied to the indicated path:
 
 ```bat
-python build_rhammer.py C:\path\to\Saved\Cooked\WindowsNoEditor\RMMAzureBlockhead\Content --output ..\..\AzureBlockhead-v9.rhammer
+python build_rhammer.py C:\path\to\Saved\Cooked\WindowsNoEditor\RMMAzureBlockhead\Content --output ..\..\AzureBlockhead-v10.rhammer
 ```
 
 Run it from `samples/azure-blockhead/UEProject/Scripts/`. For a different hammer, adapt the script's content folder, required manifest paths, and output name, or assemble the ZIP using the manifest rules above.
@@ -178,19 +178,19 @@ Verify the two parts separately with the same Standard chart and six-key binding
 
 ## Sample status: Azure Blockhead
 
-The [Azure Blockhead sample directory](../samples/azure-blockhead/README.md) contains the refreshed source art, UE 4.27 project, build scripts, manifest template, and v9 `.rhammer` package used for this guide.
+The [Azure Blockhead sample directory](../samples/azure-blockhead/README.md) contains the generated source art, UE 4.27 project, build scripts, manifest template, and v10 `.rhammer` package used for this guide.
 
 The local `generate_source.py` produces the low-poly mesh, padded base-color atlas, icon, and grayscale gauge ramp. The UE 4.27 project imports them, creates the fixed body material and two gauge materials, assigns the three stock-compatible material slots, then cooks for Windows `PCD3D_SM5`. Cylinder side faces have distinct UVs through the seam to avoid stretching a face across the atlas.
 
 **Package and deployment**
 
-- The refreshed Windows `PCD3D_SM5` cook was packaged as `AzureBlockhead-v9.rhammer`; it contains 16 cooked package files, and the package builder's ZIP and manifest-reference checks passed. This revision widens the visible gauge-bar geometry.
+- The refreshed Windows `PCD3D_SM5` cook was packaged as `AzureBlockhead-v10.rhammer`; it contains 15 cooked package files plus the shared shader archive, and the package builder's ZIP and manifest-reference checks passed. The v10 materials use the stock default blue/orange values. Its generated mesh gives every gauge face a non-degenerate UV chart and splits vertices at hard edges to avoid degenerate tangent bases.
 - The installed library mesh sidecar matches the package. Azure is enabled; both demo hammers are disabled.
-- RMM rebuilt and deployed the PAK. The generated and installed PAK SHA-256 values match: `ea12bf990cd2fe0cf7a2cc2efbb667f0fa4e7efcf0a166c6b1afc4e56aebba01`.
+- RMM rebuilt and deployed the v10 PAK with Azure as the only enabled custom hammer. The generated and installed PAK SHA-256 values match: `69c22ecaf15a24ff1308f82be31df875618d1c8672e4cd1ae924a92d659025d7`.
 
 **Runtime verification status**
 
-- The refreshed package was deployed, and a RagnaLoader UI-runner capture shows **Azure Blockhead selected in the Changing Room**. Its custom mesh appears upright with its colored surfaces and the correct item label. A later same-session run selected Azure, opened the verified 30-second fixture, and confirmed the square Azure model in the race. See the [v9 Changing Room capture](../samples/azure-blockhead/Verification/ChangingRoom-v9.png) and [in-race capture](../samples/azure-blockhead/Verification/Race-Azure-active.png).
+- The v9 package was deployed, and a RagnaLoader UI-runner capture shows **Azure Blockhead selected in the Changing Room**. Its custom mesh appears upright with its colored surfaces and the correct item label. A later same-session run selected Azure, opened the verified 30-second fixture, and confirmed the square Azure model in the race. These are v9 captures: [Changing Room](../samples/azure-blockhead/Verification/ChangingRoom-v9.png) and [in race](../samples/azure-blockhead/Verification/Race-Azure-active.png). V10 was rebuilt and deployed, but the latest runner attempt only reached the Changing Room's Avatar/Boat tabs; selecting its Hammer tab is still unresolved, so these captures do not verify v10 at runtime.
 - A stock-hammer control on the same fixture shows the stock blue handle indicator during play and absent after a pause. Azure's captures show localized light on its gauge bars while playing and a visual change after a pause, but they do not clearly distinguish the blue and gold stages. See the [stock active](../samples/azure-blockhead/Verification/Race-stock-active.png), [stock after pause](../samples/azure-blockhead/Verification/Race-stock-after-pause.png), and [Azure after pause](../samples/azure-blockhead/Verification/Race-Azure-after-pause.png) captures.
 - A previous run on the RMM Combo Meter Fixture in the normal six-key layout recorded 40 hits and 0 misses, but the local Stats tab reported 0% perfects and `0 (0 blue + 0 gold)` combos. That pass does not prove combo levels were reached.
 - A read-only UE4SS snapshot during that pass found Azure hammer material instances with `handleGauge=1.0` and `circularGauge=0.3333`. This confirms that the game writes gauge parameter values to the hammer's dynamic materials, but does not prove that the intended stages render visibly.

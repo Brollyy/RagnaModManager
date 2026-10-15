@@ -27,7 +27,7 @@ def import_texture(filename, asset_name, destination):
     return asset
 
 
-def create_gauge_material(name, parameter, fill_color, ramp_texture, second_parameter=None, second_color=None):
+def create_gauge_material(name, parameter, ramp_texture, second_parameter=None):
     """Make a dark track with stock blue first-stage and gold second-stage fill."""
     path = MATERIAL_FOLDER + "/" + name
     material = (
@@ -107,11 +107,15 @@ def create_gauge_material(name, parameter, fill_color, ramp_texture, second_para
         connect(first_fill, "", filled, "A == B")
         connect(first_fill, "", filled, "A < B")
 
-        first_color = expression(unreal.MaterialExpressionConstant3Vector, 100, 500)
-        first_color.set_editor_property("constant", unreal.LinearColor(*fill_color, 1.0))
-        second_color_node = expression(unreal.MaterialExpressionConstant3Vector, 100, 660)
+        first_color = expression(unreal.MaterialExpressionVectorParameter, 100, 500)
+        first_color.set_editor_property("parameter_name", "centerColor")
+        first_color.set_editor_property(
+            "default_value", unreal.LinearColor(0.030109, 0.079745, 0.320833, 1.0)
+        )
+        second_color_node = expression(unreal.MaterialExpressionVectorParameter, 100, 660)
+        second_color_node.set_editor_property("parameter_name", "mainColor")
         second_color_node.set_editor_property(
-            "constant", unreal.LinearColor(*(second_color or fill_color), 1.0)
+            "default_value", unreal.LinearColor(1.0, 0.400337, 0.0, 1.0)
         )
         lit_color = expression(unreal.MaterialExpressionIf, 300, 380)
         connect(ramp, "R", lit_color, "A")
@@ -121,8 +125,11 @@ def create_gauge_material(name, parameter, fill_color, ramp_texture, second_para
         connect(first_color, "", lit_color, "A < B")
     else:
         filled = threshold(gauge, ramp, "R", 100, 80)
-        lit_color = expression(unreal.MaterialExpressionConstant3Vector, -80, 520)
-        lit_color.set_editor_property("constant", unreal.LinearColor(*fill_color, 1.0))
+        lit_color = expression(unreal.MaterialExpressionVectorParameter, -80, 520)
+        lit_color.set_editor_property("parameter_name", "centerColor")
+        lit_color.set_editor_property(
+            "default_value", unreal.LinearColor(0.030109, 0.079745, 0.320833, 1.0)
+        )
 
     track_color = expression(unreal.MaterialExpressionConstant3Vector, -80, 360)
     track_color.set_editor_property("constant", unreal.LinearColor(0.008, 0.018, 0.035, 1.0))
@@ -222,17 +229,24 @@ unreal.EditorAssetLibrary.save_asset(
 base_color = import_texture(
     "T_RMM_AzureBlockhead_BaseColor.png", "T_RMM_AzureBlockhead_BaseColor", MESH_FOLDER
 )
+# The atlas contains four discrete flat-color islands. Do not generate low
+# resolution mips that average neighboring islands together along the UV seams.
+base_color.set_editor_property("mip_gen_settings", unreal.TextureMipGenSettings.TMGS_NO_MIPMAPS)
+base_color.set_editor_property("filter", unreal.TextureFilter.TF_BILINEAR)
+base_color.set_editor_property("address_x", unreal.TextureAddress.TA_CLAMP)
+base_color.set_editor_property("address_y", unreal.TextureAddress.TA_CLAMP)
+unreal.EditorAssetLibrary.save_asset(
+    MESH_FOLDER + "/T_RMM_AzureBlockhead_BaseColor", only_if_is_dirty=False
+)
 create_surface_material(base_color)
 create_gauge_material(
-    "M_AzureBlockhead_HandleGauge", "handleGauge", (0.05, 0.55, 1.0), gauge_ramp
+    "M_AzureBlockhead_HandleGauge", "handleGauge", gauge_ramp
 )
 create_gauge_material(
     "M_AzureBlockhead_HeadGauge",
     "handleGauge",
-    (0.05, 0.55, 1.0),
     gauge_ramp,
     second_parameter="circularGauge",
-    second_color=(1.0, 0.48, 0.02),
 )
 unreal.EditorAssetLibrary.save_directory(CONTENT_ROOT, only_if_is_dirty=False, recursive=True)
 unreal.log("AZURE_HAMMER_MATERIALS_READY")

@@ -123,25 +123,64 @@ def prism_obj() -> str:
         # The head's span should run across game-space Y after the OBJ import,
         # while the shaft remains on the grip-centered Z axis.
         points = [(y, -x, z) for x, y, z in source_points]
-        start = len(vertices) + 1
-        vertices.extend(points)
-        uv_start = len(uvs) + 1
         quads = [
             (0, 3, 2, 1), (4, 5, 6, 7), (0, 1, 5, 4),
             (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7),
         ]
-        if gauge_uv:
-            axis = {"x": 0, "y": 1, "z": 2}[gauge_uv_axis]
-            minimum = lo[axis]
-            extent = hi[axis] - minimum
-            for quad in quads:
-                for vertex_index in quad:
-                    position = (source_points[vertex_index][axis] - minimum) / extent
-                    uvs.append((0.01 + 0.98 * position, 0.5))
-        else:
-            uvs.extend(rect_uvs(region) * 6)
+        gauge_axis = {"x": 0, "y": 1, "z": 2}.get(gauge_uv_axis, 0)
         for face_index, quad in enumerate(quads):
-            pairs = [(start + vertex, uv_start + face_index * 4 + corner) for corner, vertex in enumerate(quad)]
+            # Duplicate each box face's vertices. OBJ importers otherwise
+            # smooth the normals across hard corners, even when the source
+            # declares `s off`.
+            face_vertex_start = len(vertices) + 1
+            vertices.extend(points[vertex] for vertex in quad)
+            face_uv_start = len(uvs) + 1
+            if gauge_uv:
+                other_axes = [axis for axis in range(3) if axis != gauge_axis]
+                face_spans = {
+                    axis: max(source_points[index][axis] for index in quad)
+                    - min(source_points[index][axis] for index in quad)
+                    for axis in range(3)
+                }
+                gauge_span = face_spans[gauge_axis]
+                varying_axes = sorted(other_axes, key=lambda axis: face_spans[axis], reverse=True)
+                if gauge_span > 1e-6:
+                    v_axis = varying_axes[0]
+                    v_min = min(source_points[index][v_axis] for index in quad)
+                    v_span = face_spans[v_axis]
+                    for vertex_index in quad:
+                        u = 0.01 + 0.98 * (
+                            (source_points[vertex_index][gauge_axis] - lo[gauge_axis])
+                            / (hi[gauge_axis] - lo[gauge_axis])
+                        )
+                        v = (source_points[vertex_index][v_axis] - v_min) / v_span
+                        uvs.append((u, v))
+                else:
+                    # The end caps keep a narrow UV strip near their endpoint
+                    # so they remain dark until the corresponding fill reaches
+                    # the end while still producing a non-degenerate tangent basis.
+                    u_axis, v_axis = varying_axes
+                    u_min = min(source_points[index][u_axis] for index in quad)
+                    v_min = min(source_points[index][v_axis] for index in quad)
+                    u_span = face_spans[u_axis]
+                    v_span = face_spans[v_axis]
+                    at_high_end = (
+                        (sum(source_points[index][gauge_axis] for index in quad) / 4)
+                        > (lo[gauge_axis] + hi[gauge_axis]) / 2
+                    )
+                    band_start = 0.98 if at_high_end else 0.01
+                    for vertex_index in quad:
+                        u = band_start + 0.01 * (
+                            (source_points[vertex_index][u_axis] - u_min) / u_span
+                        )
+                        v = (source_points[vertex_index][v_axis] - v_min) / v_span
+                        uvs.append((u, v))
+            else:
+                uvs.extend(rect_uvs(region))
+            pairs = [
+                (face_vertex_start + corner, face_uv_start + corner)
+                for corner in range(4)
+            ]
             faces.append((material, pairs))
 
     def add_prism(name: str, material: str, z0: float, z1: float, radius0: float, radius1: float, region: str = "cyan", sides: int = 8) -> None:
@@ -212,7 +251,14 @@ def prism_obj() -> str:
     add_box("RuneBar", "M_Character", (-2, -13, 34), (2, -13.1, 45), region="ice")
     add_box("RuneCross", "M_Character", (-7, -13, 37), (7, -13.1, 41), region="gold")
 
-    lines = ["# Generated source mesh: Azure Blockhead", "mtllib T_RMM_AzureBlockhead.mtl", "o SM_RMM_AzureBlockhead"]
+    lines = [
+        "# Generated source mesh: Azure Blockhead",
+        "mtllib T_RMM_AzureBlockhead.mtl",
+        "o SM_RMM_AzureBlockhead",
+        # Box faces and the octagonal shaft are intentionally faceted. Mark
+        # edges hard so importers do not smooth their shared OBJ vertices.
+        "s off",
+    ]
     lines.extend(f"v {x:.5f} {y:.5f} {z:.5f}" for x, y, z in vertices)
     lines.extend(f"vt {u:.5f} {v:.5f}" for u, v in uvs)
     current_material = None
