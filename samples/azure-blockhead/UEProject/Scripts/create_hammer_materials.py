@@ -229,9 +229,9 @@ unreal.EditorAssetLibrary.save_asset(
 base_color = import_texture(
     "T_RMM_AzureBlockhead_BaseColor.png", "T_RMM_AzureBlockhead_BaseColor", MESH_FOLDER
 )
-# The atlas contains four discrete flat-color islands. Do not generate low
-# resolution mips that average neighboring islands together along the UV seams.
-base_color.set_editor_property("mip_gen_settings", unreal.TextureMipGenSettings.TMGS_NO_MIPMAPS)
+# The atlas UVs stay well inside each solid-color quadrant, leaving enough
+# padding for the normal mip chain while avoiding the shimmer caused by a
+# no-mipmap texture on small, moving race meshes.
 base_color.set_editor_property("filter", unreal.TextureFilter.TF_BILINEAR)
 base_color.set_editor_property("address_x", unreal.TextureAddress.TA_CLAMP)
 base_color.set_editor_property("address_y", unreal.TextureAddress.TA_CLAMP)

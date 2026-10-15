@@ -102,7 +102,17 @@ def prism_obj() -> str:
 
     def rect_uvs(region: str) -> list[tuple[float, float]]:
         u0, v0, u1, v1 = color_uv[region]
-        return [(u0, v0), (u1, v0), (u1, v1), (u0, v1)]
+        # PNG rows are addressed from the top, but OBJ V=0 addresses the
+        # bottom of the texture. Flip V so each mesh region samples the
+        # swatch that was painted for it after Unreal imports the OBJ.
+        return [(u0, 1 - v0), (u1, 1 - v0), (u1, 1 - v1), (u0, 1 - v1)]
+
+    def swatch_uv(region: str, u_fraction: float, v_fraction: float) -> tuple[float, float]:
+        u0, v0, u1, v1 = color_uv[region]
+        return (
+            u0 + (u1 - u0) * u_fraction,
+            1 - (v0 + (v1 - v0) * v_fraction),
+        )
 
     def add_box(
         name: str,
@@ -195,20 +205,27 @@ def prism_obj() -> str:
         # ring wraps the last side face from u1 back to u0, stretching that
         # face across the atlas and creating a visible sampling seam.
         cap_uv_start = len(uvs) + 1
-        u0, v0, u1, v1 = color_uv[region]
-        uvs.extend([(u0 + (u1 - u0) * i / sides, v0) for i in range(sides)] + [(u0 + (u1 - u0) * i / sides, v1) for i in range(sides)])
+        uvs.extend(
+            [swatch_uv(region, i / sides, 0) for i in range(sides)]
+            + [swatch_uv(region, i / sides, 1) for i in range(sides)]
+        )
         for i in range(sides):
             j = (i + 1) % sides
             side_uv_start = len(uvs) + 1
-            u_left = u0 + (u1 - u0) * i / sides
-            u_right = u0 + (u1 - u0) * (i + 1) / sides
-            uvs.extend([(u_left, v0), (u_right, v0), (u_right, v1), (u_left, v1)])
+            uvs.extend(
+                [
+                    swatch_uv(region, i / sides, 0),
+                    swatch_uv(region, (i + 1) / sides, 0),
+                    swatch_uv(region, (i + 1) / sides, 1),
+                    swatch_uv(region, i / sides, 1),
+                ]
+            )
             faces.append((material, [(base + i, side_uv_start), (base + j, side_uv_start + 1), (base + sides + j, side_uv_start + 2), (base + sides + i, side_uv_start + 3)]))
         for ring, reverse in ((0, True), (sides, False)):
             center = len(vertices) + 1
             vertices.append((0, 0, z0 if reverse else z1))
             center_uv = len(uvs) + 1
-            uvs.append(((u0 + u1) / 2, (v0 + v1) / 2))
+            uvs.append(swatch_uv(region, 0.5, 0.5))
             for i in range(sides):
                 j = (i + 1) % sides
                 first = base + ring + i
