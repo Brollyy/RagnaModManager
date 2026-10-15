@@ -192,6 +192,7 @@ The local `generate_source.py` produces the low-poly mesh, padded base-color atl
 
 - Earlier captures from the previous package showed Azure's icon and model in the Changing Room. The refreshed package has not been confirmed there.
 - Ragnarock stalls on a black screen at `PRELOAD Main category favorites`. The same startup stall occurred with the PAK removed, with all UE4SS mods disabled, with a clean temporary SaveGames folder, and with the RMM combo test chart temporarily removed from CustomSongs. The original save and test chart, UE4SS settings, and PAK have been restored. Steam validation repaired four missing game files, but the stall persisted afterward.
+- A further run with the entire `CustomSongs` directory temporarily moved aside also stayed black. A fresh Steam launch remained black after nearly four minutes with the game process using CPU; no menu appeared. The original `CustomSongs` directory has been restored.
 - The blue first stage, gold second stage, miss reset, and current texture quality remain unverified. A prior keyboard attempt produced 0 hits, 40 misses, and 0 combos, so it is not evidence about the gauge materials.
 
 Do not describe the combo meter as working until Step 6 confirms both stages and the reset during a race with valid hits and a deliberate miss.
