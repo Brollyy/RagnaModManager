@@ -24,7 +24,7 @@ This sample contains the editable assets, UE 4.27 project, build scripts, and a 
 
 The included v9 archive SHA-256 is `61fad0f119cdfa6e424441ea719064efc767bdbb6d3948861033e870cda0d68f`. The refreshed v10 archive SHA-256 is `fe3261100923af47b88b3f8301719b41ad922d861b59374e2d51d228e4bb09ee`.
 
-The [Changing Room capture](Verification/ChangingRoom-v9.png) shows the custom icon, selected Azure entry, and 3D preview from the deployed v9 package.
+The [v10 Changing Room capture](Verification/ChangingRoom-v10.png) shows the custom icon, selected Azure entry, and its 3D preview after deployment. The earlier [v9 capture](Verification/ChangingRoom-v9.png) is kept for comparison.
 
 The [race capture](Verification/Race-Azure-active.png) shows the square Azure model in the player's hands. The paired [stock active](Verification/Race-stock-active.png) and [stock after pause](Verification/Race-stock-after-pause.png) captures provide a limited baseline. The Azure active and [after-pause](Verification/Race-Azure-after-pause.png) images show localized gauge-bar lighting, but do not clearly identify blue buildup, a gold transition, or a reset matching stock. Treat the combo appearance as unresolved.
 
@@ -32,4 +32,4 @@ The [race capture](Verification/Race-Azure-active.png) shows the square Azure mo
 
 The body material stays fixed. `M_JaugeManche` responds to the `handleGauge` scalar and fills the dedicated handle bar blue. `M_JaugeTete` uses `handleGauge` for the blue first half and `circularGauge` for the gold second half of its dedicated head bar. Both use a dark unfilled track. The game writes these parameters to the hammer's dynamic materials.
 
-The v9 package was selected in the Changing Room and its upright mesh, colored surfaces, and item name were verified. V10 was rebuilt from the updated UE 4.27 project and deployed through RMM. It updates the gauge colors to the stock defaults, gives each gauge face valid UVs, and separates hard-surface vertices to remove degenerate tangent bases. The recent v10 runner session reached the Changing Room, but did not activate the Hammer tab; the v9 preview capture therefore does not verify v10's model. V10's preview, race model, combo progression, reset, and visual comparison against stock remain to be confirmed. Do not treat them as verified until Step 6 of the guide passes with v10.
+V9's upright mesh, colored surfaces, and item name were verified earlier. V10 was rebuilt from the updated UE 4.27 project, deployed through RMM, and selected from the Hammer catalog. Its icon, item label, and upright 3D preview are visible in the [v10 Changing Room capture](Verification/ChangingRoom-v10.png). V10's race model, combo progression, reset, and visual comparison against stock remain to be confirmed. Do not treat them as verified until Step 6 of the guide passes with v10.
