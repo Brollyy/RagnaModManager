@@ -25,8 +25,10 @@ The included v9 archive SHA-256 is `61fad0f119cdfa6e424441ea719064efc767bdbb6d39
 
 The [Changing Room capture](Verification/ChangingRoom-v9.png) shows the custom icon, selected Azure entry, and 3D preview from the deployed v9 package.
 
+The [race capture](Verification/Race-Azure-active.png) shows the square Azure model in the player's hands. The paired [stock active](Verification/Race-stock-active.png) and [stock after pause](Verification/Race-stock-after-pause.png) captures provide a limited baseline. The Azure active and [after-pause](Verification/Race-Azure-after-pause.png) images show localized gauge-bar lighting, but do not clearly identify blue buildup, a gold transition, or a reset matching stock. Treat the combo appearance as unresolved.
+
 ## Combo materials
 
 The body material stays fixed. `M_JaugeManche` responds to the `handleGauge` scalar and fills the dedicated handle bar blue. `M_JaugeTete` uses `handleGauge` for the blue first half and `circularGauge` for the gold second half of its dedicated head bar. Both use a dark unfilled track. The game writes these parameters to the hammer's dynamic materials.
 
-The v9 package was deployed, and the Changing Room preview showed Azure's upright mesh, colored surfaces, and item name. Blue buildup, the gold transition, the in-race mesh, and the reset after a dropped combo have not yet been confirmed in a valid race. Do not treat the combo response as verified until the stock-versus-Azure race checks in Step 6 of the guide pass.
+The v9 package was deployed, and the Changing Room preview showed Azure's upright mesh, colored surfaces, and item name. A same-session fixture run confirmed the square mesh in the race. Blue buildup, the gold transition, and the reset after a dropped combo have not yet been confirmed against stock. Do not treat the combo response as verified until the stock-versus-Azure race checks in Step 6 of the guide pass.
