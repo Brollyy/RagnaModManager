@@ -62,21 +62,44 @@ public sealed class HammerTableMetadataRegistry
                 return Result<HammerMetadataSelection>.Ok(new(
                     exactCacheDirectory, installedPakSha256, installedPakSha256, DateTimeOffset.MinValue, true));
 
-            using var indexResponse = await _httpClient.GetAsync(IndexUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
-            if (!indexResponse.IsSuccessStatusCode)
-                return Result<HammerMetadataSelection>.Fail("RMM couldn't check hammer compatibility right now. Try again later.");
-            var indexBytes = await ReadBoundedAsync(indexResponse.Content, 2 * 1024 * 1024, cancellationToken);
-            if (indexBytes.Length > 2 * 1024 * 1024) return Result<HammerMetadataSelection>.Fail("The hammer compatibility list is invalid.");
-            var index = JsonSerializer.Deserialize<HammerMetadataIndex>(indexBytes, JsonOptions);
-            if (index?.SchemaVersion != 1 || index.Assets is null ||
-                !index.Assets.TryGetValue("hammers", out var builds) || builds is null || builds.Count == 0)
-                return Result<HammerMetadataSelection>.Fail("The hammer compatibility list is invalid or has no published data.");
+            var indexCachePath = Path.Combine(_paths.HammerMetadata, "index.json");
+            List<HammerMetadataIndexEntry>? orderedBuilds = null;
+            try
+            {
+                using var indexResponse = await _httpClient.GetAsync(IndexUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+                if (indexResponse.IsSuccessStatusCode)
+                {
+                    var downloadedIndex = await ReadBoundedAsync(indexResponse.Content, 2 * 1024 * 1024, cancellationToken);
+                    if (downloadedIndex.Length <= 2 * 1024 * 1024 && TryReadIndex(downloadedIndex, out orderedBuilds))
+                        CacheIndex(indexCachePath, downloadedIndex);
+                    else
+                        _logger.Warning("The downloaded hammer compatibility list is invalid; trying the cached list.");
+                }
+                else
+                {
+                    _logger.Warning($"Could not refresh the hammer compatibility list (HTTP {(int)indexResponse.StatusCode}); trying the cached list.");
+                }
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.Warning($"Could not refresh the hammer compatibility list: {ex.Message}; trying the cached list.");
+            }
+            catch (InvalidDataException ex)
+            {
+                _logger.Warning($"The downloaded hammer compatibility list could not be read: {ex.Message}; trying the cached list.");
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.Warning("The hammer compatibility list request timed out; trying the cached list.");
+            }
 
-            var orderedBuilds = builds.OrderByDescending(build => build.PublishedAt).ToList();
-            if (orderedBuilds.Any(build => !IsSha256(build.GamePakSha256) || !IsSha256(build.Sha256) ||
-                    build.PublishedAt == DateTimeOffset.MinValue ||
-                    !Uri.TryCreate(build.Url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps))
-                return Result<HammerMetadataSelection>.Fail("The hammer compatibility list contains invalid entries.");
+            if (orderedBuilds is null && TryReadCachedIndex(indexCachePath, out var cachedBuilds))
+            {
+                orderedBuilds = cachedBuilds;
+                _logger.Info("Using the cached hammer compatibility list.");
+            }
+            if (orderedBuilds is null)
+                return Result<HammerMetadataSelection>.Fail("RMM couldn't check hammer compatibility right now. Try again later.");
 
             var exactBuild = orderedBuilds.FirstOrDefault(build =>
                 string.Equals(build.GamePakSha256, installedPakSha256, StringComparison.OrdinalIgnoreCase));
@@ -168,6 +191,71 @@ public sealed class HammerTableMetadataRegistry
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException or NotSupportedException or NullReferenceException)
         {
             return false;
+        }
+    }
+
+    private static bool TryReadCachedIndex(string path, out List<HammerMetadataIndexEntry> orderedBuilds)
+    {
+        orderedBuilds = [];
+        try
+        {
+            var info = new FileInfo(path);
+            if (!info.Exists || info.Length > 2 * 1024 * 1024) return false;
+            return TryReadIndex(File.ReadAllBytes(path), out orderedBuilds);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+        {
+            return false;
+        }
+    }
+
+    private static bool TryReadIndex(byte[] bytes, out List<HammerMetadataIndexEntry> orderedBuilds)
+    {
+        orderedBuilds = [];
+        try
+        {
+            var index = JsonSerializer.Deserialize<HammerMetadataIndex>(bytes, JsonOptions);
+            if (index?.SchemaVersion != 1 || index.Assets is null ||
+                !index.Assets.TryGetValue("hammers", out var builds) || builds is null || builds.Count == 0)
+                return false;
+
+            var entries = builds.OrderByDescending(build => build.PublishedAt).ToList();
+            if (entries.Any(build => !IsSha256(build.GamePakSha256) || !IsSha256(build.Sha256) ||
+                    build.PublishedAt == DateTimeOffset.MinValue ||
+                    !Uri.TryCreate(build.Url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps))
+                return false;
+            orderedBuilds = entries;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private void CacheIndex(string path, byte[] bytes)
+    {
+        var temporaryPath = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(temporaryPath, bytes);
+            File.Move(temporaryPath, path, overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.Warning($"Could not save the hammer compatibility list for offline use: {ex.Message}");
+        }
+        finally
+        {
+            try
+            {
+                if (File.Exists(temporaryPath)) File.Delete(temporaryPath);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.Warning($"Could not remove a temporary hammer compatibility list: {ex.Message}");
+            }
         }
     }
 
