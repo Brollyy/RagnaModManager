@@ -23,7 +23,7 @@ Choose one of two starting points:
 
 In both cases, the custom `.rhammer` contains the new mesh and any authored body material, texture, and icon. Gauge materials can remain references to the game's stock assets; do not copy or rename them. Keep the stock material slot names and assign the matching game materials as described below.
 
-`BP_RagnarockHand.UpdateHammerCombo` reads the Beat Manager's combo value and thresholds, maps the current value into a 0–1 range, and writes the `handleGauge` and `circularGauge` scalar parameters across the hammer mesh materials. It also updates the gauge colors. The Default Hammer mesh and its stock gauge materials turn those values into the familiar blue handle bar, gold second stage, and full-combo marker on the head. Keep the gauge parts and materials intact. On the new-silhouette route, replace only the body section:
+The game already controls the combo display. The Default Hammer's handle bar fills blue, then gold, and its head marker lights at full combo. Reusing the stock gauge sections and materials gives a custom hammer the same response. On the new-silhouette route, replace only the body section:
 
 | Stock mesh slot | Keep from the donor | Stock response |
 | --- | --- | --- |
@@ -110,7 +110,7 @@ Open the resulting `.rhammer` as a ZIP and check that every manifest `source` ex
 Check the icon, changing-room preview, race model, hits, and combo response separately:
 
 1. In the Changing Room, open **Hammers**, select the custom card, and press **Space** to equip it. Confirm the icon, head shape, held orientation, handle-side bar, and head marker. Hovering only highlights a card and does not equip it.
-2. Start an offline Standard chart and confirm the custom hammer is visible in the race. Confirm actual hits using the game's local Stats screen or RagnaLoader gameplay evidence. Do not evaluate the gauge if the run records only misses.
+2. Start an offline Standard chart and confirm the custom hammer is visible in the race. Check the result screen afterward to make sure the run registered hits.
 3. Use the game's normal keyboard input mode; do not switch to **One Key One Drum**. First run a stock hammer on the same chart and input bindings so you know the input is producing hits and combo.
 4. Repeat with only the custom hammer enabled and equipped. Capture the handle bar filling blue, advancing to gold, and emptying after a deliberate miss. Confirm that the head marker stays dark before full combo and lights when the gauge reaches full. Confirm that the rest of the body material stays fixed.
 
@@ -118,7 +118,9 @@ A visible Changing Room model proves that the mesh and icon loaded, but not that
 
 ## What drives the combo effect
 
-The stock Default Hammer uses separate handle- and head-gauge mesh sections. The installed game's `BP_RagnarockHand` Blueprint bytecode confirms that `UpdateHammerCombo` calls `SetScalarParameterValueOnMaterials` for `handleGauge` and `circularGauge`, and `SetVectorParameterValueOnMaterials` for the gauge colors. Its material instances include these parameters. The first range maps combo value 0 to `GetComboMin()` onto the handle fill. The next range maps `GetComboMin()` to `GetComboMax()` and changes the gauge color to gold. At the maximum it sets both scalar values to 1 and applies the full-combo color. `OnComboLost` resets both scalars to 0. This is the stock contract custom materials must preserve:
+The game tracks the combo and updates two separate parts of the stock hammer. The bar beside the handle fills blue, then gold as the combo grows. At full combo, a marker on the hammer head lights. When the combo breaks, the game clears both displays. The hammer package does not need to calculate combo or trigger the changes; keep the stock gauge sections and material references so the game can update them.
+
+If you create your own gauge materials, they must use the same parameter names and display the same stages. The game updates `handleGauge`, `circularGauge`, `centerColor`, and `mainColor`. These are the stock mesh sections and their jobs:
 
 | Slot | Stock reference | Gauge role |
 | --- | --- | --- | --- |
@@ -126,15 +128,8 @@ The stock Default Hammer uses separate handle- and head-gauge mesh sections. The
 | `M_JaugeManche` | `MI_HandleGauge` | Blue fill along the handle, then gold as combo advances through the second range. |
 | `M_JaugeTete` | `MI_HeadGauge` | Separate marker lights on the hammer head at full combo. |
 
-The game owns combo calculation and resets the gauge values when combo drops. `UpdateHammerCombo` applies `handleGauge`, `circularGauge`, `centerColor`, and `mainColor` to the mesh through `SetScalarParameterValueOnMaterials` and `SetVectorParameterValueOnMaterials`. A custom hammer gets the stock response by retaining the Default Hammer's gauge geometry, UVs, material slot references, and a body material that does not consume those parameters. The hammer icon and RMM manifest do not affect combo behavior. During a race, the first visible handle fill should appear after the opening uninterrupted hits; it fills blue to the first combo tier, then gold toward the next tier. At full combo, the marker on the head lights. A miss clears the fill. The exact timestamp depends on the chart and a clean hit streak, so use the fixture's result stats to confirm that the inputs actually built a combo.
+The simplest way to get this behavior is to retain the Default Hammer's gauge geometry, UVs, and material references. Keep the body material separate from the gauge parameters so the body color stays fixed. The hammer icon and RMM manifest do not affect the combo display.
 
-## Azure sample status
-
-`AzureBlockhead-v46.rhammer` is the latest UE 4.27 cook. It passed RMM's hammer-library importer; RMM's `HammerPakBuildService` built and deployed a PAK containing one custom hammer row. The package includes the authored mesh, body material, base-color texture, transparent icon, and shader archive. Its gauge sections resolve to Ragnarock's stock material instances.
-
-A fresh race verified the stock layout on the custom mesh: the handle gauge fills blue while the head markers remain dark, a no-input interval produces a miss and visibly resets the gauge, then the handle gauge reaches gold and both head markers light at full combo. UE4SS recorded 104 hits, 16 misses, and `boosts=1` in that deliberately interrupted run. These captures verify the state changes, not an uninterrupted clean-streak score: [blue fill before the miss](../samples/azure-blockhead/Verification/Race-v46-before-miss.png), [reset after the miss](../samples/azure-blockhead/Verification/Race-v46-after-miss-reset.png), and [full combo after the reset](../samples/azure-blockhead/Verification/Race-v46-full-after-reset.png).
-
-The Blender builder duplicates vertices shared between the donor body and head marker before offsetting the marker section by 0.75 units. This prevents that adjustment from deforming retained body triangles. The authored atlas shows the intended face colors in-game. Fine masked patterning remains around the stock head marker where it crosses the custom face, and UE 4.27 still logs degenerate tangent-basis warnings during FBX import; treat those visual/import warnings as unresolved polish rather than evidence of combo failure. See the [Azure sample README](../samples/azure-blockhead/README.md) for asset generation, mesh preparation, UE 4.27 scripts, packaging, RMM deployment, and current limitations.
 ## References
 
 - [UE 4.27 FBX Static Mesh Pipeline](https://dev.epicgames.com/documentation/en-us/unreal-engine/fbx-static-mesh-pipeline?application_version=4.27)
