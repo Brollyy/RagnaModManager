@@ -183,13 +183,16 @@ def main():
         faces.append((slot,tuple(ids),channel_uvs))
 
     # Append blockhead facets as new geometry, carrying four UV sets.
-    x0,x1,yf,yb,z0,z1=-16.0,16.0,-13.25,13.5,37.5,55.25
+    # The marker plane is the hammer-head end, so make the head's long axis
+    # run into the mesh along Y. A narrow end face keeps the gauge from reading
+    # as a marker painted onto the broad side of the head.
+    x0,x1,yf,yb,z0,z1=-10.5,10.5,-15.875,25.0,37.5,55.25
     def quad(points,region): add_quad(vertices,channel_count,faces,points,region)
     # Leave a pocket for the stock head gauge rather than laying the bright
     # custom face behind its faceted geometry. The dark inset remains fixed;
     # the stock gauge section stays exposed in front of it for combo updates.
     hole_x0,hole_x1,hole_z0,hole_z1=-5.9,5.9,38.25,49.4
-    pocket_y=-12.2
+    pocket_y=-13.25
     quad([(x0,yf,z0),(x1,yf,z0),(x1,yf,hole_z0),(x0,yf,hole_z0)],"cyan")
     quad([(x0,yf,hole_z1),(x1,yf,hole_z1),(x1,yf,z1),(x0,yf,z1)],"cyan")
     quad([(x0,yf,hole_z0),(hole_x0,yf,hole_z0),(hole_x0,yf,hole_z1),(x0,yf,hole_z1)],"cyan")
@@ -198,7 +201,7 @@ def main():
           (hole_x1,pocket_y,hole_z1),(hole_x0,pocket_y,hole_z1)],"navy")
     # Keep the gold trim proud of the cyan face. Near-coplanar overlays caused
     # visible raster flicker/bleeding around the front details in the race.
-    for xa,xb in ((-14.0,-11.5),(11.5,14.0)):
+    for xa,xb in ((-9.0,-7.8),(7.8,9.0)):
         quad([(xa,yf-.35,39.0),(xb,yf-.35,39.0),(xb,yf-.35,53.5),(xa,yf-.35,53.5)],"gold")
     quad([(x1,yb,z0),(x0,yb,z0),(x0,yb,z1),(x1,yb,z1)],"navy")
     quad([(x0,yb,z0),(x0,yf,z0),(x0,yf,z1),(x0,yb,z1)],"navy")

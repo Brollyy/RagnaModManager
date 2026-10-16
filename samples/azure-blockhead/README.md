@@ -8,7 +8,7 @@ Azure Blockhead uses Ragnarock's Default Hammer mesh as a donor. It keeps the st
 
 The game updates these two gauge sections from its combo state and resets them when a combo breaks. The sample retains their stock geometry and material references; the custom body material stays separate.
 
-The `.rhammer` supplies the custom mesh, body material, base-color texture, and icon. The donor FBX preserves four UV channels; the mesh's gauge slots resolve to the game's stock gauge instances at runtime. Temporary gauge stand-ins are created only so the UE 4.27 project can cook the mesh; the package builder excludes them. The generated base-color atlas is vertically flipped to compensate for the FBX V flip observed in the UE 4.27 cook; do not apply this correction to the donor gauge UVs. The block head has a recessed navy pocket around the head marker, so the stock faceted gauge no longer overlays the bright cyan face. The builder duplicates and slightly reduces the marker section while preserving its stock UVs and material response.
+The `.rhammer` supplies the custom mesh, body material, base-color texture, and icon. The donor FBX preserves four UV channels; the mesh's gauge slots resolve to the game's stock gauge instances at runtime. Temporary gauge stand-ins are created only so the UE 4.27 project can cook the mesh; the package builder excludes them. The generated base-color atlas is vertically flipped to compensate for the FBX V flip observed in the UE 4.27 cook; do not apply this correction to the donor gauge UVs. The authored head's long axis runs behind the stock head marker, placing it on the narrow end face rather than the broad side. A recessed navy pocket keeps the stock faceted marker visible while preserving its original UVs and material response.
 
 ## Source and build
 
@@ -18,4 +18,4 @@ For a different hammer, make a new head mesh in Blender or another 3D editor, ke
 
 ## Package
 
-`AzureBlockhead-v53.rhammer` is the cooked example package. It contains the authored mesh, body material, base-color texture, transparent icon, and shader archive; the gauge material references resolve to Ragnarock's stock assets. For build and runtime verification notes, see [Verification](Verification/README.md).
+`AzureBlockhead-v55.rhammer` is the cooked example package. It contains the authored mesh, body material, base-color texture, transparent icon, and shader archive; the gauge material references resolve to Ragnarock's stock assets. For build and runtime verification notes, see [Verification](Verification/README.md).
