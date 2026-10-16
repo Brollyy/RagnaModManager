@@ -149,8 +149,10 @@ def main():
     x0,x1,yf,yb,z0,z1=-16.0,16.0,-13.25,13.5,37.5,55.25
     def quad(points,region): add_quad(vertices,channel_count,faces,points,region)
     quad([(x0,yf,z0),(x1,yf,z0),(x1,yf,z1),(x0,yf,z1)],"cyan")
+    # Keep the gold trim proud of the cyan face. Near-coplanar overlays caused
+    # visible raster flicker/bleeding around the front details in the race.
     for xa,xb in ((-14.0,-11.5),(11.5,14.0)):
-        quad([(xa,yf-.01,39.0),(xb,yf-.01,39.0),(xb,yf-.01,53.5),(xa,yf-.01,53.5)],"gold")
+        quad([(xa,yf-.35,39.0),(xb,yf-.35,39.0),(xb,yf-.35,53.5),(xa,yf-.35,53.5)],"gold")
     quad([(x1,yb,z0),(x0,yb,z0),(x0,yb,z1),(x1,yb,z1)],"navy")
     quad([(x0,yb,z0),(x0,yf,z0),(x0,yf,z1),(x0,yb,z1)],"navy")
     quad([(x1,yf,z0),(x1,yb,z0),(x1,yb,z1),(x1,yf,z1)],"ice")
