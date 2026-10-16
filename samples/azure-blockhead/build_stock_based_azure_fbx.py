@@ -122,6 +122,20 @@ def main():
     channel_count=len(source_mesh.uv_layers)
     faces=[]
     head_gauge_vertices={}
+    head_gauge_source_ids={
+        source_mesh.loops[loop_index].vertex_index
+        for polygon in source_mesh.polygons
+        if material_names[polygon.material_index] == "M_JaugeTete"
+        for loop_index in polygon.loop_indices
+    }
+    head_gauge_center_x=(
+        min(vertices[index][0] for index in head_gauge_source_ids)
+        + max(vertices[index][0] for index in head_gauge_source_ids)
+    )/2
+    head_gauge_center_z=(
+        min(vertices[index][2] for index in head_gauge_source_ids)
+        + max(vertices[index][2] for index in head_gauge_source_ids)
+    )/2
     for polygon in source_mesh.polygons:
         slot=material_names[polygon.material_index]
         loops=list(polygon.loop_indices)
@@ -130,14 +144,18 @@ def main():
             continue
         if slot=="M_JaugeTete":
             # The donor shares some vertices between the head marker and the
-            # body. Duplicate this section before offsetting it so the depth
-            # separation cannot pull body triangles out of place.
+            # body. Duplicate the section before a small scale/depth adjustment
+            # to reduce z-fighting where the stock marker crosses a new face.
             offset_ids=[]
             for vertex_index in ids:
                 if vertex_index not in head_gauge_vertices:
                     x,y,z=vertices[vertex_index]
                     head_gauge_vertices[vertex_index]=len(vertices)
-                    vertices.append((x,y-0.75,z))
+                    vertices.append((
+                        head_gauge_center_x+(x-head_gauge_center_x)*0.75,
+                        y-0.75,
+                        head_gauge_center_z+(z-head_gauge_center_z)*0.75,
+                    ))
                 offset_ids.append(head_gauge_vertices[vertex_index])
             ids=offset_ids
         channel_uvs=[]

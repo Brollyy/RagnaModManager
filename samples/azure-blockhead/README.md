@@ -8,7 +8,7 @@ Azure Blockhead uses Ragnarock's Default Hammer mesh as a donor. It keeps the st
 
 The game updates these two gauge sections from its combo state and resets them when a combo breaks. The sample retains their stock geometry and material references; the custom body material stays separate.
 
-The `.rhammer` supplies the custom mesh, body material, base-color texture, and icon. The donor FBX preserves four UV channels; the mesh's gauge slots resolve to the game's stock gauge instances at runtime. Temporary gauge stand-ins are created only so the UE 4.27 project can cook the mesh; the package builder excludes them. The generated base-color atlas is vertically flipped to compensate for the FBX V flip observed in the UE 4.27 cook; do not apply this correction to the donor gauge UVs.
+The `.rhammer` supplies the custom mesh, body material, base-color texture, and icon. The donor FBX preserves four UV channels; the mesh's gauge slots resolve to the game's stock gauge instances at runtime. Temporary gauge stand-ins are created only so the UE 4.27 project can cook the mesh; the package builder excludes them. The generated base-color atlas is vertically flipped to compensate for the FBX V flip observed in the UE 4.27 cook; do not apply this correction to the donor gauge UVs. For this block head, the builder duplicates the stock head-marker vertices and makes the marker slightly smaller and deeper to reduce overlap with the custom face; it keeps the stock UVs and material response.
 
 ## Source and build
 
@@ -18,4 +18,4 @@ For a different hammer, make a new head mesh in Blender or another 3D editor, ke
 
 ## Package
 
-`AzureBlockhead-v46.rhammer` is the cooked example package. It contains the authored mesh, body material, base-color texture, transparent icon, and shader archive; the gauge material references resolve to Ragnarock's stock assets. For build and runtime verification notes, see [Verification](Verification/README.md).
+`AzureBlockhead-v50.rhammer` is the cooked example package. It contains the authored mesh, body material, base-color texture, transparent icon, and shader archive; the gauge material references resolve to Ragnarock's stock assets. For build and runtime verification notes, see [Verification](Verification/README.md).
