@@ -12,6 +12,8 @@ public sealed class AppLogger
 
     public void Info(string message) => Write("app.log", "INFO", message);
 
+    public void Warning(string message) => Write("app.log", "WARNING", message);
+
     public void Error(string message) => Write("app.log", "ERROR", message);
 
     public void Deployment(string message) => Write("deployment.log", "INFO", message);
