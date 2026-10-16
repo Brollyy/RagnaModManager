@@ -84,11 +84,12 @@ def add_quad(vertices, channel_count, faces, points, region):
         indices=tuple(start+i for i in corner_ids)
         channel_uvs=[]
         for channel in range(channel_count):
-            channel_uvs.append(
-                [coords[i] for i in corner_ids]
-                if channel==COOKED_BODY_UV_SOURCE_LAYER
-                else [(0.5,0.5)]*3
-            )
+            # Keep every imported body UV channel non-degenerate. UE 4.27
+            # emitted tangent-basis warnings when the added faces had constant
+            # UVs in the donor's other channels, even though the cooked body
+            # material samples the remapped channel. Gauge sections below
+            # still retain their exact donor UV values.
+            channel_uvs.append([coords[i] for i in corner_ids])
         faces.append(("M_Character",indices,channel_uvs))
 
 
@@ -120,12 +121,25 @@ def main():
     vertices=[tuple(source.matrix_world @ v.co) for v in source_mesh.vertices]
     channel_count=len(source_mesh.uv_layers)
     faces=[]
+    head_gauge_vertices={}
     for polygon in source_mesh.polygons:
         slot=material_names[polygon.material_index]
         loops=list(polygon.loop_indices)
         ids=[source_mesh.loops[i].vertex_index for i in loops]
         if slot=="M_Character" and max(vertices[i][2] for i in ids)>=37.5:
             continue
+        if slot=="M_JaugeTete":
+            # The donor shares some vertices between the head marker and the
+            # body. Duplicate this section before offsetting it so the depth
+            # separation cannot pull body triangles out of place.
+            offset_ids=[]
+            for vertex_index in ids:
+                if vertex_index not in head_gauge_vertices:
+                    x,y,z=vertices[vertex_index]
+                    head_gauge_vertices[vertex_index]=len(vertices)
+                    vertices.append((x,y-0.75,z))
+                offset_ids.append(head_gauge_vertices[vertex_index])
+            ids=offset_ids
         channel_uvs=[]
         for channel,layer in enumerate(source_mesh.uv_layers):
             values=[]
@@ -137,8 +151,13 @@ def main():
                     if flip_v:
                         uv=(uv[0], 1.0-uv[1])
                 elif slot=="M_Character" and channel==COOKED_BODY_UV_SOURCE_LAYER:
-                    uv=((ATLAS["navy"][0]+ATLAS["navy"][2])/2,
-                        (ATLAS["navy"][1]+ATLAS["navy"][3])/2)
+                    original=tuple(layer.data[loop_index].uv)
+                    u0,v0,u1,v1=ATLAS["navy"]
+                    # Keep the donor body's UV island shape while fitting it
+                    # inside the solid navy swatch. A single-point mapping
+                    # looked correct on this flat tile but created degenerate
+                    # tangents during the UE 4.27 FBX import.
+                    uv=(u0+original[0]*(u1-u0),v0+original[1]*(v1-v0))
                 else:
                     uv=tuple(layer.data[loop_index].uv)
                 values.append(uv)
