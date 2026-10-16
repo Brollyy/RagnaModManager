@@ -12,21 +12,30 @@ This guide walks through modeling, authoring, cooking, packaging, and checking a
 
 Ragnarock's PC build uses Direct3D `PCD3D_SM5`. A Linux UE cooker may emit Vulkan shaders even when asked to cook Windows assets. Use UE 4.27 on Windows, such as a Windows VM, a Windows cloud machine, or Windows CI. The sample's [UE project README](../samples/azure-blockhead/UEProject/README.md) contains runnable Windows commands.
 
-## 1. Use the stock hammer gauge as a base
+## 1. Start from the stock hammer
 
-`BP_RagnarockHand.UpdateHammerCombo` reads the Beat Manager's combo value and thresholds, maps the current value into a 0–1 range, and writes the `handleGauge` and `circularGauge` scalar parameters across the hammer mesh materials. It also updates the gauge colors. The Default Hammer mesh and its stock gauge materials turn those values into the familiar blue handle bar, gold second stage, and full-combo marker on the head. Retain the gauge parts and replace only the body section:
+Yes: use Ragnarock's Basic/Default Hammer as the donor. This is the simplest way to reuse the handle, grip and held pose, combo gauge geometry and UVs, and the game's existing gauge materials. It also avoids rebuilding the combo shader. This is mesh and material reuse, not Unreal inheritance: a Static Mesh does not subclass another Static Mesh. The custom hammer is a new mesh asset assembled from the donor's parts plus your authored body.
+
+Choose one of two starting points:
+
+- **Keep the stock silhouette:** retain the entire donor mesh and customize its body material/texture. This is the smallest change and the best first check that a custom hammer package receives the stock combo response.
+- **Make a new silhouette:** retain the donor handle, handle gauge, head marker, pivot, and material sections, and replace only the `M_Character` body faces. Keep the head marker exposed and avoid overlapping it with the custom body. This is the Azure sample's approach.
+
+In both cases, the custom `.rhammer` contains the new mesh and any authored body material, texture, and icon. Gauge materials can remain references to the game's stock assets; do not copy or rename them. Keep the stock material slot names and assign the matching game materials as described below.
+
+`BP_RagnarockHand.UpdateHammerCombo` reads the Beat Manager's combo value and thresholds, maps the current value into a 0–1 range, and writes the `handleGauge` and `circularGauge` scalar parameters across the hammer mesh materials. It also updates the gauge colors. The Default Hammer mesh and its stock gauge materials turn those values into the familiar blue handle bar, gold second stage, and full-combo marker on the head. Keep the gauge parts and materials intact. On the new-silhouette route, replace only the body section:
 
 | Stock mesh slot | Keep from the donor | Stock response |
 | --- | --- | --- |
-| `M_Character` | Replace the head/body faces with your design; keep the grip point, handle alignment, and UV scale. | Fixed hammer surface and base-color texture. |
+| `M_Character` | Keep the stock body for a texture/material-only design, or replace its body faces for a new silhouette. Keep the grip point, handle alignment, and UV scale. | Fixed hammer surface and base-color texture. |
 | `M_JaugeManche` | Keep the narrow gauge beside the handle and its donor UVs. Assign `/Game/Meshes/Hammers/DefaultHammer/MI_HandleGauge`. | Fills blue to the first combo level, then gold toward the next. |
 | `M_JaugeTete` | Keep the marker geometry on the hammer head and its donor UVs. Assign `/Game/Meshes/Hammers/DefaultHammer/MI_HeadGauge`. | Lights at full combo. |
 
-Keep the slot names, capitalization, and order exactly: `M_Character`, `M_JaugeManche`, `M_JaugeTete`. Keep the two stock gauge material references and their UVs unchanged. The Blueprint writes combo values to all material slots, so the body material must not use the gauge parameters or it will glow with the meter. Keep the body material independent.
+Keep the slot names, capitalization, and order exactly: `M_Character`, `M_JaugeManche`, `M_JaugeTete`. Keep the two stock gauge material references and preserve their donor UVs. The UE 4.27 FBX importer can reorder UV channels and flip V, so the final cooked gauge channels must be compared against the stock mesh; the sample builder applies the measured compensation. The Blueprint writes combo values to all material slots, so the body material must not use the gauge parameters or it will glow with the meter. Keep the body material independent.
 
 1. In an asset viewer that can read Ragnarock's UE 4.27 game data, export `/Game/Meshes/Hammers/DefaultHammer/SM_Hammer_Default` as an FBX. Preserve all four UV channels and the three material sections. The stock gauge materials use a nonzero UV channel, so verify the channels survived export.
-2. Import the donor mesh into Blender. Keep its handle, handle-side gauge, head marker, pivot, scale, and orientation. Delete only the original head body faces you intend to replace.
-3. Model your new head around the retained full-combo marker. Preserve the marker's exposed surface so it remains visible when lit. Avoid overlapping the marker with the body mesh.
+2. Import the donor mesh into Blender. Keep its handle, handle-side gauge, head marker, pivot, scale, and orientation. For a texture/material-only design, retain all body faces. For a new silhouette, delete only the original body faces you intend to replace.
+3. If you chose the new-silhouette route, model your new head around the retained full-combo marker. Preserve the marker's exposed surface so it remains visible when lit. Avoid overlapping the marker with the body mesh. If you chose the stock-silhouette route, keep the donor body geometry and continue to the material steps.
 4. Assign the head body to `M_Character`. Do not rename or merge either gauge section. Keep the head upright in the held orientation and the handle axis aligned to the grip.
 5. Export the edited mesh with its UVs and all three named material sections. Keep an editable Blender file as well as the exported mesh.
 
@@ -38,18 +47,18 @@ python generate_source.py
 
 Then use Blender's FBX import/export workflow to preserve the donor's four UV channels and replace its head. The checked-in Azure FBX is already the result of that source-authoring step and can be opened directly in Blender; the donor game export is not checked into the repository.
 
-Use the stock gauge mesh sections and material instances rather than recreating their fill graph. Preserve their UVs and material references. If you deliberately author a custom gauge material, it must respond to the stock `handleGauge`, `circularGauge`, `centerColor`, and `mainColor` parameters and render the same separate handle fill and head marker; compare every stage with a stock hammer in game. The sample remaps donor body UVs for its own atlas but leaves gauge UVs intact.
+Use the stock gauge mesh sections and material instances rather than recreating their fill graph. Preserve their UV values in the donor mesh and material references. UE 4.27 may reorder the FBX UV layers and flip V while importing; compensate in the source builder and compare the cooked gauge UVs to the stock mesh. The Azure body atlas is vertically flipped as an image so the cooked UV0 samples the intended tile after the FBX V flip; keep this texture compensation separate from the untouched gauge UV channels. If you deliberately author a custom gauge material, it must respond to the stock `handleGauge`, `circularGauge`, `centerColor`, and `mainColor` parameters and render the same separate handle fill and head marker; compare every stage with a stock hammer in game.
 
 ## 2. Create the UE 4.27 assets
 
 1. Create a UE 4.27 project. Put your assets under a unique path such as `Content/RMM/Hammers/my-hammer/`; keep this path unique across hammer packages.
-2. Import the edited FBX as a **Static Mesh**. Confirm the four donor UV channels survived import, along with its pivot, scale, held orientation, and the three named material slots. Confirm that the bar remains alongside the handle and the head marker is unobstructed.
+2. Import the edited FBX as a **Static Mesh**. Confirm the four donor UV channels, pivot, scale, held orientation, and three named material slots. After cooking, compare every gauge section's UV range in all four channels against the Default Hammer. UE 4.27's importer may reorder the FBX channel indices and flip V coordinates, so source FBX values alone are not the acceptance check. Confirm that the bar remains alongside the handle and the head marker is unobstructed.
 3. Import each artwork file as **Texture2D**. The in-game icon is a separate square PNG from the body texture; preserve alpha if its background should be transparent. For a painted body atlas, use padded UV islands and retain mipmaps to avoid color bleeding at the island edges.
 4. Create a fixed body material for `M_Character` and connect the body base-color texture. Assign it only to `M_Character`.
 5. Assign `MI_HandleGauge` and `MI_HeadGauge` from the stock Default Hammer paths to their matching sections. The sample creates temporary editor stand-ins at those paths so UE can cook the mesh; the final `.rhammer` omits the stand-ins and resolves the references to Ragnarock's stock material instances at runtime.
 6. Save and inspect the mesh in UE's Static Mesh preview. Check that the new body uses the intended texture and that the handle bar and head marker are visible in the held orientation. Verify each face against its atlas region in the preview; a flipped or remapped UV channel can put a face in the wrong color tile or hide the gauge.
 
-The sample automates texture import, material setup, and mesh assignment in its `UEProject/Scripts` folder. Before opening the UE project, run `build_stock_based_azure_fbx.py` in Blender on the stock FBX export. Enable **Python Editor Script Plugin** and **Editor Scripting Utilities**, then run `create_hammer_materials.py`, `create_stock_gauge_refs.py`, and `reimport_azure_mesh.py` in that order. See the [sample UE README](../samples/azure-blockhead/UEProject/README.md) for exact commands and files.
+The sample automates texture import, material setup, and mesh assignment in its `UEProject/Scripts` folder. Before opening the UE project, run `build_stock_based_azure_fbx.py` in Blender on the stock FBX export. It retains the donor gauge values while compensating for the measured UE 4.27 import mapping; after cooking, verify all four gauge UV channels against the stock mesh. Enable **Python Editor Script Plugin** and **Editor Scripting Utilities**, then run `create_hammer_materials.py`, `create_stock_gauge_refs.py`, and `reimport_azure_mesh.py` in that order. See the [sample UE README](../samples/azure-blockhead/UEProject/README.md) for exact commands and files.
 
 **Optional selector art:** the hammer data asset also has `Silhouette` and `Symbol` fields. They are not required for a custom mesh, icon, or combo meter. Leave them at their stock defaults unless you have cooked and runtime-tested their materials and dependencies.
 
@@ -121,7 +130,9 @@ The game owns combo calculation and resets the gauge values when combo drops. `U
 
 ## Azure sample status
 
-The v28 package used an OBJ and did not preserve all stock UV channels. The v33 multi-UV FBX package cooks successfully in UE 4.27. CUE4Parse inspection confirms five cooked UV channels (four donor channels plus UE’s generated lightmap channel), the ordered `M_Character`, `M_JaugeManche`, and `M_JaugeTete` sections, and gauge-section bounds aligned to the installed Default Hammer. The earlier v32 import rotated the gauge sections onto the wrong side; v33 corrects this with a 0.01 uniform import scale and 180-degree roll. RMM lists Azure, and its Changing Room icon and 3D preview render. Fresh prepared races with Azure explicitly equipped rendered the hammer in-hand. A note-paced keyboard run recorded 13 hits, 27 misses, and 0 combos; a faster input run recorded 32 hits, 8 misses, and 0 combos. Neither run established a combo. The blue-to-gold handle fill, full-combo head marker, and miss reset therefore remain unverified. Current race captures also show pale square head faces and streaking on the held model. The sample package and workflow are not yet validated as complete.
+The v28 package used an OBJ and did not preserve all stock UV channels. The v33 multi-UV FBX package cooked in UE 4.27, but its gauge channels were reordered and V-flipped by import. The v34 cook applies the measured correction: CUE4Parse confirms that all four cooked gauge UV ranges match the Default Hammer, while the body atlas maps to cooked UV0. It also confirms the expected material sections and aligned gauge bounds.
+
+v35 was cooked in UE 4.27 with the atlas V-flip correction, built by the RMM hammer library service against the installed game's exact compatibility metadata, deployed, and loaded in a race with Azure as the only enabled custom hammer. The corrected atlas shows the intended cyan/gold head colors and navy handle. A prepared RagnaLoader case on the local 40-note RMM Combo Meter Fixture used normal W-lane input and recorded 39 hits and 1 miss. Its near-end race capture shows the handle gauge and head marker illuminated, but the Results Stats screen says `0 + 0` combos and Stats Echo recorded no actual `Boat.OnComboTriggered` events. Separate 5, 10, and 15 second captures show the stock gauge geometry beside the handle, but do not make the blue-to-gold progression clear. A pause after 15 seconds leaves the indicators dark in the next capture, though that frame does not prove a live combo drop. Speckling remains on the mesh. Keep the sample marked incomplete until a run with a confirmed stock combo shows distinct blue and gold stages, the full-combo head marker, and reset after a live miss, and the speckling is resolved.
 
 ## References
 

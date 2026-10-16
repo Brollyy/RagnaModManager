@@ -8,13 +8,16 @@ SOURCE = ROOT / "Source"
 
 
 def write_base_color(path: Path) -> None:
-    """Create a padded four-color atlas used by the authored head faces."""
+    """Create a padded atlas compensating for UE 4.27's imported FBX V flip."""
     image = Image.new("RGB", (512, 512), (22, 178, 204))
     draw = ImageDraw.Draw(image)
     draw.rectangle((256, 0, 511, 255), fill=(248, 179, 43))
     draw.rectangle((0, 256, 255, 511), fill=(16, 45, 87))
     draw.rectangle((256, 256, 511, 511), fill=(112, 218, 224))
-    image.save(path)
+    # The edited mesh's cooked UV0 has V inverted relative to the authored
+    # FBX UVs. Flip the source atlas so each face still samples its named tile
+    # after UE 4.27 cooks the mesh.
+    image.transpose(Image.Transpose.FLIP_TOP_BOTTOM).save(path)
 
 
 def draw_icon(path: Path) -> None:

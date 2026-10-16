@@ -14,6 +14,65 @@ import bpy
 ATLAS = {"cyan": (0.08, 0.08, 0.42, 0.42), "gold": (0.58, 0.08, 0.92, 0.42),
          "navy": (0.08, 0.58, 0.42, 0.92), "ice": (0.58, 0.58, 0.92, 0.92)}
 SLOTS = ["M_Character", "M_JaugeManche", "M_JaugeTete"]
+# UE 4.27's FBX importer reorders UV layers and changes V orientation. The
+# cooked-channel to FBX-layer order is stable in the measured 4.27 import, but
+# V orientation can differ after Blender round trips. Find the donor layer and
+# V orientation for each stock cooked channel by its measured bounds.
+STOCK_GAUGE_UV_BOUNDS = {
+    0: {"M_JaugeManche": (0.577, 0.144, 0.702, 0.166), "M_JaugeTete": (0.621, 0.136, 0.655, 0.172)},
+    1: {"M_JaugeManche": (0.363, 0.003, 0.580, 0.997), "M_JaugeTete": (0.000, 0.004, 1.000, 1.001)},
+    2: {"M_JaugeManche": (0.669, 0.008, 0.963, 0.075), "M_JaugeTete": (0.831, 0.379, 0.955, 0.504)},
+    3: {"M_JaugeManche": (0.181, 0.801, 0.523, 0.875), "M_JaugeTete": (0.676, 0.033, 0.821, 0.180)},
+}
+UE_FBX_LAYER_FOR_COOKED_CHANNEL = (1, 2, 3, 0)
+COOKED_BODY_UV_SOURCE_LAYER = 1
+
+
+def uv_bounds(mesh, material_index, uv_layer, flip_v=False, engine_flip_v=False):
+    u_values=[]
+    v_values=[]
+    for polygon in mesh.polygons:
+        if polygon.material_index != material_index:
+            continue
+        for loop_index in polygon.loop_indices:
+            uv=uv_layer.data[loop_index].uv
+            u_values.append(float(uv.x))
+            v=float(uv.y)
+            if flip_v:
+                v=1.0-v
+            if engine_flip_v:
+                v=1.0-v
+            v_values.append(v)
+    if not u_values:
+        raise RuntimeError("No gauge UV vertices for material index " + str(material_index))
+    return min(u_values),min(v_values),max(u_values),max(v_values)
+
+
+def find_stock_gauge_uv_sources(mesh, material_names):
+    tolerance=0.002
+    result=[]
+    for cooked_channel,targets in STOCK_GAUGE_UV_BOUNDS.items():
+        engine_flip_v=True
+        matches=[]
+        for source_channel in range(min(4,len(mesh.uv_layers))):
+            for flip_source_v in (False,True):
+                valid=True
+                for slot_name,target in targets.items():
+                    material_index=material_names.index(slot_name)
+                    actual=uv_bounds(mesh,material_index,mesh.uv_layers[source_channel],flip_source_v,engine_flip_v)
+                    if any(abs(actual[i]-target[i])>tolerance for i in range(4)):
+                        valid=False
+                        break
+                if valid:
+                    matches.append((source_channel,flip_source_v))
+        if len(matches)!=1:
+            raise RuntimeError(
+                "Could not uniquely map the Default Hammer gauge UV channel "
+                + str(cooked_channel) + "; candidates=" + repr(matches)
+                + ". Check the donor game version and refresh STOCK_GAUGE_UV_BOUNDS."
+            )
+        result.append(matches[0])
+    return result
 
 
 def add_quad(vertices, channel_count, faces, points, region):
@@ -25,7 +84,11 @@ def add_quad(vertices, channel_count, faces, points, region):
         indices=tuple(start+i for i in corner_ids)
         channel_uvs=[]
         for channel in range(channel_count):
-            channel_uvs.append([coords[i] for i in corner_ids] if channel==0 else [(0.5,0.5)]*3)
+            channel_uvs.append(
+                [coords[i] for i in corner_ids]
+                if channel==COOKED_BODY_UV_SOURCE_LAYER
+                else [(0.5,0.5)]*3
+            )
         faces.append(("M_Character",indices,channel_uvs))
 
 
@@ -50,6 +113,8 @@ def main():
     material_names=[slot.material.name if slot.material else "" for slot in source.material_slots]
     if material_names!=SLOTS:
         raise RuntimeError(f"Expected material slots {SLOTS}; got {material_names}")
+    gauge_uv_sources=find_stock_gauge_uv_sources(source_mesh,material_names)
+    print("Stock cooked gauge UV source map: "+repr(gauge_uv_sources))
     donor_materials=[slot.material for slot in source.material_slots]
 
     vertices=[tuple(source.matrix_world @ v.co) for v in source_mesh.vertices]
@@ -65,10 +130,17 @@ def main():
         for channel,layer in enumerate(source_mesh.uv_layers):
             values=[]
             for loop_index in loops:
-                uv=tuple(layer.data[loop_index].uv)
-                if channel==0 and slot=="M_Character":
+                if slot in ("M_JaugeManche", "M_JaugeTete") and channel < 4:
+                    cooked_channel=UE_FBX_LAYER_FOR_COOKED_CHANNEL.index(channel)
+                    source_channel, flip_v = gauge_uv_sources[cooked_channel]
+                    uv=tuple(source_mesh.uv_layers[source_channel].data[loop_index].uv)
+                    if flip_v:
+                        uv=(uv[0], 1.0-uv[1])
+                elif slot=="M_Character" and channel==COOKED_BODY_UV_SOURCE_LAYER:
                     uv=((ATLAS["navy"][0]+ATLAS["navy"][2])/2,
                         (ATLAS["navy"][1]+ATLAS["navy"][3])/2)
+                else:
+                    uv=tuple(layer.data[loop_index].uv)
                 values.append(uv)
             channel_uvs.append(values)
         faces.append((slot,tuple(ids),channel_uvs))
