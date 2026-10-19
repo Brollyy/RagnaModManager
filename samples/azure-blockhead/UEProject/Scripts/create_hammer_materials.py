@@ -229,6 +229,14 @@ icon = import_texture("T_RMM_AzureBlockhead_Icon.png", "T_AzureBlockhead_Icon", 
 base_color = import_texture(
     "T_RMM_AzureBlockhead_BaseColor.png", "T_RMM_AzureBlockhead_BaseColor", MESH_FOLDER
 )
+# Keep thin atlas edges crisp in the moving hammer. BC7 avoids the stronger
+# ringing that the default BC1 compressor introduces around the dark artwork.
+base_color.set_editor_property(
+    "compression_settings", unreal.TextureCompressionSettings.TC_BC7
+)
+base_color.set_editor_property(
+    "compression_quality", unreal.TextureCompressionQuality.TCQ_HIGHEST
+)
 # The atlas UVs stay inside each quadrant with a 41-pixel inset at the source
 # resolution. Generate the same mip chain used by the World texture group and
 # sample it trilinearly so the small, moving race mesh does not shimmer.

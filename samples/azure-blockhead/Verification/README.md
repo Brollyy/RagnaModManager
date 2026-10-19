@@ -2,13 +2,19 @@
 
 This is a test record for the sample package. The step-by-step authoring process is in the [custom hammer guide](../../../docs/custom-hammer-authoring-ue4-27.md).
 
-## v71 face-continuous atlas mapping
+## v72 face-continuous atlas mapping
 
 The v69 Changing Room captures showed that the FBX V flip moved the assigned atlas regions vertically: the front face sampled the navy artwork instead of cyan. Pre-flipping the authored UVs corrected the quadrant selection, but each piece around the stock head-marker opening still stretched the entire tile independently. The captured [first angle](ChangingRoom-v69-angle-1.png) and [second angle](ChangingRoom-v69-angle-2.png) show the UV layout problem clearly.
 
-The v71 mesh builder now projects all pieces through their complete box face, so the art should continue behind the marker opening instead of restarting on every cutout panel. It also remaps all four retained body UV channels to the navy swatch, while preserving the stock gauge UV channels and materials. UE 4.27 cooked the package with zero errors or warnings. The v71 package SHA-256 is `64fc33ec8abb16b64810ca3b327ab39d66d14bc7a961d0f0985726b000ef6233`; RMM built and deployed a one-row PAK with SHA-256 `298326ceae53314747f4a4116a44c43d79e76980ad89871306b0c354807c5904`.
+The v72 mesh builder projects the four front panels through their complete box face, so the artwork continues around the stock marker opening instead of restarting on each cutout panel. Other box sides use their full atlas regions, and the gold trim retains the known-good full-tile mapping. The builder remaps all four retained body UV channels into the navy swatch while preserving the stock gauge UV channels and materials. UE 4.27 cooked v72 with zero errors or warnings. Its package SHA-256 is `132bc57436afdc7e865b6cd511cdef40b8e4e441668a89b47db918f2ab31f852`; RMM built and deployed a one-row PAK with SHA-256 `7f18e9d82fd0a8b1c4deab655cf8a34b9832674595915b176e3d68117a470bcb`.
 
-The v71 runtime has not passed visual verification. One launch stayed on `Checking Internet connectivity…`; a later launch opened `Master_CR` but the viewport went black before the level reported loaded. For comparison, the v70 package opened the Changing Room and Hammer tab in the same environment: [v70 baseline capture](ChangingRoom-v70-baseline.png). v70 is restored as the installed test package while the v71 runtime issue is investigated. Physical VR head movement remains unverified.
+Three v72 Changing Room captures show the cyan atlas artwork staying on the head as the preview rotates: [first angle](ChangingRoom-v72-angle-1.png), [second angle](ChangingRoom-v72-angle-2.png), [third angle](ChangingRoom-v72-angle-3.png). A stock Silver hammer captured in the same room has clean surfaces: [stock comparison](ChangingRoom-v72-stock.png). In Dewey, keyboard W/I swings confirmed the custom atlas stays attached to the moving hammer at two race poses: [first pose](Race-v72-pose-1.png), [second pose](Race-v72-pose-2.png). Azure's custom head still shows dark stippling at some edges in the preview and race; that remains under investigation. The v71 split-trim UV experiment did not load consistently, so v72 retains the full-tile gold trim mapping that works in the room. The known-working v70 baseline is also recorded [here](ChangingRoom-v70-baseline.png). Physical VR head movement remains unverified.
+
+## v73 high-quality atlas compression
+
+The v72 atlas uses UE's default BC1 compression. v73 switches the body atlas to BC7 at highest compression quality; its cooked texture export grows from 175,491 to 350,307 bytes. UE 4.27 cooked v73 without errors or warnings. The `.rhammer` SHA-256 is `9696b15ead7f6c9f17394a559f3898904c9ce5d8a31ede829671a44888b4e6af`; RMM deployed a one-row PAK with SHA-256 `8e32b33de3ad53860c3f31d81d77e1b80f276967c98ee8cc1edf7acf76a9d536`.
+
+The v73 captures show the cyan art remaining on the mesh in the Changing Room and across two keyboard-driven Dewey race poses: [Changing Room angle 1](ChangingRoom-v73-angle-1.png), [angle 2](ChangingRoom-v73-angle-2.png), [angle 3](ChangingRoom-v73-angle-3.png), [race pose 1](Race-v73-pose-1.png), [race pose 2](Race-v73-pose-2.png). Dark edge marks are still visible on the custom mesh after the BC7 change. The stock Silver hammer remains clean in the v72 side-by-side capture. Physical VR head movement is not covered by these flat-screen captures.
 
 ## v60 atlas package
 

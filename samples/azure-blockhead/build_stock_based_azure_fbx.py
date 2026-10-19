@@ -229,6 +229,9 @@ def main():
 
     def bottom_uv(points):
         return projected_uvs(points, 0, 1, (x0, x1), (yf, yb))
+
+    def full_tile_uv(points):
+        return [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
     # Leave a pocket around the stock head gauge rather than laying the bright
     # custom face behind its faceted geometry. Derive the opening from the
     # transformed gauge geometry and leave clearance for oblique views.
@@ -249,14 +252,8 @@ def main():
           (hole_x1,pocket_y,hole_z1),(hole_x0,pocket_y,hole_z1)],"navy",front_uv)
     # Keep the gold trim proud of the cyan face. Near-coplanar overlays caused
     # visible raster flicker/bleeding around the front details in the race.
-    for trim_index,(xa,xb) in enumerate(((-9.0,-7.8),(7.8,9.0))):
-        trim_u0, trim_u1 = (0.0, 0.5) if trim_index == 0 else (0.5, 1.0)
-        trim_uv = lambda points, lo=trim_u0, hi=trim_u1, x_start=xa, x_end=xb: [
-            (lo + ((point[0] - x_start) / (x_end - x_start)) * (hi - lo),
-             (point[2] - 39.0) / (53.5 - 39.0))
-            for point in points
-        ]
-        quad([(xa,yf-.35,39.0),(xb,yf-.35,39.0),(xb,yf-.35,53.5),(xa,yf-.35,53.5)],"gold",trim_uv)
+    for xa,xb in ((-9.0,-7.8),(7.8,9.0)):
+        quad([(xa,yf-.35,39.0),(xb,yf-.35,39.0),(xb,yf-.35,53.5),(xa,yf-.35,53.5)],"gold",full_tile_uv)
     quad([(x1,yb,z0),(x0,yb,z0),(x0,yb,z1),(x1,yb,z1)],"navy",back_uv)
     quad([(x0,yb,z0),(x0,yf,z0),(x0,yf,z1),(x0,yb,z1)],"navy",side_uv)
     quad([(x1,yf,z0),(x1,yb,z0),(x1,yb,z1),(x1,yf,z1)],"ice",side_uv)
