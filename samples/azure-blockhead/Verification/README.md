@@ -2,6 +2,18 @@
 
 This is a test record for the sample package. The step-by-step authoring process is in the [custom hammer guide](../../../docs/custom-hammer-authoring-ue4-27.md).
 
+## v60 atlas package
+
+`AzureBlockhead-v60.rhammer` was cooked in UE 4.27 with nine package assets, imported into the RMM hammer library, built as a one-row custom-hammer PAK, and deployed to Ragnarock. The package uses the new detailed 2×2 enamel atlas while retaining the stock handle and head gauge material references.
+
+The RagnaLoader `flat-ragna-blockhead-hammer-hover-custom-visual` interaction case passed. A follow-up case used the same menu path and captured the live preview at three points in its rotation. The cyan, navy, and ice atlas details remain on their respective mesh faces as the model turns:
+
+1. [Initial angle](ChangingRoom-v60-angle-1.png)
+2. [Second angle](ChangingRoom-v60-angle-2.png)
+3. [Third angle](ChangingRoom-v60-angle-3.png)
+
+This confirms the atlas is attached to the mesh in the flat changing-room preview. It does not establish how the texture behaves during physical head movement in VR. The headsetless Monado cloakroom case did not reach the door actor (`BP_DoorCR_3` was not found in its starting map), so the direct VR view remains unverified.
+
 ## v55 package
 
 `AzureBlockhead-v55.rhammer` passed RMM's hammer-library importer. RMM's `HammerPakBuildService` built and deployed a PAK with one custom hammer row. The package contains the authored mesh, body material, base-color texture, transparent icon, preview, and Windows shader archive; both gauge sections resolve to Ragnarock's stock material instances.

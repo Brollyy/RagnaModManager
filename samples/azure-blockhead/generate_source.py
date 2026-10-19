@@ -8,16 +8,19 @@ SOURCE = ROOT / "Source"
 
 
 def write_base_color(path: Path) -> None:
-    """Create a padded atlas compensating for UE 4.27's imported FBX V flip."""
-    image = Image.new("RGB", (512, 512), (22, 178, 204))
-    draw = ImageDraw.Draw(image)
-    draw.rectangle((256, 0, 511, 255), fill=(248, 179, 43))
-    draw.rectangle((0, 256, 255, 511), fill=(16, 45, 87))
-    draw.rectangle((256, 256, 511, 511), fill=(112, 218, 224))
+    """Resize the authored four-tile atlas and compensate for UE4's FBX V flip."""
+    art_path = SOURCE / "T_RMM_AzureBlockhead_Atlas_Art.png"
+    if not art_path.is_file():
+        raise FileNotFoundError(f"Missing authored atlas artwork: {art_path}")
+    resampling = getattr(Image, "Resampling", Image)
+    image = Image.open(art_path).convert("RGB").resize(
+        (512, 512), resampling.LANCZOS
+    )
     # The edited mesh's cooked UV0 has V inverted relative to the authored
-    # FBX UVs. Flip the source atlas so each face still samples its named tile
-    # after UE 4.27 cooks the mesh.
-    image.transpose(Image.Transpose.FLIP_TOP_BOTTOM).save(path)
+    # FBX UVs. The face regions use 8% insets in each quadrant to keep the
+    # atlas details away from neighboring tiles after mip filtering.
+    transpose = getattr(Image, "Transpose", Image)
+    image.transpose(transpose.FLIP_TOP_BOTTOM).save(path)
 
 
 def draw_icon(path: Path) -> None:
