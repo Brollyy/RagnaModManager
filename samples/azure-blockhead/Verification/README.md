@@ -2,6 +2,14 @@
 
 This is a test record for the sample package. The step-by-step authoring process is in the [custom hammer guide](../../../docs/custom-hammer-authoring-ue4-27.md).
 
+## v71 face-continuous atlas mapping
+
+The v69 Changing Room captures showed that the FBX V flip moved the assigned atlas regions vertically: the front face sampled the navy artwork instead of cyan. Pre-flipping the authored UVs corrected the quadrant selection, but each piece around the stock head-marker opening still stretched the entire tile independently. The captured [first angle](ChangingRoom-v69-angle-1.png) and [second angle](ChangingRoom-v69-angle-2.png) show the UV layout problem clearly.
+
+The v71 mesh builder now projects all pieces through their complete box face, so the art should continue behind the marker opening instead of restarting on every cutout panel. It also remaps all four retained body UV channels to the navy swatch, while preserving the stock gauge UV channels and materials. UE 4.27 cooked the package with zero errors or warnings. The v71 package SHA-256 is `64fc33ec8abb16b64810ca3b327ab39d66d14bc7a961d0f0985726b000ef6233`; RMM built and deployed a one-row PAK with SHA-256 `298326ceae53314747f4a4116a44c43d79e76980ad89871306b0c354807c5904`.
+
+The current v71 runtime has loaded the main-menu map, but its viewport remains on `Checking Internet connectivity…`; no Changing Room image is available for this build yet. The atlas projection change therefore remains visually unverified in game. Physical VR head movement is also unverified.
+
 ## v60 atlas package
 
 `AzureBlockhead-v60.rhammer` was cooked in UE 4.27 with nine package assets, imported into the RMM hammer library, built as a one-row custom-hammer PAK, and deployed to Ragnarock. The package uses the new detailed 2×2 enamel atlas while retaining the stock handle and head gauge material references.

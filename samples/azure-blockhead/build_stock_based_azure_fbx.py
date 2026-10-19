@@ -25,7 +25,6 @@ STOCK_GAUGE_UV_BOUNDS = {
     3: {"M_JaugeManche": (0.181, 0.801, 0.523, 0.875), "M_JaugeTete": (0.676, 0.033, 0.821, 0.180)},
 }
 UE_FBX_LAYER_FOR_COOKED_CHANNEL = (1, 2, 3, 0)
-COOKED_BODY_UV_SOURCE_LAYER = 1
 
 
 def uv_bounds(mesh, material_index, uv_layer, flip_v=False, engine_flip_v=False):
@@ -75,9 +74,25 @@ def find_stock_gauge_uv_sources(mesh, material_names):
     return result
 
 
-def add_quad(vertices, channel_count, faces, points, region):
+def projected_uvs(points, u_axis, v_axis, u_bounds, v_bounds):
+    """Project a mesh patch through the UV layout of its complete box face."""
+    u0, u1 = u_bounds
+    v0, v1 = v_bounds
+    return [
+        ((point[u_axis] - u0) / (u1 - u0), (point[v_axis] - v0) / (v1 - v0))
+        for point in points
+    ]
+
+
+def add_quad(vertices, channel_count, faces, points, region, projected_coords):
     u0, v0, u1, v1 = ATLAS[region]
-    coords = [(u0,v0),(u1,v0),(u1,v1),(u0,v1)]
+    # UE 4.27 flips V while importing the exported FBX. Pre-flip the authored
+    # atlas coordinates here so the cooked UVs land in the intended quadrant
+    # and preserve the artwork's vertical orientation in game.
+    coords = [
+        (u0 + s * (u1 - u0), 1.0 - (v0 + t * (v1 - v0)))
+        for s, t in projected_coords
+    ]
     start=len(vertices)
     vertices.extend(points)
     for corner_ids in ((0,1,2),(0,2,3)):
@@ -168,14 +183,14 @@ def main():
                     uv=tuple(source_mesh.uv_layers[source_channel].data[loop_index].uv)
                     if flip_v:
                         uv=(uv[0], 1.0-uv[1])
-                elif slot=="M_Character" and channel==COOKED_BODY_UV_SOURCE_LAYER:
+                elif slot=="M_Character":
                     original=tuple(layer.data[loop_index].uv)
                     u0,v0,u1,v1=ATLAS["navy"]
-                    # Keep the donor body's UV island shape while fitting it
-                    # inside the solid navy swatch. A single-point mapping
-                    # looked correct on this flat tile but created degenerate
-                    # tangents during the UE 4.27 FBX import.
-                    uv=(u0+original[0]*(u1-u0),v0+original[1]*(v1-v0))
+                    # The custom material samples UV0, while FBX import can
+                    # reorder the donor's UV channels. Fit every body channel
+                    # into the same swatch so the retained handle/body maps
+                    # consistently whichever channel the cooked material uses.
+                    uv=(u0+original[0]*(u1-u0),1.0-(v0+original[1]*(v1-v0)))
                 else:
                     uv=tuple(layer.data[loop_index].uv)
                 values.append(uv)
@@ -187,18 +202,33 @@ def main():
     # run into the mesh along Y. A narrow end face keeps the gauge from reading
     # as a marker painted onto the broad side of the head.
     x0,x1,yf,yb,z0,z1=-10.5,10.5,-15.875,25.0,37.5,55.25
-    # The donor marker sits behind the new head end. Move its frontmost edge
-    # slightly ahead of the atlas face and leave a wider aperture. This keeps
-    # the stock masked marker out of the atlas pixels across the preview's
-    # rotation without projecting the marker across the neighboring faces.
+    # Keep the marker almost flush with the atlas face. The larger aperture
+    # accommodates its masked geometry at oblique race angles without letting
+    # its outline project across the surrounding custom body panels.
     marker_vertices=[vertices[index] for index in head_gauge_vertices.values()]
     if marker_vertices:
         marker_front_y=min(point[1] for point in marker_vertices)
-        marker_shift_y=yf-0.75-marker_front_y
+        marker_shift_y=yf-0.25-marker_front_y
         for index in head_gauge_vertices.values():
             x,y,z=vertices[index]
             vertices[index]=(x,y+marker_shift_y,z)
-    def quad(points,region): add_quad(vertices,channel_count,faces,points,region)
+    def quad(points, region, uv_projection):
+        add_quad(vertices, channel_count, faces, points, region, uv_projection(points))
+
+    def front_uv(points):
+        return projected_uvs(points, 0, 2, (x0, x1), (z0, z1))
+
+    def back_uv(points):
+        return projected_uvs(points, 0, 2, (x0, x1), (z0, z1))
+
+    def side_uv(points):
+        return projected_uvs(points, 1, 2, (yf, yb), (z0, z1))
+
+    def top_uv(points):
+        return projected_uvs(points, 0, 1, (x0, x1), (yf, yb))
+
+    def bottom_uv(points):
+        return projected_uvs(points, 0, 1, (x0, x1), (yf, yb))
     # Leave a pocket around the stock head gauge rather than laying the bright
     # custom face behind its faceted geometry. Derive the opening from the
     # transformed gauge geometry and leave clearance for oblique views.
@@ -206,26 +236,32 @@ def main():
     pocket_y=-13.25
     marker_vertices=[vertices[index] for index in head_gauge_vertices.values()]
     if marker_vertices:
-        clearance=3.0
+        clearance=5.0
         hole_x0=max(x0+0.25,min(point[0] for point in marker_vertices)-clearance)
         hole_x1=min(x1-0.25,max(point[0] for point in marker_vertices)+clearance)
         hole_z0=max(z0+0.25,min(point[2] for point in marker_vertices)-clearance)
         hole_z1=min(z1-0.25,max(point[2] for point in marker_vertices)+clearance)
-    quad([(x0,yf,z0),(x1,yf,z0),(x1,yf,hole_z0),(x0,yf,hole_z0)],"cyan")
-    quad([(x0,yf,hole_z1),(x1,yf,hole_z1),(x1,yf,z1),(x0,yf,z1)],"cyan")
-    quad([(x0,yf,hole_z0),(hole_x0,yf,hole_z0),(hole_x0,yf,hole_z1),(x0,yf,hole_z1)],"cyan")
-    quad([(hole_x1,yf,hole_z0),(x1,yf,hole_z0),(x1,yf,hole_z1),(hole_x1,yf,hole_z1)],"cyan")
+    quad([(x0,yf,z0),(x1,yf,z0),(x1,yf,hole_z0),(x0,yf,hole_z0)],"cyan",front_uv)
+    quad([(x0,yf,hole_z1),(x1,yf,hole_z1),(x1,yf,z1),(x0,yf,z1)],"cyan",front_uv)
+    quad([(x0,yf,hole_z0),(hole_x0,yf,hole_z0),(hole_x0,yf,hole_z1),(x0,yf,hole_z1)],"cyan",front_uv)
+    quad([(hole_x1,yf,hole_z0),(x1,yf,hole_z0),(x1,yf,hole_z1),(hole_x1,yf,hole_z1)],"cyan",front_uv)
     quad([(hole_x0,pocket_y,hole_z0),(hole_x1,pocket_y,hole_z0),
-          (hole_x1,pocket_y,hole_z1),(hole_x0,pocket_y,hole_z1)],"navy")
+          (hole_x1,pocket_y,hole_z1),(hole_x0,pocket_y,hole_z1)],"navy",front_uv)
     # Keep the gold trim proud of the cyan face. Near-coplanar overlays caused
     # visible raster flicker/bleeding around the front details in the race.
-    for xa,xb in ((-9.0,-7.8),(7.8,9.0)):
-        quad([(xa,yf-.35,39.0),(xb,yf-.35,39.0),(xb,yf-.35,53.5),(xa,yf-.35,53.5)],"gold")
-    quad([(x1,yb,z0),(x0,yb,z0),(x0,yb,z1),(x1,yb,z1)],"navy")
-    quad([(x0,yb,z0),(x0,yf,z0),(x0,yf,z1),(x0,yb,z1)],"navy")
-    quad([(x1,yf,z0),(x1,yb,z0),(x1,yb,z1),(x1,yf,z1)],"ice")
-    quad([(x0,yf,z1),(x1,yf,z1),(x1,yb,z1),(x0,yb,z1)],"ice")
-    quad([(x0,yb,z0),(x1,yb,z0),(x1,yf,z0),(x0,yf,z0)],"navy")
+    for trim_index,(xa,xb) in enumerate(((-9.0,-7.8),(7.8,9.0))):
+        trim_u0, trim_u1 = (0.0, 0.5) if trim_index == 0 else (0.5, 1.0)
+        trim_uv = lambda points, lo=trim_u0, hi=trim_u1, x_start=xa, x_end=xb: [
+            (lo + ((point[0] - x_start) / (x_end - x_start)) * (hi - lo),
+             (point[2] - 39.0) / (53.5 - 39.0))
+            for point in points
+        ]
+        quad([(xa,yf-.35,39.0),(xb,yf-.35,39.0),(xb,yf-.35,53.5),(xa,yf-.35,53.5)],"gold",trim_uv)
+    quad([(x1,yb,z0),(x0,yb,z0),(x0,yb,z1),(x1,yb,z1)],"navy",back_uv)
+    quad([(x0,yb,z0),(x0,yf,z0),(x0,yf,z1),(x0,yb,z1)],"navy",side_uv)
+    quad([(x1,yf,z0),(x1,yb,z0),(x1,yb,z1),(x1,yf,z1)],"ice",side_uv)
+    quad([(x0,yf,z1),(x1,yf,z1),(x1,yb,z1),(x0,yb,z1)],"ice",top_uv)
+    quad([(x0,yb,z0),(x1,yb,z0),(x1,yf,z0),(x0,yf,z0)],"navy",bottom_uv)
 
     bpy.data.objects.remove(source,do_unlink=True)
     mesh=bpy.data.meshes.new("SM_AzureBlockhead")
