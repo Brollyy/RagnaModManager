@@ -229,10 +229,13 @@ icon = import_texture("T_RMM_AzureBlockhead_Icon.png", "T_AzureBlockhead_Icon", 
 base_color = import_texture(
     "T_RMM_AzureBlockhead_BaseColor.png", "T_RMM_AzureBlockhead_BaseColor", MESH_FOLDER
 )
-# The atlas UVs stay well inside each solid-color quadrant, leaving enough
-# padding for the normal mip chain while avoiding the shimmer caused by a
-# no-mipmap texture on small, moving race meshes.
-base_color.set_editor_property("filter", unreal.TextureFilter.TF_BILINEAR)
+# The atlas UVs stay inside each quadrant with a 41-pixel inset at the source
+# resolution. Generate the same mip chain used by the World texture group and
+# sample it trilinearly so the small, moving race mesh does not shimmer.
+base_color.set_editor_property(
+    "mip_gen_settings", unreal.TextureMipGenSettings.TMGS_FROM_TEXTURE_GROUP
+)
+base_color.set_editor_property("filter", unreal.TextureFilter.TF_TRILINEAR)
 base_color.set_editor_property("address_x", unreal.TextureAddress.TA_CLAMP)
 base_color.set_editor_property("address_y", unreal.TextureAddress.TA_CLAMP)
 unreal.EditorAssetLibrary.save_asset(

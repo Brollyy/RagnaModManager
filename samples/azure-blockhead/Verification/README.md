@@ -26,6 +26,12 @@ Three captures across the Changing Room preview rotation show the cyan, navy, an
 
 The v64 `.rhammer` contains nine cooked package assets. Its SHA-256 is `3158bfa7bd2bf5c1dd07a4730336756fab95a50ebc0a8b6e86dec8031dbeb647`; the deployed one-row PAK SHA-256 is `01ce28fa6cfc8d545b90fbcc3129ebcb592ffdef54205bc4887156a555c197ad`.
 
+## v65 atlas mipmaps
+
+The race capture of v64 showed severe black and white aliasing on the moving atlas faces. The UE project asset still had `TMGS_NO_MIPMAPS`, despite the builder comment claiming it generated mips. The texture creation script now explicitly uses the World texture group's mip generation and trilinear filtering. The UE 4.27 editor reports `TMGS_FROM_TEXTURE_GROUP`, `TF_TRILINEAR`, and `TA_CLAMP` for both address axes after the rebuild. The cooked texture export grew from 131,463 bytes to 175,491 bytes, consistent with the additional mip levels.
+
+`AzureBlockhead-v65.rhammer` was imported into RMM and deployed with exactly one custom hammer row. Its SHA-256 is `9c6641a5cbb45271a97e6e964711e715c60ed58e70cd6b29530b569f6d7fd476`; the deployed PAK SHA-256 is `6905d757171e7b5b8acb865bd4d203383d3dc82ccb0af34666c6b8a7d671eb8e`. The host Steam launch did not produce a game process or window, so v65's in-game appearance and physical VR motion remain unverified.
+
 ## v55 package
 
 `AzureBlockhead-v55.rhammer` passed RMM's hammer-library importer. RMM's `HammerPakBuildService` built and deployed a PAK with one custom hammer row. The package contains the authored mesh, body material, base-color texture, transparent icon, preview, and Windows shader archive; both gauge sections resolve to Ragnarock's stock material instances.
