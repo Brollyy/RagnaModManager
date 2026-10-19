@@ -90,7 +90,11 @@ def add_quad(vertices, channel_count, faces, points, region, projected_coords):
     # atlas coordinates here so the cooked UVs land in the intended quadrant
     # and preserve the artwork's vertical orientation in game.
     coords = [
-        (u0 + s * (u1 - u0), 1.0 - (v0 + t * (v1 - v0)))
+        # The v73 runtime capture showed the asymmetric cyan mark rotated 180
+        # degrees from its authored orientation on the broad head face. Flip
+        # both normalized axes inside the tile; the UVs remain within the same
+        # padded atlas quadrant.
+        (u0 + (1.0 - s) * (u1 - u0), 1.0 - (v0 + (1.0 - t) * (v1 - v0)))
         for s, t in projected_coords
     ]
     start=len(vertices)

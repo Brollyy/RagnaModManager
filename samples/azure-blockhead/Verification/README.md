@@ -1,5 +1,16 @@
 # Azure Blockhead verification record
 
+## v74 atlas orientation comparison (not yet resolved in VR)
+
+The v73 Changing Room capture showed the asymmetric cyan mark rotated 180 degrees from the authored tile. v74 flips both normalized UV axes within each atlas tile. I deployed the v74 package and compared it in the live Changing Room against the stock Stairway to Valhalla hammer. The stock mesh and its combo marker render normally. Azure's cyan front and gold side tiles are visible as the preview rotates, but the cyan mark is obscured by the retained head-gauge area in the current angles; this does not yet establish that the atlas orientation or VR head-motion behavior is correct.
+
+- [Stock Stairway to Valhalla](ChangingRoom-v74-stock-stairway.png)
+- [Azure angle 1](ChangingRoom-v74-azure-angle-1.png)
+- [Azure angle 2](ChangingRoom-v74-azure-angle-2.png)
+- [Azure angle 3](ChangingRoom-v74-azure-angle-3.png)
+
+These are 468×472 host captures of a 948×944 logical game window under 2× scaling. The flat preview confirms that custom atlas colors render on the mesh and rotate with it; physical VR tracking remains unverified.
+
 This is a test record for the sample package. The step-by-step authoring process is in the [custom hammer guide](../../../docs/custom-hammer-authoring-ue4-27.md).
 
 ## v72 face-continuous atlas mapping
