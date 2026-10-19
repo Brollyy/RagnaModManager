@@ -187,28 +187,26 @@ def main():
     # run into the mesh along Y. A narrow end face keeps the gauge from reading
     # as a marker painted onto the broad side of the head.
     x0,x1,yf,yb,z0,z1=-10.5,10.5,-15.875,25.0,37.5,55.25
-    # The donor marker sits behind the new head end. Bring its frontmost edge
-    # forward to just ahead of the atlas face; otherwise an oblique preview
-    # lets the masked marker triangles peek across the textured face by
-    # parallax even though the marker fits inside the cutout in mesh space.
+    # The donor marker sits behind the new head end. Move its frontmost edge
+    # slightly ahead of the atlas face and leave a wider aperture. This keeps
+    # the stock masked marker out of the atlas pixels across the preview's
+    # rotation without projecting the marker across the neighboring faces.
     marker_vertices=[vertices[index] for index in head_gauge_vertices.values()]
     if marker_vertices:
         marker_front_y=min(point[1] for point in marker_vertices)
-        marker_shift_y=yf-0.25-marker_front_y
+        marker_shift_y=yf-0.75-marker_front_y
         for index in head_gauge_vertices.values():
             x,y,z=vertices[index]
             vertices[index]=(x,y+marker_shift_y,z)
     def quad(points,region): add_quad(vertices,channel_count,faces,points,region)
     # Leave a pocket around the stock head gauge rather than laying the bright
-    # custom face behind its faceted geometry. The preview can view the gauge
-    # at a steep angle, so a tight cutout lets the gauge's masked triangles
-    # project across the atlas face. Derive the opening from the transformed
-    # gauge geometry and leave clearance for that parallax.
+    # custom face behind its faceted geometry. Derive the opening from the
+    # transformed gauge geometry and leave clearance for oblique views.
     hole_x0,hole_x1,hole_z0,hole_z1=-5.9,5.9,38.25,49.4
     pocket_y=-13.25
     marker_vertices=[vertices[index] for index in head_gauge_vertices.values()]
     if marker_vertices:
-        clearance=2.0
+        clearance=3.0
         hole_x0=max(x0+0.25,min(point[0] for point in marker_vertices)-clearance)
         hole_x1=min(x1-0.25,max(point[0] for point in marker_vertices)+clearance)
         hole_z0=max(z0+0.25,min(point[2] for point in marker_vertices)-clearance)

@@ -14,6 +14,18 @@ The RagnaLoader `flat-ragna-blockhead-hammer-hover-custom-visual` interaction ca
 
 This confirms the atlas is attached to the mesh in the flat changing-room preview. It does not establish how the texture behaves during physical head movement in VR. The headsetless Monado cloakroom case did not reach the door actor (`BP_DoorCR_3` was not found in its starting map), so the direct VR view remains unverified.
 
+## v64 head-marker clearance
+
+The v60 captures showed dark marker-shaped patches on top of the atlas in oblique views. To isolate the cause, I built a temporary mesh with the stock head-marker section removed; the atlas rendered cleanly. A production-preserving build then retained the stock marker material and geometry, moved its frontmost point 0.75 Blender units ahead of the atlas plane, and widened the opening around its measured bounds from 2 to 3 units. The v64 package was imported into RMM and deployed as the only enabled custom hammer.
+
+Three captures across the Changing Room preview rotation show the cyan, navy, and ice atlas faces without the previous patches. The stock handle gauge remains on the mesh. This verifies the atlas in the flat preview; the race combo fill and physical VR head movement have not been rechecked with v64.
+
+1. [First angle](ChangingRoom-v64-angle-1.png)
+2. [Second angle](ChangingRoom-v64-angle-2.png)
+3. [Third angle](ChangingRoom-v64-angle-3.png)
+
+The v64 `.rhammer` contains nine cooked package assets. Its SHA-256 is `3158bfa7bd2bf5c1dd07a4730336756fab95a50ebc0a8b6e86dec8031dbeb647`; the deployed one-row PAK SHA-256 is `01ce28fa6cfc8d545b90fbcc3129ebcb592ffdef54205bc4887156a555c197ad`.
+
 ## v55 package
 
 `AzureBlockhead-v55.rhammer` passed RMM's hammer-library importer. RMM's `HammerPakBuildService` built and deployed a PAK with one custom hammer row. The package contains the authored mesh, body material, base-color texture, transparent icon, preview, and Windows shader archive; both gauge sections resolve to Ragnarock's stock material instances.

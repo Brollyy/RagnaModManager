@@ -39,7 +39,7 @@ set UE427=C:\Program Files\Epic Games\UE_4.27
 Use the package builder to assemble the `.rhammer` from the Windows cook. For example, still from this directory:
 
 ```bat
-python build_rhammer.py "..\Saved\Cooked\WindowsNoEditor\RMMAzureBlockhead\Content" --output "..\..\AzureBlockhead-v53.rhammer"
+python build_rhammer.py "..\Saved\Cooked\WindowsNoEditor\RMMAzureBlockhead\Content" --output "..\..\AzureBlockhead-v64.rhammer"
 ```
 
 The builder checks the cooked body material, mesh, texture, icon, PCD3D shader metadata, and shader archive. The temporary gauge materials are excluded from the `.rhammer`; at runtime the stock material paths resolve inside Ragnarock. Keep the manifest and builder paths aligned if you change the package's unique content root.
