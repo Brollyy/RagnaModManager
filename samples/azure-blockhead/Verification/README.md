@@ -8,7 +8,7 @@ The v69 Changing Room captures showed that the FBX V flip moved the assigned atl
 
 The v71 mesh builder now projects all pieces through their complete box face, so the art should continue behind the marker opening instead of restarting on every cutout panel. It also remaps all four retained body UV channels to the navy swatch, while preserving the stock gauge UV channels and materials. UE 4.27 cooked the package with zero errors or warnings. The v71 package SHA-256 is `64fc33ec8abb16b64810ca3b327ab39d66d14bc7a961d0f0985726b000ef6233`; RMM built and deployed a one-row PAK with SHA-256 `298326ceae53314747f4a4116a44c43d79e76980ad89871306b0c354807c5904`.
 
-The current v71 runtime has loaded the main-menu map, but its viewport remains on `Checking Internet connectivity…`; no Changing Room image is available for this build yet. The atlas projection change therefore remains visually unverified in game. Physical VR head movement is also unverified.
+The v71 runtime has not passed visual verification. One launch stayed on `Checking Internet connectivity…`; a later launch opened `Master_CR` but the viewport went black before the level reported loaded. For comparison, the v70 package opened the Changing Room and Hammer tab in the same environment: [v70 baseline capture](ChangingRoom-v70-baseline.png). v70 is restored as the installed test package while the v71 runtime issue is investigated. Physical VR head movement remains unverified.
 
 ## v60 atlas package
 
