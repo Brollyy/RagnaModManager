@@ -1,0 +1,69 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="using:RagnaModManager.Desktop"
+             x:Class="RagnaModManager.Desktop.HammerLibraryView"
+             x:DataType="local:HammerLibraryPageViewModel">
+  <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+    <StackPanel Spacing="14">
+      <Border Classes="card" Padding="18">
+        <StackPanel Spacing="12">
+          <TextBlock Text="Hammer Library" FontSize="22" FontWeight="SemiBold" />
+          <TextBlock Text="{Binding CountLabel}" Foreground="#4DE1C1" />
+          <TextBlock Text="Collect your custom hammers here, then add them to Ragnarock in one step." Foreground="#9AAAC2" TextWrapping="Wrap" MaxWidth="760" />
+          <WrapPanel ItemSpacing="8" LineSpacing="8">
+            <Button Content="Add a hammer" Classes="accent" Padding="14,9" Command="{Binding Import}" />
+            <Button Content="{Binding BuildLabel}" Padding="14,9" IsEnabled="{Binding CanBuild}" Command="{Binding Build}" />
+            <Button Content="Open library folder" Padding="14,9" Command="{Binding OpenFolder}" />
+          </WrapPanel>
+          <Border Background="#17243B" BorderBrush="#2A3A55" BorderThickness="1" CornerRadius="8" Padding="12">
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12" RowDefinitions="Auto,Auto" RowSpacing="6">
+              <TextBlock Text="Game version" FontWeight="SemiBold" />
+              <TextBlock Grid.Column="1" Text="{Binding GameBuild}" Foreground="#4DE1C1" />
+              <TextBlock Grid.Row="1" Text="Build status" FontWeight="SemiBold" />
+              <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding BuildStatus}" Foreground="#FFB15C" TextWrapping="Wrap" />
+            </Grid>
+          </Border>
+        </StackPanel>
+      </Border>
+
+      <Border Classes="card" Padding="18" IsVisible="{Binding IsEmpty}">
+        <StackPanel Spacing="8">
+          <TextBlock Text="Your hammer library is empty" FontSize="18" FontWeight="SemiBold" />
+          <TextBlock Text="Add a hammer package to start your collection." Foreground="#9AAAC2" TextWrapping="Wrap" />
+        </StackPanel>
+      </Border>
+
+      <ItemsControl ItemsSource="{Binding Items}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel ItemWidth="300" ItemHeight="320" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="local:HammerLibraryRowViewModel">
+            <Border Classes="card" Padding="12" Margin="0,0,12,12" Width="280" Height="304">
+              <Grid RowDefinitions="160,Auto,*,Auto" RowSpacing="8">
+                <Border Grid.Row="0" Background="#101A2B" CornerRadius="6" ClipToBounds="True">
+                  <Image Source="{Binding Thumbnail}" Stretch="Uniform" />
+                </Border>
+                <StackPanel Grid.Row="1" Spacing="3">
+                  <TextBlock Text="{Binding Name}" FontSize="17" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  <StackPanel Orientation="Horizontal" Spacing="4">
+                    <TextBlock Text="by" Foreground="#9AAAC2" />
+                    <TextBlock Text="{Binding Author}" Foreground="#9AAAC2" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                </StackPanel>
+                <TextBlock Grid.Row="2" Text="{Binding Description}" Foreground="#9AAAC2" TextWrapping="Wrap" MaxLines="3" />
+                <Grid Grid.Row="3" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                  <CheckBox Content="Enabled" IsChecked="{Binding Enabled, Mode=TwoWay}" Command="{Binding ToggleEnabled}" VerticalAlignment="Center" />
+                  <Button Grid.Column="1" Content="Remove" Classes="destructive" Padding="10,7" Command="{Binding Remove}" />
+                  <TextBlock Grid.Column="2" Text="{Binding Version}" Foreground="#71829D" VerticalAlignment="Center" />
+                </Grid>
+              </Grid>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>
