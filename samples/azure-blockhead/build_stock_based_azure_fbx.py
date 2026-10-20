@@ -11,9 +11,14 @@ from pathlib import Path
 
 import bpy
 
-ATLAS = {"cyan": (0.08, 0.08, 0.42, 0.42), "gold": (0.58, 0.08, 0.92, 0.42),
-         "navy": (0.08, 0.58, 0.42, 0.92), "ice": (0.58, 0.58, 0.92, 0.92)}
-SLOTS = ["M_Character", "M_JaugeManche", "M_JaugeTete"]
+# Legacy atlas bounds are retained only for the unused donor body UV channels.
+# New head surfaces use local UVs and one Texture2D material per tile.
+ATLAS = {"cyan": (0.15625, 0.15625, 0.34375, 0.34375),
+         "gold": (0.65625, 0.15625, 0.84375, 0.34375),
+         "navy": (0.15625, 0.65625, 0.34375, 0.84375),
+         "ice": (0.65625, 0.65625, 0.84375, 0.84375)}
+STOCK_SLOTS = ["M_Character", "M_JaugeManche", "M_JaugeTete"]
+SLOTS = STOCK_SLOTS + ["M_Azure_Cyan", "M_Azure_Gold", "M_Azure_Ice"]
 # UE 4.27's FBX importer reorders UV layers and changes V orientation. The
 # cooked-channel to FBX-layer order is stable in the measured 4.27 import, but
 # V orientation can differ after Blender round trips. Find the donor layer and
@@ -84,19 +89,37 @@ def projected_uvs(points, u_axis, v_axis, u_bounds, v_bounds):
     ]
 
 
-def add_quad(vertices, channel_count, faces, points, region, projected_coords):
-    u0, v0, u1, v1 = ATLAS[region]
-    # UE 4.27 flips V while importing the exported FBX. Pre-flip the authored
-    # atlas coordinates here so the cooked UVs land in the intended quadrant
-    # and preserve the artwork's vertical orientation in game.
-    coords = [
-        # The v73 runtime capture showed the asymmetric cyan mark rotated 180
-        # degrees from its authored orientation on the broad head face. Flip
-        # both normalized axes inside the tile; the UVs remain within the same
-        # padded atlas quadrant.
-        (u0 + (1.0 - s) * (u1 - u0), 1.0 - (v0 + (1.0 - t) * (v1 - v0)))
-        for s, t in projected_coords
+def body_uv_patch(corner_count, radius=0.001):
+    """Return a small non-degenerate UV patch wholly inside the navy texture."""
+    import math
+
+    center_u = 0.5
+    cooked_center_v = 0.5
+    if corner_count == 3:
+        offsets = ((-1.0, -1.0), (1.0, -1.0), (0.0, 1.0))
+    else:
+        offsets = tuple(
+            (math.cos(2 * math.pi * i / corner_count), math.sin(2 * math.pi * i / corner_count))
+            for i in range(corner_count)
+        )
+    # Store V pre-flipped because UE 4.27 flips FBX V during import.
+    return [
+        (center_u + du * radius, 1.0 - (cooked_center_v + dv * radius))
+        for du, dv in offsets
     ]
+
+
+def add_quad(vertices, channel_count, faces, points, region, projected_coords):
+    # The FBX axis conversion and UE import rotation reverse the custom head's
+    # horizontal axis. Reflect U within each tile so the cooked front reads
+    # left-to-right correctly. This matches the checked-in FBX: at x=-10.5 its
+    # front samples the tile's high-U edge, and at x=+16 its low-U edge.
+    # The UVs match the previously runtime-checked atlas orientation after UE's
+    # FBX V conversion. The head regions are separate, clamp-addressed
+    # Texture2D assets, so local UVs prevent sampling beyond a tile at grazing
+    # angles.
+    material_slot = "M_Character" if region == "navy" else "M_Azure_" + region.title()
+    coords = [(1.0 - s, t) for s, t in projected_coords]
     start=len(vertices)
     vertices.extend(points)
     for corner_ids in ((0,1,2),(0,2,3)):
@@ -109,7 +132,7 @@ def add_quad(vertices, channel_count, faces, points, region, projected_coords):
             # material samples the remapped channel. Gauge sections below
             # still retain their exact donor UV values.
             channel_uvs.append([coords[i] for i in corner_ids])
-        faces.append(("M_Character",indices,channel_uvs))
+        faces.append((material_slot,indices,channel_uvs))
 
 
 def main():
@@ -131,8 +154,8 @@ def main():
             import re
             slot.material.name = re.sub(r"\.\d{3}$", "", slot.material.name)
     material_names=[slot.material.name if slot.material else "" for slot in source.material_slots]
-    if material_names!=SLOTS:
-        raise RuntimeError(f"Expected material slots {SLOTS}; got {material_names}")
+    if material_names!=STOCK_SLOTS:
+        raise RuntimeError(f"Expected stock donor material slots {STOCK_SLOTS}; got {material_names}")
     gauge_uv_sources=find_stock_gauge_uv_sources(source_mesh,material_names)
     print("Stock cooked gauge UV source map: "+repr(gauge_uv_sources))
     donor_materials=[slot.material for slot in source.material_slots]
@@ -178,9 +201,10 @@ def main():
                 offset_ids.append(head_gauge_vertices[vertex_index])
             ids=offset_ids
         channel_uvs=[]
+        body_patch=body_uv_patch(len(loops)) if slot=="M_Character" else None
         for channel,layer in enumerate(source_mesh.uv_layers):
             values=[]
-            for loop_index in loops:
+            for corner,loop_index in enumerate(loops):
                 if slot in ("M_JaugeManche", "M_JaugeTete") and channel < 4:
                     cooked_channel=UE_FBX_LAYER_FOR_COOKED_CHANNEL.index(channel)
                     source_channel, flip_v = gauge_uv_sources[cooked_channel]
@@ -190,13 +214,25 @@ def main():
                 elif slot=="M_Character":
                     original=tuple(layer.data[loop_index].uv)
                     u0,v0,u1,v1=ATLAS["navy"]
-                    # The custom material samples UV0, while FBX import can
-                    # reorder the donor's UV channels. Fit every body channel
-                    # into the same swatch so the retained handle/body maps
-                    # consistently whichever channel the cooked material uses.
-                    uv=(u0+original[0]*(u1-u0),1.0-(v0+original[1]*(v1-v0)))
+                    # The donor's first two channels collapse most body
+                    # triangles, producing degenerate tangent bases in UE.
+                    # Give those channels a tiny non-degenerate patch in the
+                    # navy tile. The material samples cooked TexCoord[0]; the
+                    # patch keeps every retained handle/body face navy while
+                    # allowing UE to build valid tangents. Channels 2 and 3
+                    # retain their donor layout remapped into the same tile.
+                    if channel < 2:
+                        uv=body_patch[corner]
+                    else:
+                        uv=(u0+original[0]*(u1-u0),1.0-(v0+original[1]*(v1-v0)))
                 else:
                     uv=tuple(layer.data[loop_index].uv)
+                if slot=="M_Character":
+                    # Retained body surfaces sample the standalone navy tile
+                    # with their small cooked-channel-0 patch. Unused donor
+                    # channels 2 and 3 retain their old in-atlas coordinates.
+                    if channel < 2 and not (0.0 <= uv[0] <= 1.0 and 0.0 <= uv[1] <= 1.0):
+                        raise RuntimeError(f"Retained body UV escaped the navy texture in channel {channel}: {uv}")
                 values.append(uv)
             channel_uvs.append(values)
         faces.append((slot,tuple(ids),channel_uvs))
@@ -205,14 +241,18 @@ def main():
     # The marker plane is the hammer-head end, so make the head's long axis
     # run into the mesh along Y. A narrow end face keeps the gauge from reading
     # as a marker painted onto the broad side of the head.
-    x0,x1,yf,yb,z0,z1=-10.5,10.5,-15.875,25.0,37.5,55.25
-    # Keep the marker almost flush with the atlas face. The larger aperture
-    # accommodates its masked geometry at oblique race angles without letting
-    # its outline project across the surrounding custom body panels.
+    # Match the stock Default Hammer head body bounds. The donor's head body
+    # spans X=-16..16, Y=-13.6..13.5, and Z=37.5..55.25; the front face sits
+    # slightly proud of the stock gauge at Y=-15.875. Extending the back face
+    # to Y=25 made the custom head over 40 units deep, so its two textured
+    # faces appeared detached and crossed one another as the preview turned.
+    x0,x1,yf,yb,z0,z1=-16.0,16.0,-15.875,13.5,37.5,55.25
+    # Move the stock marker forward to reduce its overlap with the atlas face
+    # while keeping its center close to the face plane at oblique viewing angles.
     marker_vertices=[vertices[index] for index in head_gauge_vertices.values()]
     if marker_vertices:
         marker_front_y=min(point[1] for point in marker_vertices)
-        marker_shift_y=yf-0.25-marker_front_y
+        marker_shift_y=yf-0.5-marker_front_y
         for index in head_gauge_vertices.values():
             x,y,z=vertices[index]
             vertices[index]=(x,y+marker_shift_y,z)
@@ -243,7 +283,10 @@ def main():
     pocket_y=-13.25
     marker_vertices=[vertices[index] for index in head_gauge_vertices.values()]
     if marker_vertices:
-        clearance=5.0
+        # The exported stock marker spans about 9.3 x 8.9 units. The clearance
+        # around its projected silhouette keeps most of the front texture
+        # visible while limiting marker overlap at oblique angles.
+        clearance=1.25
         hole_x0=max(x0+0.25,min(point[0] for point in marker_vertices)-clearance)
         hole_x1=min(x1-0.25,max(point[0] for point in marker_vertices)+clearance)
         hole_z0=max(z0+0.25,min(point[2] for point in marker_vertices)-clearance)
@@ -254,6 +297,34 @@ def main():
     quad([(hole_x1,yf,hole_z0),(x1,yf,hole_z0),(x1,yf,hole_z1),(hole_x1,yf,hole_z1)],"cyan",front_uv)
     quad([(hole_x0,pocket_y,hole_z0),(hole_x1,pocket_y,hole_z0),
           (hole_x1,pocket_y,hole_z1),(hole_x0,pocket_y,hole_z1)],"navy",front_uv)
+    # Close the deep opening around the retained head marker. Without these
+    # four inner walls, oblique views look through the clearance gap and reveal
+    # the dark scene behind the head. Map each wall within the navy atlas tile.
+    def cavity_solid_uvs(points, u_axis, v_axis, u_bounds, v_bounds):
+        # Sample a small patch at the center of the navy tile. Mapping the full
+        # tile onto a narrow cavity wall stretches its line art into prominent
+        # stripes when the preview turns obliquely.
+        coords = projected_uvs(points, u_axis, v_axis, u_bounds, v_bounds)
+        return [(0.5 + (u - 0.5) * 0.04, 0.5 + (v - 0.5) * 0.04) for u, v in coords]
+
+    def cavity_xy(points):
+        return cavity_solid_uvs(points, 0, 1, (hole_x0, hole_x1), (yf, pocket_y))
+
+    def cavity_yz(points):
+        return cavity_solid_uvs(points, 1, 2, (yf, pocket_y), (hole_z0, hole_z1))
+
+    # UE's FBX handedness conversion reverses these source windings. Order the
+    # source faces so cooked normals point from each wall into the opening;
+    # otherwise backface culling reveals the room through the pocket at oblique
+    # angles.
+    quad([(hole_x0,yf,hole_z0),(hole_x1,yf,hole_z0),
+          (hole_x1,pocket_y,hole_z0),(hole_x0,pocket_y,hole_z0)],"navy",cavity_xy)
+    quad([(hole_x0,yf,hole_z1),(hole_x0,pocket_y,hole_z1),
+          (hole_x1,pocket_y,hole_z1),(hole_x1,yf,hole_z1)],"navy",cavity_xy)
+    quad([(hole_x0,yf,hole_z0),(hole_x0,pocket_y,hole_z0),
+          (hole_x0,pocket_y,hole_z1),(hole_x0,yf,hole_z1)],"navy",cavity_yz)
+    quad([(hole_x1,yf,hole_z0),(hole_x1,yf,hole_z1),
+          (hole_x1,pocket_y,hole_z1),(hole_x1,pocket_y,hole_z0)],"navy",cavity_yz)
     # Keep the gold trim proud of the cyan face. Near-coplanar overlays caused
     # visible raster flicker/bleeding around the front details in the race.
     for xa,xb in ((-9.0,-7.8),(7.8,9.0)):
@@ -261,6 +332,9 @@ def main():
     quad([(x1,yb,z0),(x0,yb,z0),(x0,yb,z1),(x1,yb,z1)],"navy",back_uv)
     quad([(x0,yb,z0),(x0,yf,z0),(x0,yf,z1),(x0,yb,z1)],"navy",side_uv)
     quad([(x1,yf,z0),(x1,yb,z0),(x1,yb,z1),(x1,yf,z1)],"ice",side_uv)
+    # Outward normals are +Z on top and -Z on the bottom. Keep the face order
+    # aligned with those directions because the opaque surface material culls
+    # backfaces.
     quad([(x0,yf,z1),(x1,yf,z1),(x1,yb,z1),(x0,yb,z1)],"ice",top_uv)
     quad([(x0,yb,z0),(x1,yb,z0),(x1,yf,z0),(x0,yf,z0)],"navy",bottom_uv)
 
@@ -274,6 +348,8 @@ def main():
     # as different material slot names and breaks stock gauge binding.
     for material in donor_materials:
         mesh.materials.append(material)
+    for slot_name in SLOTS[len(donor_materials):]:
+        mesh.materials.append(bpy.data.materials.new(slot_name))
     for poly,(slot,_,_) in zip(mesh.polygons,faces):
         poly.material_index=SLOTS.index(slot); poly.use_smooth=False
     for channel in range(channel_count):

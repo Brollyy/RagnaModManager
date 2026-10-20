@@ -1,5 +1,71 @@
 # Azure Blockhead verification record
 
+## Current result: stock-aligned head geometry
+
+The stock donor's `M_Character` head spans X −16..16, Y −13.6..13.5, and Z 37.5..55.25. The custom replacement had used X −10.5..10.5 and Y −15.875..25, making it narrower and 13.8 units deeper than the stock head. That put its rear face beyond the donor head and made the front and rear textures appear detached as the preview turned.
+
+The builder now keeps the front just proud of the stock head gauge at Y −15.875 and places the rear at the donor's Y=13.5 boundary; it uses the full stock X and Z extents. The full UE 4.27 cook completed and the RMM package builder included 25 cooked files. The RagnaLoader Changing Room case passed, and the [front view](ChangingRoom-v158-stock-aligned-front.png) plus [12-frame rotation sweep](ChangingRoom-v158-stock-aligned-sweep.jpg) show the custom face staying on the hammer head as it turns. This verifies the flat-mode preview; physical VR head-motion behavior has not been tested in this run.
+
+## Stock comparison and atlas diagnosis
+
+The stock Default Hammer remains the baseline: [stock capture](ChangingRoom-v72-stock.png). Its `M_Character` surface and both combo-gauge sections use donor mesh UVs/materials. Azure retains the stock handle and the two gauge sections, with their stock materials and all four UV channels. Those stock combo parts render correctly.
+
+The custom Azure head is the difference: it projects new UVs into four regions of one atlas. The atlas material samples cooked `TexCoord[0]`. A flat-color ice tile still showed the same dark streaks, so the artwork details are not the cause. Increasing the atlas padding to 320 pixels also left angle-dependent streaks in the full rotation: [v106 sweep](ChangingRoom-v106-padded-atlas-sweep.jpg). At that point cross-region filtering was a working hypothesis, but the v107 split-texture capture below shows it cannot explain all of the artifacts.
+
+I then built v107 with one clamp-addressed Texture2D and material section per painted tile, retaining the original three stock slots first. UE 4.27 cooked the package and RMM built a one-row PAK. The first launch attempt stayed on a black screen, but that was a transient launch failure: rerunning the same v107 package reached the Changing Room and completed all 16 interaction captures. The [v107 rotation sweep](ChangingRoom-v107-split-textures-sweep.jpg) and [two full-size frames](ChangingRoom-v107-split-textures-angle-07.png) / [frame 09](ChangingRoom-v107-split-textures-angle-09.png) record the result. Compare those with the [stock hammer capture](ChangingRoom-v72-stock.png): the stock surfaces remain clean while Azure's custom head has severe dark streaks and patches at several rotation angles. Splitting the atlas into separate clamp-addressed textures did not remove them, so atlas tile bleed alone is not the cause. The retained stock handle and head gauges continue to render. This narrows the defect to the custom mesh surface UV/material assignment or geometry; it does not identify which of those is responsible. The known-good v87 package was later restored and deployed; its PAK SHA-256 is `c9d50410ed4b8a924540a80147d0507f909f1bb447a1fac3371a8f6ffa3cff4b`.
+
+## v87 stock-gauge interaction investigation
+
+The stock comparison remains clean: [stock Default Hammer](ChangingRoom-v72-stock.png). Azure's atlas stays attached to its faces, but black marks remain at the first preview angle: [Azure angle 1](ChangingRoom-v87-angle-1.png). A second angle is clean across the head face: [Azure angle 2](ChangingRoom-v87-angle-2.png). v87 adds inner walls around the recessed head-marker pocket and samples a small solid patch from the navy tile on those walls. This avoids the stretched stripes from the full-tile wall experiment, but does not resolve the marks at every angle.
+
+The v89 constant-body/no-gauges capture is not valid evidence: the preview did not render a usable hammer, so it cannot isolate the atlas from gauge geometry. Separate marker-hidden and gauge-section probes still showed the atlas artifact. The stock gauge sections and combo response are independently verified and remain the working comparison path.
+
+## Stock UV versus custom atlas mapping
+
+The stock `M_Character` body uses donor UVs; the custom Azure head uses new per-face UV projections into four atlas tiles. The body material samples `TexCoord[0]`. The donor gauge sections retain their stock UVs and material assignments, so their working combo response does not validate the custom atlas mapping. The builder additionally reflects U within each atlas tile and stores FBX V pre-flipped; the generated atlas image is also vertically flipped for UE's texture-coordinate convention. Those custom mapping transforms are the relevant comparison points for the reported reversed-looking atlas in VR.
+
+## v94 per-tile horizontal atlas diagnostic
+
+I exported the freshly imported UE 4.27 StaticMesh and inspected its first UV channel. The custom head UVs are present on every custom body face with non-degenerate triangles; the stock handle and head gauge UV/material sections remain separate. This rules out the earlier stale cooked export as evidence about the current atlas channel.
+
+For a direct orientation comparison, v94 flips the artwork horizontally inside each atlas tile while keeping the mesh, material, and gauge assets unchanged. The cyan emblem moves to the opposite side, but the dark stippling remains on the ice panel. A simple left-right artwork flip does not resolve the rendering defect. The interaction case passed and the captured Changing Room view is [here](ChangingRoom-v94-horizontal-atlas-diagnostic.png). This flat preview still does not test physical VR head movement.
+
+The diagnostic `.rhammer` SHA-256 is `6a74071f57424df45c7e32a57d0262ce0f09a82bdf0446f4246f89bbf3665222`; its deployed test PAK SHA-256 was `ce3c25136433a082fb7f4ed065b88c6b7a0c6d799ea1c47ee2b93c914136e956`. The normal v87 atlas was rebuilt and restored after the capture.
+
+## v95 current source rebuild
+
+After the flip diagnostic, I restored the standard atlas, recreated the UE texture/material, reimported the checked-in mesh, and cooked a fresh Windows package. Both Changing Room interaction cases passed. The first view shows the ice panel without the dense stippling seen in older captures: [angle 1](ChangingRoom-v95-current-rebuild-angle-1.png). A later preview angle still shows strong black diagonal banding across that panel: [angle 2](ChangingRoom-v95-current-rebuild-angle-2.png). The issue is therefore angle-dependent and remains unresolved; the atlas and mesh still need a fix that holds across the preview rotation.
+
+The current standard-texture `.rhammer` SHA-256 is `688e9158f4e45f62378243f200ae876b99278118e1a07d41835a4aa8a2b20da0`; its deployed PAK SHA-256 is `b04b37a31915f31d138db61ccdb88ad612eac15e6cc59c454274821eddab52b1`. This is the normal package restored in Ragnarock after the temporary marker-hidden diagnostic.
+
+## v98 texture-group filter probe
+
+Because the atlas banding changes with preview angle, I rebuilt the same mesh and texture with the texture's filter set to `TF_DEFAULT` so Unreal would use the World texture group's filter, instead of forcing trilinear filtering. The interaction cases passed. The previously banded angle 2 became visually cleaner: [angle 2](ChangingRoom-v98-texture-group-default-angle-2.png). However, angle 1 then rendered the whole ice side black: [angle 1](ChangingRoom-v98-texture-group-default-angle-1.png). The setting shifts the failure between views and is not a fix. The diagnostic `.rhammer` SHA-256 is `8fb7aec4a362a7bc12824dcb2e42960b7972c435cc01934c5c9e8dc99f674c1c`; its temporary PAK SHA-256 was `1c0e16148bf20d472f9a823825b86df2bf8388b156126d8aeb1490f991887951`. The normal trilinear package was redeployed afterward.
+
+## v96 stock-marker isolation
+
+To separate the custom atlas from the stock head marker, I imported a temporary copy of the current UE mesh with only the marker section's vertices recessed into the head. The atlas, material, and handle gauge were unchanged. The Changing Room capture still shows the same black diagonal banding across the custom ice face: [marker-hidden angle 2](ChangingRoom-v96-marker-hidden-angle-2.png). This rules out the stock head-marker geometry as the sole source of the bands; it does not rule out texture LOD/mip sampling or the custom side-face UV projection. The diagnostic `.rhammer` SHA-256 is `53908dfdd406a4349e29a1e3e2b5530cd9c521bb48a8ce1347f43855d5104e9e`, and its temporary deployed PAK SHA-256 was `34e42de1e68609162f5b0654acadf54fdf6ca1bdb9eecb9f1f6a395186f53090`. The normal package was redeployed immediately afterward.
+
+The stock Default Hammer comparison confirms the gauge sections use their donor UVs/materials and render cleanly. Azure's custom `M_Character` faces instead use projected UVs into four inset atlas regions, with the surface material sampling `TexCoord[0]`; changing marker geometry does not alter the artifact. The next useful controlled comparison is a custom atlas build with mip bleed prevented or a single untextured-color side face, keeping the stock handle and gauges identical.
+
+## v97 handle-gauge isolation attempt (invalid)
+
+A temporary build moved the handle-gauge vertices into the head to see whether that stock section overlaps the custom atlas. The preview then showed no hammer at all: [invalid capture](ChangingRoom-v97-handle-gauge-hidden-invalid.png). Although the UE import, cook, and RagnaLoader interaction case completed, the missing mesh makes this test unusable for causal comparison. Do not infer that the handle gauge causes the atlas artifact from this run. Its temporary PAK SHA-256 was `07d4acb8a6451acb41f8c01649027680ce73a597fdddaf8377feb74ce08e045a`; the normal package was restored afterward with PAK SHA-256 `b04b37a31915f31d138db61ccdb88ad612eac15e6cc59c454274821eddab52b1`.
+
+UE 4.27 cooked the textured v87 build with zero errors and one unrelated MLSDK warning. The rebuilt `.rhammer` SHA-256 is `59ff9ed227ef8330b1add20c8aa29fd3b2dd1da3ffbe7a159c9cd18a57e45414`; RMM deployed the one-row PAK with SHA-256 `bd22160c175803d8fa151606c8eaadf8164a509060e4752a676b2f2a2e70f607`. Both stock gauge sections are enabled in the deployed package. The black marks remain, so this is still an investigation build.
+
+The earlier v77 capture showed atlas tiles bleeding across the retained handle: [v77](ChangingRoom-v77-hammer-preview.png). Exporting the UE-imported mesh back to FBX showed that the old material sampled UV map 1, whose retained-body coordinates span unrelated atlas regions. Switching to cooked `TexCoord[0]` corrected that separate tile-bleed issue. v82 also patched degenerate retained-body UV triangles and reduced some edge artifacts: [v82 angle 1](ChangingRoom-v82-angle-1.png), [angle 2](ChangingRoom-v82-angle-2.png). The stock Stairway baseline is [here](ChangingRoom-v74-stock-stairway.png).
+
+## v79 atlas channel correction
+
+The earlier v77 capture showed bleeding because the body material sampled UV map 1 instead of the remapped UV map 0. v79 switched the material to `TexCoord[0]`; the atlas artwork appeared on the intended head faces as the preview rotated, though edge stipple remained. The subsequent v82 body UV patch removed the tangent-basis warnings and reduced those marks.
+
+## v76 atlas U-axis correction (runtime visual check pending)
+
+The v76 source FBX stores the custom front face with x=-10.5 at U=0.42 and x=+10.5 at U=0.08 in all four UV channels. The builder now emits that same tile-local U reflection; the stock gauge sections and their UVs remain unchanged. UE 4.27 cooked the package for `WindowsNoEditor` / `PCD3D_SM5` with zero errors and one unrelated MLSDK warning. The `.rhammer` SHA-256 is `02157062c92c449a53ee1dc35f70842c89e5d880efc277de95aac9b7f6425973`; RMM built and deployed a one-row PAK with SHA-256 `48eb6703bbc2e4bc73eecf07308087d8b785aab2e2fe64fe315c22088c45562e`.
+
+The game log records the deployed PAK in the precacher. A fresh RagnaLoader keyboard case launched the game to its initial menu, but the game window stayed at 228×212 despite the requested 948×988 size. The case stopped before it could navigate to the Changing Room, so this still does not verify the atlas in game. A clear Changing Room capture is required.
+
 ## v74 atlas orientation comparison (not yet resolved in VR)
 
 The v73 Changing Room capture showed the asymmetric cyan mark rotated 180 degrees from the authored tile. v74 flips both normalized UV axes within each atlas tile. I deployed the v74 package and compared it in the live Changing Room against the stock Stairway to Valhalla hammer. The stock mesh and its combo marker render normally. Azure's cyan front and gold side tiles are visible as the preview rotates, but the cyan mark is obscured by the retained head-gauge area in the current angles; this does not yet establish that the atlas orientation or VR head-motion behavior is correct.

@@ -7,20 +7,32 @@ ROOT = Path(__file__).parent
 SOURCE = ROOT / "Source"
 
 
-def write_base_color(path: Path) -> None:
-    """Resize the authored four-tile atlas and compensate for UE4's FBX V flip."""
-    art_path = SOURCE / "T_RMM_AzureBlockhead_Atlas_Art.png"
+def write_tile_textures() -> None:
+    """Split the authored atlas into independent, clamp-addressed tile textures."""
+    art_path = SOURCE / "T_RMM_AzureBlockhead_Atlas_Art_v3.png"
     if not art_path.is_file():
         raise FileNotFoundError(f"Missing authored atlas artwork: {art_path}")
     resampling = getattr(Image, "Resampling", Image)
-    image = Image.open(art_path).convert("RGB").resize(
-        (512, 512), resampling.LANCZOS
-    )
-    # The edited mesh's cooked UV0 has V inverted relative to the authored
-    # FBX UVs. The face regions use 8% insets in each quadrant to keep the
-    # atlas details away from neighboring tiles after mip filtering.
-    transpose = getattr(Image, "Transpose", Image)
-    image.transpose(transpose.FLIP_TOP_BOTTOM).save(path)
+    art = Image.open(art_path).convert("RGB")
+    if art.width != art.height or art.width % 2:
+        raise ValueError(f"Expected an even square 2x2 atlas, got {art.size}")
+    tile_size = art.width // 2
+    tiles = {
+        "Cyan": (0, 0),
+        "Gold": (1, 0),
+        "Navy": (0, 1),
+        "Ice": (1, 1),
+    }
+    for name, (column, row) in tiles.items():
+        tile = art.crop((
+            column * tile_size,
+            row * tile_size,
+            (column + 1) * tile_size,
+            (row + 1) * tile_size,
+        ))
+        tile.resize((512, 512), resampling.LANCZOS).save(
+            SOURCE / f"T_RMM_AzureBlockhead_{name}.png"
+        )
 
 
 def draw_icon(path: Path) -> None:
@@ -59,9 +71,9 @@ def draw_icon(path: Path) -> None:
 
 def main() -> None:
     SOURCE.mkdir(parents=True, exist_ok=True)
-    write_base_color(SOURCE / "T_RMM_AzureBlockhead_BaseColor.png")
+    write_tile_textures()
     draw_icon(SOURCE / "T_RMM_AzureBlockhead_Icon.png")
-    print("Generated Azure base-color atlas and transparent icon")
+    print("Generated four Azure tile textures and transparent icon")
 
 
 if __name__ == "__main__":

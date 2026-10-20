@@ -174,8 +174,8 @@ def create_gauge_material(name, parameter, second_parameter=None, full_combo_mar
     unreal.log("AZURE_GAUGE_MATERIAL_READY " + path + " parameter=" + parameter)
     return material
 
-def create_surface_material(base_color):
-    path = MATERIAL_FOLDER + "/M_AzureBlockhead"
+def create_surface_material(base_color, material_name):
+    path = MATERIAL_FOLDER + "/" + material_name
     material = (
         unreal.EditorAssetLibrary.load_asset(path)
         if unreal.EditorAssetLibrary.does_asset_exist(path)
@@ -183,7 +183,7 @@ def create_surface_material(base_color):
     )
     if not material:
         material = unreal.AssetToolsHelpers.get_asset_tools().create_asset(
-            "M_AzureBlockhead", MATERIAL_FOLDER, unreal.Material, unreal.MaterialFactoryNew()
+            material_name, MATERIAL_FOLDER, unreal.Material, unreal.MaterialFactoryNew()
         )
     material.set_editor_property("material_domain", unreal.MaterialDomain.MD_SURFACE)
     material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_OPAQUE)
@@ -199,6 +199,9 @@ def create_surface_material(base_color):
     )
     sample.set_editor_property("parameter_name", "BaseColor")
     sample.set_editor_property("texture", base_color)
+    # The authored head and handle use independent tile textures. Clamp
+    # addressing keeps every minified sample inside its own material texture.
+    sample.set_editor_property("const_coordinate", 0)
     if not unreal.MaterialEditingLibrary.connect_material_property(
         sample, "RGB", unreal.MaterialProperty.MP_EMISSIVE_COLOR
     ):
@@ -215,6 +218,7 @@ unreal.EditorAssetLibrary.make_directory(MATERIAL_FOLDER)
 for obsolete in (
     MATERIAL_FOLDER + "/M_AzureBlockhead_Gold",
     MATERIAL_FOLDER + "/M_AzureBlockhead_Navy",
+    MESH_FOLDER + "/T_RMM_AzureBlockhead_BaseColor",
     UI_FOLDER + "/MI_AzureBlockhead_Silhouette",
     UI_FOLDER + "/MI_AzureBlockhead_Symbol",
     UI_FOLDER + "/M_AzureBlockhead_Mark",
@@ -226,30 +230,24 @@ for obsolete in (
     if unreal.EditorAssetLibrary.does_asset_exist(obsolete):
         unreal.EditorAssetLibrary.delete_asset(obsolete)
 icon = import_texture("T_RMM_AzureBlockhead_Icon.png", "T_AzureBlockhead_Icon", UI_FOLDER)
-base_color = import_texture(
-    "T_RMM_AzureBlockhead_BaseColor.png", "T_RMM_AzureBlockhead_BaseColor", MESH_FOLDER
-)
-# Keep thin atlas edges crisp in the moving hammer. BC7 avoids the stronger
-# ringing that the default BC1 compressor introduces around the dark artwork.
-base_color.set_editor_property(
-    "compression_settings", unreal.TextureCompressionSettings.TC_BC7
-)
-base_color.set_editor_property(
-    "compression_quality", unreal.TextureCompressionQuality.TCQ_HIGHEST
-)
-# The atlas UVs stay inside each quadrant with a 41-pixel inset at the source
-# resolution. Generate the same mip chain used by the World texture group and
-# sample it trilinearly so the small, moving race mesh does not shimmer.
-base_color.set_editor_property(
-    "mip_gen_settings", unreal.TextureMipGenSettings.TMGS_FROM_TEXTURE_GROUP
-)
-base_color.set_editor_property("filter", unreal.TextureFilter.TF_TRILINEAR)
-base_color.set_editor_property("address_x", unreal.TextureAddress.TA_CLAMP)
-base_color.set_editor_property("address_y", unreal.TextureAddress.TA_CLAMP)
-unreal.EditorAssetLibrary.save_asset(
-    MESH_FOLDER + "/T_RMM_AzureBlockhead_BaseColor", only_if_is_dirty=False
-)
-create_surface_material(base_color)
+for tile_name in ("Cyan", "Gold", "Navy", "Ice"):
+    texture = import_texture(
+        "T_RMM_AzureBlockhead_" + tile_name + ".png",
+        "T_AzureBlockhead_" + tile_name,
+        MESH_FOLDER,
+    )
+    texture.set_editor_property("compression_settings", unreal.TextureCompressionSettings.TC_BC7)
+    texture.set_editor_property("compression_quality", unreal.TextureCompressionQuality.TCQ_HIGHEST)
+    texture.set_editor_property("mip_gen_settings", unreal.TextureMipGenSettings.TMGS_FROM_TEXTURE_GROUP)
+    texture.set_editor_property("filter", unreal.TextureFilter.TF_TRILINEAR)
+    texture.set_editor_property("address_x", unreal.TextureAddress.TA_CLAMP)
+    texture.set_editor_property("address_y", unreal.TextureAddress.TA_CLAMP)
+    unreal.EditorAssetLibrary.save_asset(
+        MESH_FOLDER + "/T_AzureBlockhead_" + tile_name,
+        only_if_is_dirty=False,
+    )
+    material_name = "M_AzureBlockhead" if tile_name == "Navy" else "M_Azure_" + tile_name
+    create_surface_material(texture, material_name)
 create_gauge_material(
     "M_AzureBlockhead_HandleGauge", "handleGauge", second_parameter="circularGauge"
 )

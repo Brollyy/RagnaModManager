@@ -32,7 +32,7 @@ set UE427=C:\Program Files\Epic Games\UE_4.27
 "%UE427%\Engine\Binaries\Win64\UE4Editor-Cmd.exe" "..\RMMAzureBlockhead.uproject" -run=cook -targetplatform=WindowsNoEditor -cookall
 ```
 
-`create_hammer_materials.py` imports the body texture and icon and creates the Azure body material plus temporary gauge parent materials. `create_stock_gauge_refs.py` creates editor-only material instances at the game's stock gauge paths. `reimport_azure_mesh.py` imports the donor-based mesh, checks the three stock section names and order, and assigns the body material plus those stock paths. Review the cook log: each slot must reload with its intended material path and the cook must complete for `WindowsNoEditor` / `PCD3D_SM5`.
+`create_hammer_materials.py` imports four separate tile textures and the icon, creates their surface materials, and creates temporary gauge parent materials. Separate tile textures keep their mip chains independent. `create_stock_gauge_refs.py` creates editor-only material instances at the game's stock gauge paths. `reimport_azure_mesh.py` imports the donor-based mesh, checks the three stock section names and order plus the three custom tile slots, and assigns the corresponding materials. Review the cook log: every slot must reload with its intended material path and the cook must complete for `WindowsNoEditor` / `PCD3D_SM5`.
 
 ## Package
 

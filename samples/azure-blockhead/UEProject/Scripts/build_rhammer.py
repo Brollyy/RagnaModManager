@@ -26,11 +26,20 @@ EXCLUDED_PACKAGE_PATHS = {
 }
 REQUIRED_PACKAGE_ASSETS = {
     "/Game/RMM/Hammers/azure-blockhead/Mesh/SM_AzureBlockhead_Rotated",
-    "/Game/RMM/Hammers/azure-blockhead/Mesh/T_RMM_AzureBlockhead_BaseColor",
+    "/Game/RMM/Hammers/azure-blockhead/Mesh/T_AzureBlockhead_Cyan",
+    "/Game/RMM/Hammers/azure-blockhead/Mesh/T_AzureBlockhead_Gold",
+    "/Game/RMM/Hammers/azure-blockhead/Mesh/T_AzureBlockhead_Navy",
+    "/Game/RMM/Hammers/azure-blockhead/Mesh/T_AzureBlockhead_Ice",
     "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead",
+    "/Game/RMM/Hammers/azure-blockhead/Materials/M_Azure_Cyan",
+    "/Game/RMM/Hammers/azure-blockhead/Materials/M_Azure_Gold",
+    "/Game/RMM/Hammers/azure-blockhead/Materials/M_Azure_Ice",
 }
 REQUIRED_SHADER_MATERIALS = {
     "/Game/RMM/Hammers/azure-blockhead/Materials/M_AzureBlockhead",
+    "/Game/RMM/Hammers/azure-blockhead/Materials/M_Azure_Cyan",
+    "/Game/RMM/Hammers/azure-blockhead/Materials/M_Azure_Gold",
+    "/Game/RMM/Hammers/azure-blockhead/Materials/M_Azure_Ice",
 }
 
 

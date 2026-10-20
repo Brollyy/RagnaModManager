@@ -21,6 +21,9 @@ SLOT_MATERIALS = {
     # stock material instances supply the exact live combo response.
     "M_JaugeManche": "/Game/Meshes/Hammers/DefaultHammer/MI_HandleGauge",
     "M_JaugeTete": "/Game/Meshes/Hammers/DefaultHammer/MI_HeadGauge",
+    "M_Azure_Cyan": "/Game/RMM/Hammers/azure-blockhead/Materials/M_Azure_Cyan",
+    "M_Azure_Gold": "/Game/RMM/Hammers/azure-blockhead/Materials/M_Azure_Gold",
+    "M_Azure_Ice": "/Game/RMM/Hammers/azure-blockhead/Materials/M_Azure_Ice",
 }
 
 unreal.EditorAssetLibrary.make_directory(DESTINATION)
@@ -60,17 +63,20 @@ if not mesh or mesh.get_class().get_name() != "StaticMesh":
 slot_count = len(mesh.get_editor_property("static_materials"))
 static_materials = mesh.get_editor_property("static_materials")
 slot_names = [str(slot.get_editor_property("material_slot_name")) for slot in static_materials]
-expected_slot_names = ["M_Character", "M_JaugeManche", "M_JaugeTete"]
+expected_slot_names = [
+    "M_Character", "M_JaugeManche", "M_JaugeTete",
+    "M_Azure_Cyan", "M_Azure_Gold", "M_Azure_Ice",
+]
 if slot_count != len(expected_slot_names) or slot_names != expected_slot_names:
     raise RuntimeError(
-        "The Azure StaticMesh must preserve stock material slot order "
+        "The Azure StaticMesh must preserve its three stock material slots and custom tile slots "
         + ", ".join(expected_slot_names)
         + "; received "
         + ", ".join(slot_names)
     )
 # Set the StaticMaterials array so assignments are serialized into the cook.
-# The game drives only the handle and head bar material parameters. The body
-# material remains fixed and has no combo connections.
+# The game drives only the handle and head bar material parameters. Body and
+# tile materials remain fixed and have no combo connections.
 updated_static_materials = []
 for slot in static_materials:
     slot_name = str(slot.get_editor_property("material_slot_name"))
